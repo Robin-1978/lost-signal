@@ -226,6 +226,14 @@ bool load_experience_manifest(const std::string& path,
  }
  return false;
  }
+ const Json* required = node.find("required");
+ if (required != nullptr) {
+ if (!required->is_bool()) {
+ out_error = "experience walkaround 'required' must be boolean";
+ return false;
+ }
+ stop.required = required->as_bool();
+ }
  parsed.walkaround.push_back(std::move(stop));
  }
  }

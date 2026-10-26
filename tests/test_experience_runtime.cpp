@@ -110,5 +110,29 @@ int main() {
  assert(rebuilt_score.steps == 1);
  assert(rebuilt_score.elapsed_s == 0.02);
  assert(rebuilt_score.collision_steps == 0);
+
+ // A visible controlled variant is a complete fresh runtime. Only its scan
+ // cadence changes; motion and IMU cadence, seeds, world, and zero-time plant
+ // remain authored and deterministic.
+ sim::experiment::ExperienceRuntimeConfig variant_config = config;
+ variant_config.scan_period_s_override = 0.10;
+ sim::experiment::ExperienceRuntime variant;
+ assert(sim::experiment::build_experience_runtime(
+ variant_config, variant, &error));
+ assert(variant.sim_config.has_value());
+ assert(variant.sim_config->scan_period_s == 0.10);
+ assert(first.sim_config.has_value());
+ assert(variant.sim_config->motion_period_s ==
+ first.sim_config->motion_period_s);
+ assert(variant.sim_config->imu_period_s == first.sim_config->imu_period_s);
+ assert(variant.session->setup_world().truth().step == 0);
+ assert(variant.session->setup_world().actors().size() ==
+ first.session->setup_world().actors().size());
+
+ variant_config.scan_period_s_override = 0.0105;
+ assert(!sim::experiment::build_experience_runtime(
+ variant_config, variant, &error));
+ assert(error ==
+ "scan period override must be positive and on the physics grid");
  return 0;
 }

@@ -35,6 +35,9 @@ int main() {
  lost_signal::sim::viewer::ExperienceEvidenceRule::kIndependentAcceptance);
  assert(experience.walkaround.size() == 4);
  assert(experience.walkaround.front().component_id == "drive_wheel");
+ assert(experience.walkaround.front().required);
+ assert(!experience.walkaround[1].required);
+ assert(experience.walkaround[2].required);
  assert(experience.experiments.size() == 1);
  assert(experience.experiments.front().controlled_variable ==
  "lidar.scan_period_s");

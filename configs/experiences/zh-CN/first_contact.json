@@ -19,10 +19,10 @@
  "抵达标记的停车位并稳定停住，随后由仿真独立核验真实物理结果。"
  ],
  "walkaround": [
- {"component_id":"drive_wheel","title":"驱动轮 / 牵引力","lesson":"每个驱动轮只有一个滚动关节。差速转向来自左右轮速差，驱动轮不会像转向轮那样绕竖直轴转动。"},
- {"component_id":"caster","title":"被动万向轮 / 支撑","lesson":"万向轮用两个被动关节承载车体：竖直回转和水平滚动。两个关节都不接收驱动命令。"},
- {"component_id":"lidar","title":"激光雷达 / 定时测距","lesson":"蓝色扫描器从配置的传感器坐标系测量表面距离。它不知道物体身份、关卡脚本或世界真值。"},
- {"component_id":"chassis","title":"计算、控制与车体","lesson":"机器人把带时间戳的测量转成估计与命令，并凭自身估计报告到达；仿真只在事后独立检查物理结果。"}
+ {"component_id":"drive_wheel","title":"驱动轮 / 牵引力","lesson":"每个驱动轮只有一个滚动关节。差速转向来自左右轮速差，驱动轮不会像转向轮那样绕竖直轴转动。","required":true},
+ {"component_id":"caster","title":"被动万向轮 / 支撑","lesson":"万向轮用两个被动关节承载车体：竖直回转和水平滚动。两个关节都不接收驱动命令。","required":false},
+ {"component_id":"lidar","title":"激光雷达 / 定时测距","lesson":"蓝色扫描器从配置的传感器坐标系测量表面距离。它不知道物体身份、关卡脚本或世界真值。","required":true},
+ {"component_id":"chassis","title":"计算、控制与车体","lesson":"机器人把带时间戳的测量转成估计与命令，并凭自身估计报告到达；仿真只在事后独立检查物理结果。","required":false}
  ],
  "experiments": [
  {

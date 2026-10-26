@@ -27,6 +27,7 @@ struct ExperienceWalkaroundStop {
  std::string component_id;
  std::string title;
  std::string lesson;
+ bool required = true;
 };
 
 struct ExperienceExperiment {

@@ -16,6 +16,10 @@ struct ExperienceRuntimeConfig {
  std::string sim_path;
  std::string map_path;
  std::vector<std::string> objectives;
+ // Optional controlled experiment input. It is applied before the fresh
+ // session publishes its first observation; every other authored value and
+ // random seed remains unchanged.
+ std::optional<double> scan_period_s_override;
 };
 
 struct ExperienceRuntime {

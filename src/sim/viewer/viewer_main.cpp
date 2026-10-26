@@ -2914,6 +2914,19 @@ void draw_frame_3d_direct(const Frame& frame,
 }
 }  // namespace
 
+static lost_signal::sim::viewer::ExperienceFlow::Config experience_flow_config(
+ const lost_signal::sim::viewer::ExperienceManifest& experience) {
+ lost_signal::sim::viewer::ExperienceFlow::Config config;
+ config.walkaround_count = experience.walkaround.size();
+ config.choice_count = experience.choices.size();
+ config.time_limit_steps = experience.time_limit_steps;
+ config.required_walkaround.reserve(experience.walkaround.size());
+ for (const auto& stop : experience.walkaround) {
+ config.required_walkaround.push_back(stop.required);
+ }
+ return config;
+}
+
 int main(int argc, char** argv) {
   using namespace lost_signal;
  // Optional single-source configuration: --robot <config> builds the
@@ -3119,8 +3132,7 @@ int main(int argc, char** argv) {
  std::unique_ptr<ExperienceFlow> experience_flow;
  if (experience_loaded) {
  experience_flow = std::make_unique<ExperienceFlow>(
- ExperienceFlow::Config{experience.walkaround.size(),
- experience.choices.size(), experience.time_limit_steps});
+ experience_flow_config(experience));
  }
  ExperienceHitRegions experience_hit_regions;
  std::vector<ReviewKeyframe> review_keyframes;
@@ -3226,8 +3238,7 @@ int main(int argc, char** argv) {
  std::string experience_action_error;
  const auto reset_experience_presentation = [&]() {
  experience_flow = std::make_unique<ExperienceFlow>(
- ExperienceFlow::Config{experience.walkaround.size(),
- experience.choices.size(), experience.time_limit_steps});
+ experience_flow_config(experience));
  review_keyframes.clear();
  selected_review_keyframe = 0;
  experiment_ui = ExperimentUiState{};

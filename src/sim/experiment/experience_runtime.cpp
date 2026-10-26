@@ -38,7 +38,18 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  return false;
  }
  if (built.sim_config.has_value()) {
+ if (config.scan_period_s_override.has_value()) {
+ const double period_s = *config.scan_period_s_override;
+ if (!scenario::on_physics_grid(period_s) || !(period_s > 0.0)) {
+ out_error = "scan period override must be positive and on the physics grid";
+ return false;
+ }
+ built.sim_config->scan_period_s = period_s;
+ }
  built.session->apply_sim_config(*built.sim_config);
+ } else if (config.scan_period_s_override.has_value()) {
+ out_error = "scan period override needs a SIM configuration";
+ return false;
  }
  if (config.map_path.empty()) {
  out_error = "experience runtime needs a map file";
