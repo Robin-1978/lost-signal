@@ -298,6 +298,97 @@ bool load_vec3(const Json& obj, const char* key, double out[3],
   return true;
 }
 
+bool load_arm_config(const Json* node, DriveProfile::ArmParams& out,
+ std::string& err) {
+ if (node == nullptr) return true;
+ if (!node->is_object()) {
+ err = "'arm' must be an object";
+ return false;
+ }
+ const Json* enabled = node->find("enabled");
+ if (enabled == nullptr || !enabled->is_bool()) {
+ err = "'arm.enabled' must be a boolean";
+ return false;
+ }
+ DriveProfile::ArmParams parsed;
+ parsed.enabled = enabled->as_bool();
+ if (!parsed.enabled) {
+ out = parsed;
+ return true;
+ }
+ const Json* base = node->find("base_xyz_m");
+ if (base == nullptr || !base->is_array() || base->as_array().size() != 3) {
+ err = "'arm.base_xyz_m' must be a 3-number array";
+ return false;
+ }
+ for (int i = 0; i < 3; ++i) {
+ const Json& value = base->as_array()[static_cast<std::size_t>(i)];
+ if (!value.is_num() || !std::isfinite(value.as_num())) {
+ err = "'arm.base_xyz_m' must contain finite numbers";
+ return false;
+ }
+ if (i == 0) parsed.base_x_m = value.as_num();
+ if (i == 1) parsed.base_y_m = value.as_num();
+ if (i == 2) parsed.base_z_m = value.as_num();
+ }
+ const Json* links = node->find("links");
+ if (links == nullptr || !links->is_array() || links->as_array().size() != 4) {
+ err = "'arm.links' must contain exactly 4 entries";
+ return false;
+ }
+ for (std::size_t i = 0; i < 4; ++i) {
+ const Json& link = links->as_array()[i];
+ if (!link.is_object()) {
+ err = "'arm.links' entries must be objects";
+ return false;
+ }
+ const char* keys[] = {"length_m", "mass_kg", "radius_m",
+ "initial_angle_rad"};
+ double* slots[] = {&parsed.link_length_m[i], &parsed.link_mass_kg[i],
+ &parsed.link_radius_m[i], &parsed.initial_angle_rad[i]};
+ for (int field = 0; field < 4; ++field) {
+ const Json* value = link.find(keys[field]);
+ if (value == nullptr || !value->is_num() ||
+ !std::isfinite(value->as_num())) {
+ err = std::string("'arm.links.") + std::to_string(i) + "." +
+ keys[field] + "' must be a finite number";
+ return false;
+ }
+ *slots[field] = value->as_num();
+ }
+ if (!(parsed.link_length_m[i] > 0.0) ||
+ !(parsed.link_mass_kg[i] > 0.0) || !(parsed.link_radius_m[i] > 0.0)) {
+ err = std::string("'arm.links.") + std::to_string(i) +
+ "' needs positive length_m/mass_kg/radius_m";
+ return false;
+ }
+ const Json* axis = link.find("joint_axis");
+ if (axis == nullptr || !axis->is_array() || axis->as_array().size() != 3) {
+ err = std::string("'arm.links.") + std::to_string(i) +
+ ".joint_axis' must be a 3-number array";
+ return false;
+ }
+ double norm_sq = 0.0;
+ for (int component = 0; component < 3; ++component) {
+ const Json& value = axis->as_array()[static_cast<std::size_t>(component)];
+ if (!value.is_num() || !std::isfinite(value.as_num())) {
+ err = std::string("'arm.links.") + std::to_string(i) +
+ ".joint_axis' must contain finite numbers";
+ return false;
+ }
+ parsed.joint_axis[i][static_cast<std::size_t>(component)] = value.as_num();
+ norm_sq += value.as_num() * value.as_num();
+ }
+ if (!(norm_sq > 1e-12) || !std::isfinite(norm_sq)) {
+ err = std::string("'arm.links.") + std::to_string(i) +
+ ".joint_axis' must have non-zero length";
+ return false;
+ }
+ }
+ out = parsed;
+ return true;
+}
+
 bool load_robot_config(const std::string& path, RobotConfig& config,
                        std::string* error) {
   std::string err_local;
@@ -343,6 +434,9 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
   if (!merge_chassis_config(obj.find("chassis"), out.profile, err)) {
     return false;
   }
+ if (!load_arm_config(obj.find("arm"), out.profile.arm, err)) {
+ return false;
+ }
   const Json* lim = obj.find("limits");
  bool lateral_limit_present = false;
   if (lim != nullptr) {

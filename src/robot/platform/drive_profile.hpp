@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -93,6 +94,24 @@ struct DriveProfile {
   // mass of every drive or idler wheel, never a separate density estimate.
   double wheel_mass_kg = 0.2;
   double knuckle_mass_kg = 0.1;      // steering kingpin (steered layouts)
+ // Optional articulated manipulator hardware contract. This is declared
+ // configuration, not simulation state: native code may use it to describe
+ // the joints it can command, while SIM translates the same geometry into
+ // MuJoCo links. Four links match the current arm channel; adding another
+ // link later is an explicit contract revision instead of a renderer guess.
+ struct ArmParams {
+ bool enabled = false;
+ double base_x_m = 0.0;
+ double base_y_m = 0.0;
+ double base_z_m = 0.0;
+ std::array<double, 4> link_length_m = {};
+ std::array<double, 4> link_mass_kg = {};
+ std::array<double, 4> link_radius_m = {};
+ std::array<std::array<double, 3>, 4> joint_axis = {};
+ std::array<double, 4> initial_angle_rad = {};
+ };
+ ArmParams arm;
+
 // Unpowered casters, base frame, explicit (empty = default fore/aft pair
 // at +-0.9*wheel_base/2 for differential; none for four-wheel layouts).
   struct SupportSpec {

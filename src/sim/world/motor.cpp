@@ -58,6 +58,15 @@ MotorParams motor_params_from_profile(
                          : profile.wheel_radius_m;
   out.payload_mass_kg = profile.payload_mass_kg;
   out.payload_height_m = profile.payload_height_m;
+ out.arm.enabled = profile.arm.enabled;
+ out.arm.base_x_m = profile.arm.base_x_m;
+ out.arm.base_y_m = profile.arm.base_y_m;
+ out.arm.base_z_m = profile.arm.base_z_m;
+ out.arm.link_length_m = profile.arm.link_length_m;
+ out.arm.link_mass_kg = profile.arm.link_mass_kg;
+ out.arm.link_radius_m = profile.arm.link_radius_m;
+ out.arm.joint_axis = profile.arm.joint_axis;
+ out.arm.initial_angle_rad = profile.arm.initial_angle_rad;
   out.support_count = 0;
   if (profile.supports.empty() && profile.chassis_kind == "tracked") {
  // Tracks are the support surface; adding a free caster pair would inject

@@ -126,7 +126,64 @@ int main() {
     assert(mt.support_count == -1);
     assert(mt.com_height_m == 0.1);  // omitted com follows the axle
   }
-  // End-to-end: mounts from the config shift the live rays. A forward
+ // Articulated manipulator geometry is part of the machine contract and is
+ // translated to SIM without inventing a pose in the viewer. A disabled
+ // arm remains the zero-cost default; an enabled arm requires all four
+ // physical links and non-zero joint axes.
+ {
+ const std::string tmp =
+ (std::filesystem::temp_directory_path() / "test_robot_arm_cfg.json")
+ .string();
+ std::FILE* fp = std::fopen(tmp.c_str(), "wb");
+ assert(fp != nullptr);
+ std::fputs(R"({"kind":"differential","arm":{"enabled":true,
+ "base_xyz_m":[0.0,0.0,0.22],"links":[
+ {"length_m":0.30,"mass_kg":2.0,"radius_m":0.04,
+ "joint_axis":[0,0,1],"initial_angle_rad":0.1},
+ {"length_m":0.25,"mass_kg":1.5,"radius_m":0.035,
+ "joint_axis":[0,1,0],"initial_angle_rad":-0.2},
+ {"length_m":0.18,"mass_kg":1.0,"radius_m":0.03,
+ "joint_axis":[0,1,0],"initial_angle_rad":0.3},
+ {"length_m":0.12,"mass_kg":0.5,"radius_m":0.025,
+ "joint_axis":[1,0,0],"initial_angle_rad":-0.1}]}})", fp);
+ std::fclose(fp);
+ robot::platform::RobotConfig cfg;
+ std::string err;
+ assert(robot::platform::load_robot_config(tmp, cfg, &err));
+ assert(cfg.profile.arm.enabled);
+ assert(cfg.profile.arm.base_z_m == 0.22);
+ assert(cfg.profile.arm.link_length_m[1] == 0.25);
+ assert(cfg.profile.arm.joint_axis[3][0] == 1.0);
+ const auto motor = sim::eval::motor_from_config(cfg);
+ assert(motor.arm.enabled == cfg.profile.arm.enabled);
+ assert(motor.arm.base_z_m == cfg.profile.arm.base_z_m);
+ assert(motor.arm.link_length_m == cfg.profile.arm.link_length_m);
+ assert(motor.arm.joint_axis == cfg.profile.arm.joint_axis);
+ std::remove(tmp.c_str());
+
+ auto write = [&](const char* body) {
+ std::FILE* out = std::fopen(tmp.c_str(), "wb");
+ assert(out != nullptr);
+ std::fputs(body, out);
+ std::fclose(out);
+ };
+ write(R"({"kind":"differential","arm":{"enabled":true,
+ "base_xyz_m":[0,0,0],"links":[]}})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+ write(R"({"kind":"differential","arm":{"enabled":true,
+ "base_xyz_m":[0,0,0],"links":[
+ {"length_m":0.3,"mass_kg":1,"radius_m":0.03,
+ "joint_axis":[0,0,0],"initial_angle_rad":0},
+ {"length_m":0.3,"mass_kg":1,"radius_m":0.03,
+ "joint_axis":[0,0,1],"initial_angle_rad":0},
+ {"length_m":0.3,"mass_kg":1,"radius_m":0.03,
+ "joint_axis":[0,0,1],"initial_angle_rad":0},
+ {"length_m":0.3,"mass_kg":1,"radius_m":0.03,
+ "joint_axis":[0,0,1],"initial_angle_rad":0}]}})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+ std::remove(tmp.c_str());
+ }
+ // End-to-end: mounts from the config shift the live rays. A forward
   // lidar mount sees the box face sooner (same engine, same truth).
   {
     robot::platform::RobotConfig cfg;
