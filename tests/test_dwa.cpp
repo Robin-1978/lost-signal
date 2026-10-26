@@ -905,6 +905,35 @@ int main() {
  assert(released.best.forward_mps > 0.0);
  }
 
+ // A goal-bearing correction can be arbitrarily small while XY still lies
+ // outside the confidence-bounded arrival region. That yaw-only candidate
+ // is not route progress and must not strand a differential base beside the
+ // goal while a safe translating sample exists.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 1.82;
+ est.y_m = 0.01;
+ est.position_sigma_m = 0.015;
+ est.heading_sigma_rad = 0.01;
+ const double goal_bearing = std::atan2(-est.y_m, 2.0 - est.x_m);
+ est.yaw_rad = goal_bearing + 2e-5;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {1.0, 0.0, 0.0, 1},
+ {2.0, 0.0, 0.0, 1}};
+ DwaPlannerConfig config;
+ config.terminal_position_tolerance_m = 0.20;
+ DwaPlanner planner(config);
+ const LocalPlan approach = planner.plan(est, perc, m, route, limits);
+ assert(approach.has_plan && approach.moving_candidate_count > 0);
+ assert(approach.best.forward_mps > 0.0);
+ }
+
  std::printf("dwa ok\n");
  return 0;
 }

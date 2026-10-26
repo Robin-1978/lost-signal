@@ -28,6 +28,9 @@ struct SlamConfig {
   double keyframe_translation_m = 0.5;
   double keyframe_heading_rad = 0.30;
   std::size_t max_keyframes = 200;  // ring: oldest non-fixed node drops
+  // Bounded posed-scan stack used as the local matching submap. Repeated
+  // views fill angular gaps and suppress aliases from any one scan raster.
+  std::size_t local_submap_keyframes = 8;
   // Loop attempts run at most this often and only after a new keyframe.
   double loop_attempt_interval_s = 2.0;
   std::size_t max_candidates_per_attempt = 3;
@@ -71,7 +74,7 @@ struct SlamConfig {
   double track_heading_step_rad = 0.05;
   std::size_t track_max_beams = 64;
   double track_min_overlap = 0.30;
-  double track_min_margin = 0.02;
+  double track_min_margin = 0.05;
  // The master frontend also required an absolute match score. Overlap alone
  // is unsafe on repetitive/unknown submaps because a weak partial alignment
  // can still explain the same fraction of returns.
@@ -132,6 +135,11 @@ struct SlamTrackResult {
   double yaw_rad = 0.0;
   double position_sigma_m = 0.0;
   double heading_sigma_rad = 0.0;
+ // Directional likelihood information from the scan matcher. A corridor
+ // may observe wall-normal position and yaw while leaving its axis free;
+ // callers must not turn the scalar fallback into false 3-DOF certainty.
+ std::array<double, 9> pose_information{};
+ bool pose_information_valid = false;
   double score = 0.0;
   double overlap = 0.0;
   double score_margin = 0.0;
@@ -186,6 +194,8 @@ class SlamSession {
   // Render one keyframe's scan into a small occupancy raster in the map
   // frame (endpoints occupied, ray interiors free) for scan-to-submap match.
   iface::MapSnapshot submap_for(const SlamKeyframe& kf) const;
+  // Causal window: future scans are excluded so a loop cannot verify itself.
+  iface::MapSnapshot submap_ending_at(std::size_t index) const;
   bool keyframe_due(const EstimatedState& est) const;
   // Rebuild the backend from retained keyframes (ring drop). Chain links
   // are re-derived from keyframe poses; loop constraints do not survive a
@@ -206,6 +216,10 @@ class SlamSession {
   // id (render once per keyframe, not once per tick); attempt pose/time
   // gate the cadence. All ROBOT-side: scans, submaps, odometry prior.
   std::size_t track_corrections_ = 0;
+ // A local submap and its anchor carry the same historic evidence. Fuse at
+ // most one live match per anchor so repeated scans cannot count that
+ // evidence as independent absolute observations and walk map->odom.
+ std::uint64_t fused_track_anchor_id_ = 0;
   double last_track_s_ = -1.0e9;
   double last_track_x_m_ = 0.0;
   double last_track_y_m_ = 0.0;

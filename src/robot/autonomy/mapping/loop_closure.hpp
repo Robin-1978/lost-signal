@@ -21,6 +21,10 @@ struct LoopClosureGateConfig {
  // uses the conservative evidence floor supported by the scanner rather
  // than requiring almost the entire scan to agree.
  double minimum_overlap{0.45};
+ // Normalized scan likelihoods are cell-quantized; 0.05 is the matcher's
+ // resolvable separated-mode floor. False local-chain closures are excluded
+ // structurally by non-overlapping causal submaps, then by bidirectional
+ // verification, rather than by raising this data-scale-dependent number.
  double minimum_score_margin{0.05};
 };
 

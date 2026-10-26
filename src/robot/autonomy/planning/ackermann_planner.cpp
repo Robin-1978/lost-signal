@@ -243,6 +243,21 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  const auto inside = [&](int gx, int gy) {
  return gx >= 0 && gy >= 0 && gx < state.width && gy < state.height;
  };
+ const auto segment_is_free = [&](double x0, double y0,
+ double x1, double y1) {
+ if (state.planning_map == nullptr) return false;
+ const double length = std::hypot(x1 - x0, y1 - y0);
+ const int samples = std::max(1, static_cast<int>(std::ceil(
+ length / std::max(0.05, 0.45 * state.resolution_m))));
+ for (int sample = 0; sample <= samples; ++sample) {
+ const double u = static_cast<double>(sample) / samples;
+ if (state.planning_map->lethal.is_blocked(
+ x0 + u * (x1 - x0), y0 + u * (y1 - y0))) {
+ return false;
+ }
+ }
+ return true;
+ };
 
  const double maximum_curvature =
  std::tan(config_.max_steer_rad) / config_.wheel_base_m;
@@ -380,6 +395,34 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  return {GlobalPlanStatus::kFailed, {}};
  }
 
+ // Hybrid A* uses analytic expansions for simple pose connections before
+ // opening the lattice. Without this fast path, cell/heading quantization
+ // can discover a long looping path before the exact straight primitive,
+ // even in open space. The same curvature, steering-rate and swept lethal
+ // checks used by a terminal connector make the shortcut fully kinematic.
+ const std::array<int, 2> direct_gears{1, -1};
+ for (std::size_t gear_index = 0;
+ gear_index < (config_.allow_reverse ? direct_gears.size() : 1U);
+ ++gear_index) {
+ const int gear = direct_gears[gear_index];
+ if (!feasible_terminal_connector(
+ state.start.x_m, state.start.y_m, state.start.yaw_rad, 0.0,
+ gear, state.goal, config_) ||
+ !segment_is_free(state.start.x_m, state.start.y_m,
+ state.goal.x_m, state.goal.y_m)) {
+ continue;
+ }
+ Route direct;
+ direct.valid = true;
+ direct.points = {
+ {state.start.x_m, state.start.y_m,
+ core::wrap_angle(state.start.yaw_rad), gear},
+ {state.goal.x_m, state.goal.y_m,
+ core::wrap_angle(state.goal.yaw_rad), gear}};
+ search_.reset();
+ return {GlobalPlanStatus::kSucceeded, std::move(direct)};
+ }
+
  state.assembled.valid = true;
  state.assembled.points = {{state.start.x_m, state.start.y_m,
  core::wrap_angle(state.start.yaw_rad), 1}};
@@ -425,18 +468,6 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  distance_to_guide = best_distance;
  return best_distance <= config_.corridor_radius_m + 1e-9;
  };
- const auto segment_is_free = [&](double x0, double y0,
- double x1, double y1) {
- const double length = std::hypot(x1 - x0, y1 - y0);
- const int samples = std::max(1, static_cast<int>(std::ceil(
- length / std::max(0.05, 0.45 * state.resolution_m))));
- for (int sample = 0; sample <= samples; ++sample) {
- const double u = static_cast<double>(sample) / samples;
- if (blocked(x0 + u * (x1 - x0), y0 + u * (y1 - y0))) return false;
- }
- return true;
- };
-
  const std::array<double, 5> steer_factors{-1.0, -0.5, 0.0, 0.5, 1.0};
  const std::array<int, 2> gears{1, -1};
  int goal_node = -1;

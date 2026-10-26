@@ -266,6 +266,7 @@ int main() {
  tr.correction_m, tr.correction_rad);
  }
     assert(tr.accepted);
+ assert(tr.pose_information_valid);
     assert(std::hypot(tr.x_m - bx, tr.y_m - by) < 0.1);
     assert(std::abs(core::wrap_angle(tr.yaw_rad - byaw)) < 0.1);
     assert(session.track_corrections() == 1);

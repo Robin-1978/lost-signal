@@ -719,6 +719,14 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  if (car_like) {
  return std::abs(forward) > 1e-9 || std::abs(angular) > 1e-9;
  }
+ // Before the confidence-bounded position region is reached, yaw by itself
+ // cannot reduce the outstanding position error. A numerically tiny
+ // goal-bearing correction must not outrank a translating candidate merely
+ // because both are nonzero. Once XY is reached, translation is suppressed
+ // below and in-place rotation becomes the required terminal progress.
+ if (!terminal_position_reached) {
+ return std::hypot(forward, lateral) > 1e-9;
+ }
  const double horizon_s = std::max(0.0, predict_T);
  const double spatial_resolution_m = std::max(1e-6, map.resolution_m);
  const double translation_m =

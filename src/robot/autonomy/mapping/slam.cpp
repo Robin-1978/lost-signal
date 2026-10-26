@@ -223,6 +223,7 @@ void SlamSession::reset() {
   keyframes_at_last_attempt_ = 0;
   last_result_ = SlamLoopResult{};
   track_corrections_ = 0;
+ fused_track_anchor_id_ = 0;
   last_track_s_ = -1.0e9;
   have_tracked_ = false;
   last_track_ = SlamTrackResult{};
@@ -425,6 +426,78 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
   return sub;
 }
 
+iface::MapSnapshot SlamSession::submap_ending_at(std::size_t index) const {
+ if (keyframes_.empty() || index >= keyframes_.size()) return {};
+ const std::size_t count = std::max<std::size_t>(
+ 1, config_.local_submap_keyframes);
+ const std::size_t begin = index + 1 > count ? index + 1 - count : 0;
+ if (begin == index) return submap_for(keyframes_[index]);
+
+ std::vector<iface::MapSnapshot> scans;
+ scans.reserve(index - begin + 1);
+ double min_x = std::numeric_limits<double>::infinity();
+ double min_y = std::numeric_limits<double>::infinity();
+ double max_x = -std::numeric_limits<double>::infinity();
+ double max_y = -std::numeric_limits<double>::infinity();
+ for (std::size_t i = begin; i <= index; ++i) {
+ iface::MapSnapshot scan = submap_for(keyframes_[i]);
+ if (!scan.has_raster()) continue;
+ min_x = std::min(min_x, scan.origin_x_m);
+ min_y = std::min(min_y, scan.origin_y_m);
+ max_x = std::max(max_x,
+ scan.origin_x_m + scan.width * scan.resolution_m);
+ max_y = std::max(max_y,
+ scan.origin_y_m + scan.height * scan.resolution_m);
+ scans.push_back(std::move(scan));
+ }
+ if (scans.empty()) return {};
+
+ iface::MapSnapshot merged;
+ merged.map_id = "slam-local-submap";
+ merged.revision = keyframes_[index].id;
+ merged.frame_id = "map";
+ merged.resolution_m = 0.1;
+ merged.origin_x_m = min_x;
+ merged.origin_y_m = min_y;
+ merged.width = static_cast<std::uint32_t>(std::ceil(
+ (max_x - min_x) / merged.resolution_m));
+ merged.height = static_cast<std::uint32_t>(std::ceil(
+ (max_y - min_y) / merged.resolution_m));
+ if (merged.width == 0 || merged.height == 0) return {};
+ merged.occupancy.assign(
+ static_cast<std::size_t>(merged.width) * merged.height, -1);
+
+ // Occupied evidence wins over free evidence across the posed scans. A
+ // later ray must never erase an earlier surface merely because the two
+ // quantized beams cross in a neighbouring cell.
+ for (const auto& scan : scans) {
+ for (std::uint32_t sy = 0; sy < scan.height; ++sy) {
+ for (std::uint32_t sx = 0; sx < scan.width; ++sx) {
+ const int value = scan.occupancy[
+ static_cast<std::size_t>(sy) * scan.width + sx];
+ if (value < 0) continue;
+ const double wx = scan.origin_x_m +
+ (static_cast<double>(sx) + 0.5) * scan.resolution_m;
+ const double wy = scan.origin_y_m +
+ (static_cast<double>(sy) + 0.5) * scan.resolution_m;
+ const int dx = static_cast<int>(std::floor(
+ (wx - merged.origin_x_m) / merged.resolution_m));
+ const int dy = static_cast<int>(std::floor(
+ (wy - merged.origin_y_m) / merged.resolution_m));
+ if (dx < 0 || dy < 0 || dx >= static_cast<int>(merged.width) ||
+ dy >= static_cast<int>(merged.height)) {
+ continue;
+ }
+ int8_t& target = merged.occupancy[
+ static_cast<std::size_t>(dy) * merged.width + dx];
+ if (value >= 50) target = 100;
+ else if (target < 0) target = 0;
+ }
+ }
+ }
+ return merged;
+}
+
 iface::MapSnapshot SlamSession::submap(std::uint64_t keyframe_id) const {
  for (const auto& kf : keyframes_) {
  if (kf.id == keyframe_id) return submap_for(kf);
@@ -470,12 +543,18 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
   // observed occupied, ray interiors free — the survey's unknown cells
   // never appear here, so free-space evidence discriminates.
   const SlamKeyframe& anchor = keyframes_.back();
+ if (fused_track_anchor_id_ == anchor.id) {
+ out.diagnostic = "track rate limited by fused anchor";
+ last_track_ = out;
+ return out;
+ }
   if (track_submap_id_ != anchor.id) {
-    track_submap_ = submap_for(anchor);
+ track_submap_ = submap_ending_at(keyframes_.size() - 1);
     track_submap_id_ = anchor.id;
   }
   ScanMatcherConfig match_cfg;
  match_cfg.expected_range_validation = false;
+ match_cfg.require_prior_improvement = true;
   match_cfg.search_translation_m = config_.track_window_m;
   match_cfg.search_heading_rad = config_.track_heading_rad;
   match_cfg.translation_step_m = config_.track_step_m;
@@ -516,7 +595,15 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
  obs.scan_angle_increment_rad, obs.ranges_m.size());
   const iface::MapSnapshot rsub = submap_for(now_kf);
   const SlamKeyframe& old = keyframes_.back();
-  ScanMatchResult rev = matcher.localize(
+ // The reverse centre is a geometric verification hypothesis, not a fresh
+ // odometry prior. Requiring an improvement over it would reject a correct
+ // no-op reverse alignment after the forward pass has already removed the
+ // drift. Keep the same geometry gates but disable only the prior semantic.
+ ScanMatcherConfig reverse_cfg = match_cfg;
+ reverse_cfg.require_prior_improvement = false;
+ ScanMatcher reverse_matcher(reverse_cfg);
+ reverse_matcher.set_lidar_mount(base_from_lidar_);
+ ScanMatchResult rev = reverse_matcher.localize(
       old.ranges_m, old.angle_min_rad, old.angle_increment_rad,
       old.pose.position.x, old.pose.position.y, old.pose.heading_rad, rsub,
       obs.stamp_ns, old.roll_rad, old.pitch_rad, old.z_m);
@@ -611,7 +698,10 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
   out.yaw_rad = match.yaw_rad;
   out.position_sigma_m = match.position_sigma_m;
   out.heading_sigma_rad = match.heading_sigma_rad;
+ out.pose_information = match.pose_information;
+ out.pose_information_valid = match.pose_information_valid;
   out.diagnostic = "track corrected";
+ fused_track_anchor_id_ = anchor.id;
   ++track_corrections_;
   last_track_ = out;
   return out;
@@ -643,6 +733,7 @@ SlamLoopResult SlamSession::try_close_loops(
   match_cfg.heading_step_rad = config_.match_heading_step_rad;
   match_cfg.maximum_returns = config_.match_max_beams;
   match_cfg.minimum_overlap = config_.match_minimum_overlap;
+ match_cfg.minimum_score_margin = config_.gate.minimum_score_margin;
  // The coarse loop lattice deliberately has wider cells than local
  // tracking. Treat candidates inside one keyframe-spacing neighbourhood as
  // the same physical mode; otherwise the raster endpoint splat produces
@@ -662,6 +753,7 @@ SlamLoopResult SlamSession::try_close_loops(
  refine_cfg.heading_step_rad = config_.match_refine_heading_step_rad;
  refine_cfg.maximum_returns = config_.match_refine_max_beams;
  refine_cfg.minimum_overlap = config_.match_minimum_overlap;
+ refine_cfg.minimum_score_margin = config_.gate.minimum_score_margin;
  // The dense pass resolves one mode selected by the wide pass. Adjacent
  // raster cells belong to that mode and must not manufacture ambiguity.
  refine_cfg.ambiguity_distance_m = std::max(
@@ -687,7 +779,14 @@ SlamLoopResult SlamSession::try_close_loops(
  for (std::size_t i = 0; i + 1 < keyframes_.size(); ++i) {
  const SlamKeyframe& kf = keyframes_[i];
  const std::size_t separation = keyframes_.size() - 1 - i;
- if (separation < config_.minimum_loop_keyframe_separation ||
+ // The two causal submaps must not share keyframes. Shared scans make the
+ // forward/reverse checks correlated and can turn an ordinary local chain
+ // constraint into a false "loop". Two complete windows give independent
+ // evidence without introducing a scenario-distance threshold.
+ const std::size_t independent_submap_separation = std::max(
+ config_.minimum_loop_keyframe_separation,
+ 2 * std::max<std::size_t>(1, config_.local_submap_keyframes));
+ if (separation < independent_submap_separation ||
  now_s - kf.stamp_s < config_.gate.minimum_temporal_separation_s) {
  continue;
  }
@@ -752,7 +851,8 @@ SlamLoopResult SlamSession::try_close_loops(
  work.lattice.start(match_cfg, base_from_lidar_,
  work.match_obs.ranges_m, work.match_obs.scan_angle_min_rad,
  work.match_obs.scan_angle_increment_rad, work.match_est.x_m,
- work.match_est.y_m, work.match_est.yaw_rad, submap_for(*old),
+ work.match_est.y_m, work.match_est.yaw_rad,
+ submap_ending_at(static_cast<std::size_t>(old - keyframes_.data())),
  work.match_est.roll_rad, work.match_est.pitch_rad,
  work.match_est.z_m);
  work.phase = LoopSearchWork::Phase::kCoarse;

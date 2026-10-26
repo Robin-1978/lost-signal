@@ -425,16 +425,23 @@ ScanMatchResult ScanMatcher::localize(
       hypotheses.size() > 1
           ? hypotheses[1].score
           : -std::numeric_limits<double>::infinity();
- const auto likelihood_score = [&](double x, double y, double heading) {
+ const auto likelihood_evidence = [&](double x, double y, double heading) {
+ PoseScore out;
  if (config_.expected_range_validation) {
  const ExpectedRangeEvidence evidence = expected_range_evidence(
  map, beams, x, y, heading, body_roll_rad, body_pitch_rad,
  base_from_lidar_, config_.max_range_m);
- return evidence.valid ? evidence.score
- : -std::numeric_limits<double>::infinity();
+ out.has_evidence = evidence.valid;
+ out.score = evidence.score;
+ out.overlap = evidence.overlap;
+ out.usable_returns = hit_returns;
+ return out;
  }
- const PoseScore pose = batch.score(0, x, y, heading, map, body_z_m);
- return pose.has_evidence ? pose.score
+ return batch.score(0, x, y, heading, map, body_z_m);
+ };
+ const auto likelihood_score = [&](double x, double y, double heading) {
+ const PoseScore evidence = likelihood_evidence(x, y, heading);
+ return evidence.has_evidence ? evidence.score
  : -std::numeric_limits<double>::infinity();
  };
  const auto populate_pose_information = [&](const Hypothesis& pose) {
@@ -647,6 +654,46 @@ ScanMatchResult ScanMatcher::localize(
  return result;
  }
  result.rejection_reason = "map optimum reaches search boundary";
+ return result;
+ }
+ // Odometry is the local search prior, not merely the centre of a lattice.
+ // Endpoint rasters contain broad plateaus where a neighbouring cell can
+ // win by quantization noise and then walk map->odom in the same direction
+ // on every scan. A nonzero correction must improve the likelihood by the
+ // same declared margin used to distinguish separate geometric modes. An
+ // unchanged prior can still be accepted as a supported no-op observation.
+ const PoseScore prior_evidence = likelihood_evidence(
+ odom_x_m, odom_y_m, odom_heading_rad);
+ const double prior_score = prior_evidence.has_evidence
+ ? prior_evidence.score : -std::numeric_limits<double>::infinity();
+ const bool shifted_from_prior =
+ std::hypot(best.x - odom_x_m, best.y - odom_y_m) > 1e-9 ||
+ std::abs(core::wrap_angle(best.heading - odom_heading_rad)) > 1e-9;
+ if (config_.require_prior_improvement && shifted_from_prior &&
+ std::isfinite(prior_score) &&
+ best.score - prior_score < config_.minimum_score_margin) {
+ // The scan supports the established prior, but does not justify moving
+ // away from it. Preserve the prior as a zero-innovation observation and
+ // retain only the local Hessian information measured there. This prevents
+ // cell quantization from walking map->odom while still observing, for
+ // example, wall-normal position and heading.
+ if (prior_evidence.overlap >= config_.minimum_overlap) {
+ const Hypothesis supported_prior{
+ odom_x_m, odom_y_m, odom_heading_rad,
+ prior_score, prior_evidence.overlap};
+ populate_pose_information(supported_prior);
+ result.accepted = true;
+ result.score = prior_score;
+ result.overlap = prior_evidence.overlap;
+ result.score_margin = std::isfinite(second_score)
+ ? best.score - second_score : 1.0;
+ result.rejection_reason = "accepted at odometry prior";
+ return result;
+ }
+ result.score = best.score;
+ result.overlap = best.overlap;
+ result.score_margin = best.score - prior_score;
+ result.rejection_reason = "map match does not improve odometry prior";
  return result;
  }
   result.accepted = true;

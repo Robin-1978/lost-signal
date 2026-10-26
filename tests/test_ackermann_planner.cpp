@@ -70,6 +70,14 @@ int main() {
  config.max_expansions = 60'000;
  AckermannPlanner planner(config);
  MapSnapshot map = open_map(80, 80, 0.25, -10.0, -10.0);
+ // An unobstructed, aligned pose has an exact analytic connection. It must
+ // not enter the quantized lattice and manufacture a loop or reverse cusp.
+ const Route straight = planner.plan(
+ pose(0.0, 0.0, 0.0), {6.0, 0.0, 0.0}, map);
+ assert(straight.valid && straight.points.size() == 2);
+ assert(straight.points[0].gear > 0 && straight.points[1].gear > 0);
+ assert(std::abs(straight.points[0].y_m) < 1e-12);
+ assert(std::abs(straight.points[1].y_m) < 1e-12);
 
  // A car-like route reaches a displaced goal without an in-place turn and
  // keeps every sampled point in the ROBOT occupancy map.

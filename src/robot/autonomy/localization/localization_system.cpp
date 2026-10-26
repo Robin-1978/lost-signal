@@ -125,12 +125,17 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
  estimator.estimate(), obs, mapless_slam);
   if (!tr.accepted) return;
  if (mapless_slam) {
- // There is no independent surveyed `map` frame here. The SLAM submap is
- // the frame used by local planning and arrival, and scan matching is the
- // measurement that bounds wheel/IMU drift inside it. Withholding its
- // covariance update makes uncertainty grow until a healthy robot stops.
+ // SlamSession releases at most one accepted observation per causal submap
+ // anchor. That makes this an incremental graph-front-end update instead of
+ // repeatedly counting the same walls as independent evidence.
+ if (tr.pose_information_valid) {
+ estimator.correct_pose_information(
+ tr.x_m, tr.y_m, tr.yaw_rad, tr.pose_information,
+ tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
+ } else {
  estimator.correct_pose(tr.x_m, tr.y_m, tr.yaw_rad,
  tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
+ }
  } else {
  // A surveyed map owns absolute authority. Scan-to-submap shares the
  // estimator's keyframe history, so it may improve local consistency but

@@ -33,6 +33,11 @@ struct ScanMatcherConfig {
  // SLAM submaps contain splatted endpoints rather than complete surfaces and
  // disable this stage explicitly.
  bool expected_range_validation = true;
+ // Local odometry-centred tracking may require a shifted winner to improve
+ // on the prior by minimum_score_margin. Startup/global hypothesis trackers
+ // leave this off because their centres are competing hypotheses, not an
+ // already established continuous odometry pose.
+ bool require_prior_improvement = false;
   // Two candidates closer than this are one physical hypothesis.
   double ambiguity_distance_m = 0.25;
   double ambiguity_heading_rad = 0.15;
