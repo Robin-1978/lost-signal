@@ -272,8 +272,11 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  // turning radius, so work scales with route length without a level-specific
  // distance or an unbounded whole-route lattice.
  const double minimum_turning_radius_m = 1.0 / maximum_curvature;
+ // Keep refinement local enough that branching cannot grow with mission
+ // length, but long enough to contain a complete minimum-radius turnaround.
+ // Both terms come from configured geometry rather than map or mission size.
  const double refinement_horizon_m = std::max(
- 2.0 * config_.corridor_radius_m, 8.0 * minimum_turning_radius_m);
+ config_.corridor_radius_m, 2.0 * minimum_turning_radius_m);
  double guide_distance_m = 0.0;
  std::size_t endpoint = state.segment_start_index;
  while (endpoint + 1 < state.guide.points.size() &&

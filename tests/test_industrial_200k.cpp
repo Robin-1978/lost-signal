@@ -264,10 +264,38 @@ int main() {
   replanning_pose.yaw_rad = -0.559507758;
   const auto& central_gate = place(map, "central_gate");
   robot::autonomy::AckermannPlanner replanner(recovery_config);
-  const auto route = replanner.plan(
+ const auto route = replanner.plan(
    replanning_pose,
    {central_gate.x_m, central_gate.y_m, central_gate.yaw_rad}, map);
   assert_route_clear(route, costmap.lethal);
+ }
+
+ // Replanning must also remain finite after the local controller stops at an
+ // intermediate Ackermann pose. This measured-only pose is far from the map
+ // boundary and has a valid 2D guide; refining it must not spend an unbounded
+ // number of states trying to reconnect to the guide's first lattice sample.
+ {
+ auto replanning_pose = at(197.410, -18.428);
+ replanning_pose.yaw_rad = -0.262;
+ const auto& central_gate = place(map, "central_gate");
+ robot::autonomy::AckermannPlanner replanner(recovery_config);
+ replanner.begin_plan(
+ replanning_pose,
+ {central_gate.x_m, central_gate.y_m, central_gate.yaw_rad}, map);
+ robot::autonomy::GlobalPlanProgress progress;
+ std::size_t slices = 0;
+ do {
+ progress = replanner.continue_plan(replanner.incremental_plan_budget());
+ ++slices;
+ } while (progress.status == robot::autonomy::GlobalPlanStatus::kPending);
+ // At the production 20 ms decision cadence, 64 deterministic slices are a
+ // 1.28 s upper bound from a stopped pose to a usable route. This is a work
+ // budget contract, so it is independent of host CPU speed and wall clocks.
+ constexpr std::size_t kMaximumReplanDecisionCycles = 64;
+ assert(slices <= kMaximumReplanDecisionCycles);
+ assert(progress.status == robot::autonomy::GlobalPlanStatus::kSucceeded);
+ const auto& route = progress.route;
+ assert_route_clear(route, costmap.lethal);
  }
 
  std::printf(
