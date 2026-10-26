@@ -78,6 +78,12 @@ int main() {
  {{"ice", 0.22, 0.005, 0.006, 1.0, 0.3}});
     session.setup_world().set_material_zones(
         {{"belt", -2.0, -3.0, 6.5, 3.0, "ice"}});
+ // Build the surveyed raster from the complete authored world plus its
+ // recovery margin. The legacy fixed [-10, 10] harness window ends only
+ // one metre past this goal; a physically valid downhill overshoot can put
+ // the ROBOT estimate outside that raster, where global planning must fail
+ // closed. Production scenario loading performs this same fit.
+ session.fit_map_window_to_world();
     session.set_objectives({"mid", "past"}, 1.0);
     sim::eval::SimConfig sim;
     sim.lidar_composite = true;
@@ -138,6 +144,7 @@ int main() {
     session.setup_world().set_terrain_patches(
         {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.1, 0.0, 0.0, 0.0},
          {"down", 6.0, -3.0, 10.0, 3.0, 0.4, -0.1, 0.0, 0.0, 0.0}});
+ session.fit_map_window_to_world();
     session.set_objectives({"past"}, 1.0);
     sim::eval::SimConfig sim;
     sim.lidar_composite = true;
