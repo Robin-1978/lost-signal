@@ -369,6 +369,24 @@ int main() {
  assert(!actor.behavior.yield_active_);
  }
 
+ // A leading actor must not brake when a faster robot approaches from
+ // behind along the same authored path. Following distance belongs to the
+ // rear vehicle; stopping the leader creates a rear-end hazard and a
+ // reciprocal-yield deadlock.
+ {
+ sim::world::Actor actor;
+ actor.x = 0.0;
+ actor.y = 0.0;
+ actor.vy_mps = 1.0;
+ actor.behavior.yield_to_robot = true;
+ actor.behavior.acceleration_mps2 = 1.0;
+ actor.behavior.brake_deceleration_mps2 = 2.0;
+ sim::world::apply_actor_robot_yield(
+ actor, actor.behavior, 0.0, -1.0, 0.0, 1.5, 0.4, 0.02);
+ assert(!actor.behavior.yield_active_);
+ assert(std::abs(actor.vy_mps - 1.0) < 1e-9);
+ }
+
   // Scenario acceptance: waypoint crosser cuts the corridor; the chain
   // holds, resumes, and replay reproduces the exact decision sequence.
   {

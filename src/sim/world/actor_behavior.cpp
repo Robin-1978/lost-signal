@@ -179,6 +179,32 @@ void apply_actor_robot_yield(Actor& actor, ActorBehavior& behavior,
  // tunnelling without peeking into any ROBOT estimate or plan.
  const double px = robot_x_m - actor.x;
  const double py = robot_y_m - actor.y;
+ if (desired_speed > 1e-12) {
+ const double actor_dir_x = actor.vx_mps / desired_speed;
+ const double actor_dir_y = actor.vy_mps / desired_speed;
+ const double robot_along_path_m =
+ px * actor_dir_x + py * actor_dir_y;
+ const double robot_along_speed_mps =
+ robot_vx_mps * actor_dir_x + robot_vy_mps * actor_dir_y;
+ if (robot_along_path_m < 0.0 && robot_along_speed_mps > 0.0) {
+ // Rear traffic owns following distance. Braking a leading pedestrian or
+ // vehicle when a faster robot approaches from behind creates the hazard it
+ // is meant to avoid and can deadlock both agents. Keep the actor's authored
+ // path and recover any speed previously shed at its declared acceleration;
+ // the ROBOT still sees an ordinary sensor obstacle and must slow or pass.
+ behavior.yield_active_ = false;
+ behavior.yield_clear_time_s_ = 0.0;
+ behavior.yield_speed_mps_ = std::min(
+ desired_speed,
+ behavior.yield_speed_mps_ +
+ std::max(0.0, behavior.acceleration_mps2) * dt);
+ const double scale = std::min(
+ 1.0, behavior.yield_speed_mps_ / desired_speed);
+ actor.vx_mps *= scale;
+ actor.vy_mps *= scale;
+ return;
+ }
+ }
  const double rvx = robot_vx_mps - actor.vx_mps;
  const double rvy = robot_vy_mps - actor.vy_mps;
  const double combined_radius = std::max(0.0, actor.radius_m) +
