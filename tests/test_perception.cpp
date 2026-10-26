@@ -85,24 +85,62 @@ int main() {
  assert(r.tracks[0].radius_m <= 0.9);
  }
 
- // Association: same bump next frame keeps identity, then goes ready.
+ // A foreground return is held conservatively while unresolved. Repeated
+ // stationary evidence then hands it to the rolling static map instead of
+ // inventing a dynamic prediction for an unreported crate or wall.
   {
     LidarPerception perc;
     std::uint32_t id = 0;
     for (int k = 1; k <= 4; ++k) {
       auto obs = make_scan(k * 1'000'000, 10.0f, 34, 38, 3.0f);
       PerceptionResult r = perc.update(obs, origin());
-      assert(r.tracks.size() == 1);
-      if (id == 0) {
+ if (k < 3) {
+ assert(r.tracks.size() == 1);
+ if (id == 0) {
         id = r.tracks[0].id;
       } else {
         assert(r.tracks[0].id == id);
       }
+ } else {
+ assert(r.tracks.empty());
+ }
     }
-    auto obs = make_scan(5'000'000, 10.0f, 34, 38, 3.0f);
-    PerceptionResult r = perc.update(obs, origin());
-    assert(r.tracks[0].prediction_ready);
+ }
+
+ // Motion-confirmed foreground remains an anonymous dynamic track and only
+ // becomes prediction-ready after timestamp-distinct velocity evidence.
+ {
+ LidarPerception perc;
+ PerceptionResult result;
+ for (int k = 1; k <= 12; ++k) {
+ auto obs = make_scan(
+ k * 100'000'000LL, 10.0f, 34, 38,
+ 3.0f + 0.10f * static_cast<float>(k));
+ result = perc.update(obs, origin());
+ }
+ assert(result.tracks.size() == 1);
+ assert(result.tracks.front().prediction_ready);
   }
+
+ // A confirmed mover that becomes stationary returns to the rolling static
+ // layer after timestamped evidence, so its current geometry is not charged
+ // forever by both occupancy and dynamic prediction.
+ {
+ LidarPerception perc;
+ PerceptionResult result;
+ for (int k = 1; k <= 12; ++k) {
+ auto obs = make_scan(
+ k * 100'000'000LL, 10.0f, 34, 38,
+ 3.0f + 0.10f * static_cast<float>(k));
+ result = perc.update(obs, origin());
+ }
+ assert(result.tracks.size() == 1);
+ for (int k = 13; k <= 24; ++k) {
+ auto obs = make_scan(k * 100'000'000LL, 10.0f, 34, 38, 4.2f);
+ result = perc.update(obs, origin());
+ }
+ assert(result.tracks.empty());
+ }
 
   // Departed object: beams back to reference -> track ages out.
   {
@@ -214,19 +252,19 @@ int main() {
  {
  LidarPerception perc;
  PerceptionResult result;
- for (int frame = 0; frame < 6; ++frame) {
+ for (int frame = 0; frame < 12; ++frame) {
  auto obs = make_scan(
  (frame + 1) * 100'000'000LL, 10.0f, 34, 38,
  3.0f + 0.10f * static_cast<float>(frame));
  obs.scan_static_valid = false;
  obs.static_ranges_m.clear();
  result = perc.update(obs, origin());
- if (frame < 3) assert(result.tracks.empty());
+ if (frame < 10) assert(result.tracks.empty());
  }
  assert(result.tracks.size() == 1);
  assert(result.tracks.front().prediction_ready);
  assert(result.tracks.front().vx_mps > 0.3);
- assert(result.tracks.front().last_observed_ns == 600'000'000LL);
+ assert(result.tracks.front().last_observed_ns == 1'200'000'000LL);
  }
  {
  LidarPerception perc;

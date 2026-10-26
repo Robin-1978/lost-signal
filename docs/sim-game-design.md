@@ -364,6 +364,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 已把首章设为 Viewer 的零参数默认入口，并提供 `--play`、`--sandbox`、`--experience FILE` 和完整 `--help`；第一次运行直接看到任务简报、物理部件和下一步按键，工程用户仍可显式进入开放沙盒。
 - 首个 3–5 分钟章节固定为“研究基地维修间 → 玻璃标定门停靠位”。玻璃门当前属于先验静态地图，因此本章明确教授 measurement、estimate、ROBOT 到达报告和 SIM 独立物理验收，不宣称机器人发现了未知玻璃障碍。玩家预测两套结论是否会独立一致；复盘结论由本局结构化 outcome 计算，能够区分独立通过、ROBOT 报告完成但 SIM 拒绝、以及时间预算内未完成，不再仅回显 manifest 的静态正确答案。已完成首次有效观测、开始制动、稳定停车三个离线关键帧的提取与左右键浏览，停车速度和连续样本数直接读取所选 robot 的版本化 arrival policy，不另设复盘魔法值。每个 episode step 同步保存轻量动态物理快照；复盘按选中索引重建同一时刻的 body、轮/caster joint、actor、接触冲量、观测、估计、决策和截止轨迹，未来完成的目标不会提前点亮。已提供同 seed 单变量 A/B：experience 显式声明受控变量、variant 值和 step budget，复盘按 `A` 在后台重新加载完全相同的 authored files 与 seed 两次，只覆盖 `lidar.scan_period_s`；Viewer 与命令行报告任务结果、碰撞、最小净空、首次 scan、首次 brake、stable stop、有效配置 digest 和完整 command digest。实验配置拒绝 SIM truth 等不受支持变量。
 - 首章只教授三个结论：传感器实际收到什么、机器人估计自己在哪里、为什么物理停靠结果被独立接受。未建图障碍和最终 Safety 停车另设下一关，通过通用先验地图可见性构造，不能借用当前已知门体伪造结论。安全失败直接判失败，时间、平滑与能耗不能补偿碰撞。
+- 已落地第二个 `safety_unknown_obstacle` field lab：先验地图明确缺少一组真实碰撞箱体，ROBOT 只从带时间戳的 LiDAR、滚动局部占据和自身估计发现变化；SIM truth 只做碰撞与终态评分。动态跟踪现在要求跨完整时间窗口的连续运动证据，不再把“与先验不同”直接等同于移动物体；停止后的轨迹按时间证据退回静态障碍层，避免同一箱体被静态占据和动态预测永久重复计费。端到端回归在 886 个 transition 内完成，零碰撞，最小净空 0.230 m。
 - 随后完成第 0–2 章、五个短任务、简报、预测题、复盘和一键 A/B。内容可迁移 `main` 的 campaign/chapter/presentation/locale/scene 配置，但任务层不得控制 ROBOT 决策，也不得暴露 actor id、未来 waypoint 或真值位姿。
 - 验收：新用户十分钟内完成首局并能正确回答“真值是否给了机器人”“odom 与 map 为何不同”。
 

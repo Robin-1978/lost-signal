@@ -683,6 +683,16 @@ target_link_libraries(test_experience_mission PRIVATE
  lost_signal_sim_viewer lost_signal_sim_scenario)
 add_test(NAME experience_mission COMMAND test_experience_mission)
 
+add_executable(test_safety_experience_mission
+ tests/test_safety_experience_mission.cpp
+)
+target_compile_definitions(test_safety_experience_mission PRIVATE
+ TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(test_safety_experience_mission PRIVATE
+ lost_signal_sim_viewer lost_signal_sim_scenario)
+add_test(NAME safety_experience_mission COMMAND test_safety_experience_mission)
+
 add_executable(test_keyframe_review
  tests/test_keyframe_review.cpp
 )

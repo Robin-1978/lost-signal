@@ -1,0 +1,43 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "safety_unknown_obstacle",
+ "title": "OUTDATED MAP: LIVE SAFETY",
+ "subtitle": "A crate delivery changed the aisle after the survey. Reach the exit using only live robot observations.",
+ "files": {
+ "map": "../worlds/safety_lab.json",
+ "scene": "../worlds/safety_lab.scene.json",
+ "robot": "../robot/differential.json",
+ "sim": "../sim/default.json"
+ },
+ "objectives": ["safety_exit"],
+ "time_limit_steps": 1800,
+ "briefing": [
+ "The prior map describes the walls and exit, but the aisle changed after the survey.",
+ "The physical obstacle still produces LiDAR returns and collisions. It is absent only from the prior map.",
+ "The rolling local map, planner validator, and independent safety monitor use live ROBOT observations.",
+ "Reach the exit without contact. SIM truth scores the outcome but never tells ROBOT where the obstacle is."
+ ],
+ "walkaround": [
+ {"component_id":"lidar","title":"LIVE OBSERVATION","lesson":"Timed range returns reveal geometry that a prior survey does not contain. The robot receives ranges, never a simulator object label."},
+ {"component_id":"chassis","title":"LOCAL PLAN AND VALIDATION","lesson":"The local planner proposes motion from the rolling sensor map. A separate validator checks each rollout against the current observation."},
+ {"component_id":"drive_wheel","title":"INDEPENDENT SAFETY GATE","lesson":"The final collision monitor checks fresh raw scan geometry before a command reaches the wheels. It can stop motion but cannot make an unsafe command faster."}
+ ],
+ "prediction": {
+ "question": "What should happen when the live scan reveals an obstacle missing from the prior map?",
+ "choices": [
+ {"choice_id":"observe_avoid_complete","label":"ROBOT observes it, changes motion safely, and completes without contact","explanation":"Live local geometry and the final raw-scan gate remain authoritative even when the global prior is stale.","correct":true,"evidence_rule":"independent_acceptance"},
+ {"choice_id":"drive_through_prior","label":"ROBOT follows the prior route through the obstacle","explanation":"A prior map is a planning input, not permission to ignore current range measurements.","correct":false,"evidence_rule":"sim_rejected"},
+ {"choice_id":"cannot_finish","label":"ROBOT must stop forever because the prior is imperfect","explanation":"A local detour can remain safe when live observations provide enough free space.","correct":false,"evidence_rule":"incomplete"}
+ ]
+ },
+ "running_prompt": "Watch the measured scan, rolling estimate, planner decision, and final Safety verdict. The unreported crate exists in physics but not in the prior map.",
+ "debrief": {
+ "success_title": "LIVE EVIDENCE OVERRULED THE STALE PRIOR",
+ "failure_title": "SAFE PASSAGE NOT VERIFIED",
+ "lessons": [
+ "A static map is a prior. Fresh local sensing remains authoritative for collision avoidance.",
+ "The planner validator and final safety gate consume ROBOT observations, not simulator truth.",
+ "SIM independently checks contact and physical arrival after the run."
+ ]
+ }
+}

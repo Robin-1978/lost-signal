@@ -422,6 +422,8 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  const double motion_gate = std::max(0.0, config_.min_dynamic_speed_mps);
  if (speed >= motion_gate) {
  ++st.moving_updates;
+ st.stationary_evidence_s = std::max(
+ 0.0, st.stationary_evidence_s - dt);
  if (velocity.x > motion_gate) st.seen_positive_x = true;
  if (velocity.x < -motion_gate) st.seen_negative_x = true;
  if (velocity.y > motion_gate) st.seen_positive_y = true;
@@ -430,9 +432,26 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  st.reliable_velocity_valid = true;
  } else {
  st.moving_updates = 0;
+ st.stationary_evidence_s += dt;
  }
- if (st.moving_updates >= std::max(1, config_.min_motion_updates)) {
+ const double motion_history_s = st.motion_samples.size() >= 2
+ ? st.motion_samples.back().time_s - st.motion_samples.front().time_s
+ : 0.0;
+ if (st.moving_updates >= std::max(1, config_.min_motion_updates) &&
+ motion_history_s >= std::max(0.0, config_.velocity_fit_window_s)) {
  st.mapless_dynamic_confirmed = true;
+ }
+ const double static_reclassification_time_s =
+ std::max(0.0, config_.static_reclassification_time_s);
+ if (st.mapless_dynamic_confirmed &&
+ st.stationary_evidence_s >= static_reclassification_time_s) {
+ // Raw scan endpoints remain in the rolling occupancy layer. Releasing a
+ // stopped forecast prevents one object from being charged indefinitely as
+ // both static geometry and a dynamic prediction; coherent motion can
+ // promote it again through the same time-based gate above.
+ st.mapless_dynamic_confirmed = false;
+ st.moving_updates = 0;
+ st.stationary_evidence_s = static_reclassification_time_s;
  }
  st.track.bounded_x = st.seen_positive_x && st.seen_negative_x &&
  st.track.max_observed.x - st.track.min_observed.x >= 0.20;
@@ -448,7 +467,7 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  st.created_with_static_reference |= c.reference_backed;
  st.track.prediction_ready =
  st.updates >= config_.min_updates_for_ready &&
- (st.created_with_static_reference || st.mapless_dynamic_confirmed);
+ st.mapless_dynamic_confirmed;
       matched[best_id] = true;
     } else {
       TrackState st;
@@ -487,7 +506,11 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
     } else {
       DynamicTrack t = it->second.track;
       t.age_s = now_s - it->second.first_seen_s;
- if (it->second.created_with_static_reference ||
+ const bool unresolved_reference_foreground =
+ it->second.created_with_static_reference &&
+ it->second.updates <
+ std::max(1, config_.min_updates_for_ready);
+ if (unresolved_reference_foreground ||
  it->second.mapless_dynamic_confirmed) {
  out.tracks.push_back(t);
  }

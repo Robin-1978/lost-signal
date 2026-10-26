@@ -1,0 +1,46 @@
+{
+ "format": "lost-signal-scene/1",
+ "scene_id": "safety_lab",
+ "camera": {
+ "distance_m": 5.2,
+ "yaw_deg": 38.0,
+ "pitch_deg": 32.0,
+ "target_height_m": 0.25,
+ "follow_smoothing_s": 0.34,
+ "lookahead_s": 0.8,
+ "speed_distance_gain_s": 0.65,
+ "minimum_distance_m": 2.8,
+ "maximum_distance_m": 8.5
+ },
+ "lighting": {
+ "direction_xyz": [-0.55, 0.28, -1.0],
+ "directional_rgba": [255, 227, 190, 255],
+ "ambient_rgba": [56, 76, 84, 255],
+ "fog_rgba": [14, 25, 31, 255],
+ "directional_intensity": 1.15,
+ "ambient_intensity": 0.82,
+ "fog_start_m": 14.0,
+ "fog_end_m": 34.0,
+ "exposure": 0.96,
+ "bloom_threshold": 0.76,
+ "bloom_strength": 0.24,
+ "vignette_strength": 0.12,
+ "shadow_map_resolution": 2048,
+ "shadow_extent_m": 22.0,
+ "shadow_strength": 0.66
+ },
+ "floor": {
+ "base_rgba": [37, 45, 48, 255],
+ "grid_rgba": [82, 104, 110, 100],
+ "grid_spacing_m": 1.0
+ },
+ "instances": [
+ {"instance_id":"north_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"north_wall","position_m":[3.5,3.175,0.0],"scale":[2.57,1.0,1.0],"yaw_deg":0.0},
+ {"instance_id":"south_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"south_wall","position_m":[3.5,-3.175,0.0],"scale":[2.57,1.0,1.0],"yaw_deg":0.0},
+ {"instance_id":"west_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"west_wall","position_m":[-1.175,0.0,0.0],"scale":[1.71,1.0,1.0],"yaw_deg":90.0},
+ {"instance_id":"east_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"east_wall","position_m":[8.175,0.0,0.0],"scale":[1.71,1.0,1.0],"yaw_deg":90.0},
+ {"instance_id":"unreported_crates_visual","asset_id":"environment.research_base.maintenance_crates","collision_box_id":"unreported_crates","position_m":[3.3,0.375,0.0],"scale":[0.75,0.44,1.0],"yaw_deg":0.0},
+ {"instance_id":"start_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[0.0,0.0,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
+ {"instance_id":"exit_marker","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[6.5,0.0,0.004],"scale":[0.7,0.7,1.0],"yaw_deg":90.0}
+ ]
+}

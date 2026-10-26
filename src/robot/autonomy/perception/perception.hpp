@@ -115,6 +115,11 @@ struct LidarPerceptionConfig {
  // to detect pedestrians and vehicles from sensor history alone.
  double min_dynamic_speed_mps = 0.18;
  int min_motion_updates = 3;
+ // Accumulated below-speed observation time required to return a stopped
+ // track to the rolling occupancy layer. Time evidence decays while motion
+ // resumes, so the result is independent of scan cadence and resists one
+ // noisy centroid update.
+ double static_reclassification_time_s = 0.50;
  double max_tracked_speed_mps = 4.0;
  // Alpha-beta correction and bounded uncertainty proxy. These describe the
  // sensor/tracker, never simulator actor properties.
@@ -124,6 +129,9 @@ struct LidarPerceptionConfig {
  double position_uncertainty_cap_m = 0.30;
  double uncertainty_growth_floor_mps = 0.05;
  double velocity_uncertainty_floor_mps = 0.08;
+ // Regression window and minimum time span before motion classification.
+ // Expressing maturity in sensor time keeps classification independent of
+ // LiDAR cadence; min_motion_updates alone only rejects isolated samples.
  double velocity_fit_window_s = 1.0;
 };
 
@@ -163,6 +171,7 @@ class LidarPerception : public IPerception {
     int updates = 0;
     int misses = 0;
  int moving_updates = 0;
+ double stationary_evidence_s = 0.0;
  bool mapless_dynamic_confirmed = false;
  bool created_with_static_reference = false;
  core::Vec2 last_reliable_velocity{0.0, 0.0};
