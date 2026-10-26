@@ -26,6 +26,7 @@
 #include "robot/core/json.hpp"
 #include "robot/platform/robot_config.hpp"
 #include "sim/experiment/experience_runtime.hpp"
+#include "sim/experiment/episode_pair.hpp"
 #include "sim/eval/robot_config.hpp"
 #include "sim/eval/sim_config.hpp"
 #include "sim/eval/world_io.hpp"
@@ -55,8 +56,10 @@ using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
 using lost_signal::sim::viewer::ExperienceFlow;
 using lost_signal::sim::viewer::ExperienceManifest;
+using lost_signal::sim::viewer::experience_variable_spec;
 using lost_signal::sim::viewer::ExperiencePhase;
 using lost_signal::sim::viewer::ExperienceRunKind;
+using lost_signal::sim::viewer::PredictionAssessment;
 using lost_signal::sim::viewer::ParticleKind;
 using lost_signal::sim::viewer::ParticleSystem;
 using lost_signal::sim::viewer::SurfaceTraceKind;
@@ -143,7 +146,7 @@ void load_ui_font(const ExperienceManifest* experience) {
  }
  for (const auto& experiment : experience->experiments) {
  append(experiment.title);
- append(experiment.controlled_variable);
+ append(experience_variable_spec(experiment.controlled_variable).id);
  }
  }
  int decoded_count = 0;
@@ -1118,6 +1121,8 @@ struct VisibleRunSummary {
 struct ExperimentUiState {
  VisibleRunSummary baseline;
  VisibleRunSummary variant;
+ lost_signal::sim::experiment::EpisodePair episodes;
+ std::optional<lost_signal::sim::experiment::EpisodeArtifact> standalone;
 };
 
 struct ExperienceHitRegions {
@@ -1308,7 +1313,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score,
  const Frame* frame,
  const ExperimentUiState* experiment_ui, bool timed_out,
- bool prediction_supported,
+ PredictionAssessment prediction_assessment,
+ const lost_signal::sim::experiment::ExperienceGateVerdict* gate_verdict,
  const std::string& action_error, bool actions_enabled,
  ExperienceHitRegions* hit_regions) {
  constexpr Color kPanel{13, 21, 22, 242};
@@ -1624,6 +1630,20 @@ action_error,
  }
  y = draw_wrapped_text(metrics, x + 34, y, panel_width - 68, 15, 5,
  safe ? kText : kRed) + 12.0f;
+ if (gate_verdict != nullptr) {
+ char gates[320];
+ const auto mark = [](bool value) { return value ? "PASS" : "FAIL"; };
+ std::snprintf(gates, sizeof(gates),
+ g_zh_cn
+ ? "四项裁决　仿真 %s　安全 %s　任务 %s　实验 %s"
+ : "VERDICTS | SIM %s | SAFETY %s | MISSION %s | EXPERIMENT %s",
+ mark(gate_verdict->simulation_valid),
+ mark(gate_verdict->safety_passed),
+ mark(gate_verdict->mission_passed),
+ mark(gate_verdict->experiment_passed));
+ y = draw_wrapped_text(gates, x + 34, y, panel_width - 68, 14, 4,
+ gate_verdict->can_advance ? kCyan : kAmber) + 10.0f;
+ }
  const bool has_comparison = !experience.experiments.empty() &&
  experiment_ui != nullptr && experiment_ui->baseline.recorded;
  if (has_comparison) {
@@ -1649,7 +1669,8 @@ action_error,
  g_zh_cn
  ? "下一次运行只把 %s 改为 %.0f ms；场景、机器人、初始状态和随机种子全部重建为相同值。"
  : "The next visible run changes only %s to %.0f ms. World, robot, initial state, and seeds are rebuilt identically.",
- experiment.controlled_variable.c_str(),
+ lost_signal::sim::viewer::experience_variable_spec(
+ experiment.controlled_variable).id,
  experiment.variant_value * 1000.0);
  y = draw_wrapped_text(invitation, x + 34, y,
  panel_width - 68, 14, 4, kMuted) + 8.0f;
@@ -1713,17 +1734,25 @@ action_error,
  if (selected_choice >= 0 &&
  selected_choice < static_cast<int>(experience.choices.size())) {
  const auto& choice = experience.choices[static_cast<std::size_t>(selected_choice)];
- const bool prediction_waits_for_variant =
- !experience.experiments.empty() && !comparison_complete;
- draw_ui_text(prediction_waits_for_variant
+ const bool prediction_pending =
+ prediction_assessment == PredictionAssessment::kPending;
+ const bool prediction_supported =
+ prediction_assessment == PredictionAssessment::kSupported;
+ const bool prediction_refuted =
+ prediction_assessment == PredictionAssessment::kRefuted;
+ draw_ui_text(prediction_pending
  ? tr("YOUR PREDICTION IS LOCKED UNTIL BOTH RUNS FINISH",
  "你的预测已锁定，完成两次运行后验证")
  : prediction_supported
  ? tr("YOUR PREDICTION: SUPPORTED BY BOTH RUNS",
  "你的预测：得到两次运行的证据支持")
- : tr("YOUR PREDICTION: REVISE", "你的预测：需要修正"),
+ : prediction_refuted
+ ? tr("YOUR PREDICTION: REFUTED BY THE RUN",
+ "你的预测：被本次运行的证据反驳")
+ : tr("YOUR PREDICTION: INSUFFICIENT EVIDENCE",
+ "你的预测：当前证据不足"),
  static_cast<int>(x + 34), static_cast<int>(y), 15,
- !prediction_waits_for_variant && prediction_supported ? kCyan : kAmber);
+ !prediction_pending && prediction_supported ? kCyan : kAmber);
  y = draw_wrapped_text(choice.explanation, x + 34, y + 26,
  panel_width - 68, 16, 5, kText) + 13.0f;
  }
@@ -1761,11 +1790,8 @@ action_error,
  if (!experience.next_experience_path.empty()) {
  const Rectangle next_chapter_button{
  x + 434.0f, y0 + panel_height - 72.0f, 252.0f, 34.0f};
- const bool comparison_required = !experience.experiments.empty();
- const bool comparison_safe = experiment_ui != nullptr &&
- experiment_ui->baseline.safe() && experiment_ui->variant.safe();
- const bool can_advance = actions_enabled && safe &&
- (!comparison_required || (comparison_complete && comparison_safe));
+ const bool can_advance = actions_enabled && gate_verdict != nullptr &&
+ gate_verdict->can_advance;
  draw_panel_button(next_chapter_button,
  can_advance ? tr("NEXT CHAPTER", "下一章")
  : tr("NEXT: PASS SAFETY GATE", "下一章：通过安全验收后解锁"),
@@ -3593,9 +3619,13 @@ int main(int argc, char** argv) {
  if (!experience_flow->retry_current(0)) return false;
  if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
  experiment_ui.baseline = {};
+ experiment_ui.episodes.baseline.reset();
+ experiment_ui.episodes.variant.reset();
  } else {
  experiment_ui.variant = {};
+ experiment_ui.episodes.variant.reset();
  }
+ experiment_ui.standalone.reset();
  experience_action_error.clear();
  reset_experience_presentation(false);
  paused = false;
@@ -3611,7 +3641,9 @@ int main(int argc, char** argv) {
  }
  const auto& definition = experience.experiments.front();
  auto variant_config = runtime_config;
- variant_config.scan_period_s_override = definition.variant_value;
+ variant_config.variable_override =
+ sim::experiment::ExperienceVariableOverride{
+ definition.controlled_variable, definition.variant_value};
  sim::experiment::ExperienceRuntime rebuilt;
  std::string runtime_error;
  if (!sim::experiment::build_experience_runtime(
@@ -3627,6 +3659,7 @@ int main(int argc, char** argv) {
  session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
  if (!experience_flow->start_variant(0)) return false;
  experiment_ui.variant = {};
+ experiment_ui.episodes.variant.reset();
  experience_action_error.clear();
  reset_experience_presentation(false);
  paused = false;
@@ -3634,12 +3667,23 @@ int main(int argc, char** argv) {
  };
 
  const auto advance_experience = [&]() {
- if (!experience_loaded || experience.next_experience_path.empty() ||
- (!experience.experiments.empty() &&
- (!experience_flow->comparison_complete() ||
- !experiment_ui.baseline.safe() || !experiment_ui.variant.safe())) ||
- !session->objectives_done() || !session->objectives_passed() ||
- session->score().collision_steps != 0) {
+ if (!experience_loaded || experience.next_experience_path.empty()) {
+ return false;
+ }
+ const sim::experiment::EpisodeArtifact* active_artifact = nullptr;
+ if (experience.progression.require_experiment) {
+ if (experiment_ui.episodes.variant.has_value()) {
+ active_artifact = &*experiment_ui.episodes.variant;
+ } else if (experiment_ui.episodes.baseline.has_value()) {
+ active_artifact = &*experiment_ui.episodes.baseline;
+ }
+ } else if (experiment_ui.standalone.has_value()) {
+ active_artifact = &*experiment_ui.standalone;
+ }
+ if (active_artifact == nullptr ||
+ !sim::experiment::evaluate_experience_gate(
+ experience.progression, *active_artifact,
+ experiment_ui.episodes).can_advance) {
  return false;
  }
  ExperienceManifest candidate_experience;
@@ -4030,10 +4074,28 @@ int main(int argc, char** argv) {
  run_summary.scan_period_s = sim_config.has_value()
  ? sim_config->scan_period_s : 0.0;
  run_summary.score = terminal_score;
+ const lost_signal::sim::viewer::ExperienceVariableSpec* variable = nullptr;
+ double controlled_value = 0.0;
+ if (!experience.experiments.empty() && sim_config.has_value()) {
+ variable = &lost_signal::sim::viewer::experience_variable_spec(
+ experience.experiments.front().controlled_variable);
+ controlled_value = sim::experiment::experience_variable_value(
+ experience.experiments.front().controlled_variable, *sim_config);
+ }
+ auto artifact = sim::experiment::capture_episode_artifact(
+ experience_flow->run_kind() == ExperienceRunKind::kBaseline
+ ? "baseline" : "variant",
+ variable, controlled_value, experience_flow->timed_out(), *session);
  if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
  experiment_ui.baseline = run_summary;
+ if (experience.experiments.empty()) {
+ experiment_ui.standalone = std::move(artifact);
+ } else {
+ experiment_ui.episodes.baseline = std::move(artifact);
+ }
  } else {
  experiment_ui.variant = run_summary;
+ experiment_ui.episodes.variant = std::move(artifact);
  }
  if (!session->episode().steps().empty()) {
  const auto terminal_frame = sim::viewer::build_frame(
@@ -4115,7 +4177,7 @@ int main(int argc, char** argv) {
  experience_flow->required_walkaround_count(),
  experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, false, false, {}, &preview, &experiment_ui,
- false, false, experience_action_error,
+ false, PredictionAssessment::kPending, nullptr, experience_action_error,
  true,
  &experience_hit_regions);
 
@@ -4305,14 +4367,30 @@ int main(int argc, char** argv) {
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);
  if (experience_loaded) {
- bool prediction_supported = false;
+ PredictionAssessment prediction_assessment =
+ PredictionAssessment::kPending;
  const int selected_choice = experience_flow->selected_choice();
  if (selected_choice >= 0 &&
  selected_choice < static_cast<int>(experience.choices.size())) {
- prediction_supported = lost_signal::sim::viewer::choice_supported(
- experience.choices[static_cast<std::size_t>(selected_choice)],
+ prediction_assessment = lost_signal::sim::viewer::assess_prediction(
+ static_cast<std::size_t>(selected_choice), experience.choices,
  experience_evidence(*session, experience_flow->timed_out(), experience,
  experiment_ui));
+ }
+ std::optional<sim::experiment::ExperienceGateVerdict> gate_verdict;
+ const sim::experiment::EpisodeArtifact* active_artifact = nullptr;
+ if (experience.progression.require_experiment) {
+ if (experiment_ui.episodes.variant.has_value()) {
+ active_artifact = &*experiment_ui.episodes.variant;
+ } else if (experiment_ui.episodes.baseline.has_value()) {
+ active_artifact = &*experiment_ui.episodes.baseline;
+ }
+ } else if (experiment_ui.standalone.has_value()) {
+ active_artifact = &*experiment_ui.standalone;
+ }
+ if (active_artifact != nullptr) {
+ gate_verdict = sim::experiment::evaluate_experience_gate(
+ experience.progression, *active_artifact, experiment_ui.episodes);
  }
  draw_experience_overlay(experience, experience_flow->phase(),
  experience_flow->run_kind(), experience_flow->comparison_complete(),
@@ -4325,7 +4403,8 @@ int main(int argc, char** argv) {
  experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, session->objectives_done(),
  session->objectives_passed(), session->score(), &frame, &experiment_ui,
- experience_flow->timed_out(), prediction_supported,
+ experience_flow->timed_out(), prediction_assessment,
+ gate_verdict.has_value() ? &*gate_verdict : nullptr,
  experience_action_error,
  true,
  &experience_hit_regions);

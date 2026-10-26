@@ -1,6 +1,7 @@
 #include "sim/experiment/experience_runtime.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 #include "sim/eval/robot_config.hpp"
@@ -8,6 +9,15 @@
 #include "sim/scenario/actor_sidecar.hpp"
 
 namespace lost_signal::sim::experiment {
+
+double experience_variable_value(viewer::ExperienceVariable variable,
+ const eval::SimConfig& config) {
+ switch (variable) {
+ case viewer::ExperienceVariable::kLidarScanPeriodS:
+ return config.scan_period_s;
+ }
+ return 0.0;
+}
 
 bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  ExperienceRuntime& runtime, std::string* error) {
@@ -38,17 +48,24 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  return false;
  }
  if (built.sim_config.has_value()) {
- if (config.scan_period_s_override.has_value()) {
- const double period_s = *config.scan_period_s_override;
- if (!scenario::on_physics_grid(period_s) || !(period_s > 0.0)) {
- out_error = "scan period override must be positive and on the physics grid";
+ if (config.variable_override.has_value()) {
+ const auto& override = *config.variable_override;
+ const auto& spec = viewer::experience_variable_spec(override.variable);
+ if (!std::isfinite(override.value) || override.value < spec.minimum ||
+ override.value > spec.maximum ||
+ (spec.physics_grid && !scenario::on_physics_grid(override.value))) {
+ out_error = "experiment override is outside its typed contract";
  return false;
  }
- built.sim_config->scan_period_s = period_s;
+ switch (override.variable) {
+ case viewer::ExperienceVariable::kLidarScanPeriodS:
+ built.sim_config->scan_period_s = override.value;
+ break;
+ }
  }
  built.session->apply_sim_config(*built.sim_config);
- } else if (config.scan_period_s_override.has_value()) {
- out_error = "scan period override needs a SIM configuration";
+ } else if (config.variable_override.has_value()) {
+ out_error = "experiment override needs a SIM configuration";
  return false;
  }
  if (config.map_path.empty()) {

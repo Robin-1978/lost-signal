@@ -9,6 +9,30 @@
 #include "robot/core/json.hpp"
 
 namespace lost_signal::sim::viewer {
+
+const ExperienceVariableSpec& experience_variable_spec(
+ ExperienceVariable variable) {
+ static const ExperienceVariableSpec kLidarScanPeriod{
+ ExperienceVariable::kLidarScanPeriodS,
+ "lidar.scan_period_s", "s", 0.001, 10.0, true};
+ switch (variable) {
+ case ExperienceVariable::kLidarScanPeriodS:
+ return kLidarScanPeriod;
+ }
+ return kLidarScanPeriod;
+}
+
+bool parse_experience_variable(const std::string& id,
+ ExperienceVariable& variable) {
+ const auto& lidar = experience_variable_spec(
+ ExperienceVariable::kLidarScanPeriodS);
+ if (id == lidar.id) {
+ variable = lidar.variable;
+ return true;
+ }
+ return false;
+}
+
 namespace {
 
 using robot::core::Json;
@@ -121,6 +145,18 @@ bool take_non_negative_number(const Json& object, const char* key,
   return true;
 }
 
+bool take_optional_bool(const Json& object, const char* key, bool& value,
+ std::string& error) {
+ const Json* node = object.find(key);
+ if (node == nullptr) return true;
+ if (!node->is_bool()) {
+ error = std::string("experience '") + key + "' must be boolean";
+ return false;
+ }
+ value = node->as_bool();
+ return true;
+}
+
 } // namespace
 
 bool load_experience_manifest(const std::string& path,
@@ -190,6 +226,11 @@ bool load_experience_manifest(const std::string& path,
  }
  std::set<std::string> choice_ids;
  int correct_choices = 0;
+ bool has_static_choice = false;
+ bool has_evidence_choice = false;
+ bool has_terminal_evidence = false;
+ bool has_comparison_evidence = false;
+ std::set<int> evidence_rules;
  for (const Json& node : choices->as_array()) {
  if (!node.is_object()) {
  out_error = "experience choice must be an object";
@@ -201,24 +242,76 @@ bool load_experience_manifest(const std::string& path,
  !take_string(node, "explanation", choice.explanation, out_error)) {
  return false;
  }
+ if (!choice_ids.insert(choice.choice_id).second) {
+ out_error = "experience choice ids must be unique";
+ return false;
+ }
+ const Json* evidence_rule = node.find("evidence_rule");
  const Json* correct = node.find("correct");
- if (correct == nullptr || !correct->is_bool() ||
- !choice_ids.insert(choice.choice_id).second) {
- out_error = "experience choice needs unique id and boolean correct";
+ if (evidence_rule != nullptr) {
+ if (!evidence_rule->is_str() ||
+ !parse_evidence_rule(evidence_rule->as_str(), choice.evidence_rule)) {
+ out_error = "experience choice has unsupported evidence_rule";
+ return false;
+ }
+ if (correct != nullptr) {
+ out_error = "evidence-driven choice must not author 'correct'";
+ return false;
+ }
+ has_evidence_choice = true;
+ const bool comparison_rule =
+ choice.evidence_rule == ExperienceEvidenceRule::kComparisonTradeoff ||
+ choice.evidence_rule == ExperienceEvidenceRule::kComparisonEquivalent ||
+ choice.evidence_rule == ExperienceEvidenceRule::kComparisonUnsafe;
+ has_comparison_evidence = has_comparison_evidence || comparison_rule;
+ has_terminal_evidence = has_terminal_evidence || !comparison_rule;
+ if (!evidence_rules.insert(static_cast<int>(choice.evidence_rule)).second) {
+ out_error = "experience evidence rules must be unique";
+ return false;
+ }
+ } else {
+ if (correct == nullptr || !correct->is_bool()) {
+ out_error = "static choice needs boolean 'correct'";
  return false;
  }
  choice.correct = correct->as_bool();
- const Json* evidence_rule = node.find("evidence_rule");
- if (evidence_rule != nullptr &&
- (!evidence_rule->is_str() ||
- !parse_evidence_rule(evidence_rule->as_str(), choice.evidence_rule))) {
- out_error = "experience choice has unsupported evidence_rule";
- return false;
+ choice.evidence_rule = ExperienceEvidenceRule::kStaticAnswer;
+ has_static_choice = true;
  }
  if (choice.correct) ++correct_choices;
  parsed.choices.push_back(std::move(choice));
  }
- if (correct_choices != 1) {
+ if (has_static_choice && has_evidence_choice) {
+ out_error = "experience cannot mix static and evidence-driven choices";
+ return false;
+ }
+ if (has_terminal_evidence && has_comparison_evidence) {
+ out_error = "experience cannot mix terminal and comparison evidence";
+ return false;
+ }
+ if (has_terminal_evidence &&
+ (evidence_rules.size() != 3 ||
+ evidence_rules.count(static_cast<int>(
+ ExperienceEvidenceRule::kIndependentAcceptance)) == 0 ||
+ evidence_rules.count(static_cast<int>(
+ ExperienceEvidenceRule::kSimRejected)) == 0 ||
+ evidence_rules.count(static_cast<int>(
+ ExperienceEvidenceRule::kIncomplete)) == 0)) {
+ out_error = "terminal prediction must cover accepted, rejected, and incomplete";
+ return false;
+ }
+ if (has_comparison_evidence &&
+ (evidence_rules.size() != 3 ||
+ evidence_rules.count(static_cast<int>(
+ ExperienceEvidenceRule::kComparisonTradeoff)) == 0 ||
+ evidence_rules.count(static_cast<int>(
+ ExperienceEvidenceRule::kComparisonEquivalent)) == 0 ||
+ evidence_rules.count(static_cast<int>(
+ ExperienceEvidenceRule::kComparisonUnsafe)) == 0)) {
+ out_error = "comparison prediction must cover tradeoff, equivalent, and unsafe";
+ return false;
+ }
+ if (has_static_choice && correct_choices != 1) {
  out_error = "experience prediction must have exactly one correct choice";
  return false;
  }
@@ -258,9 +351,10 @@ bool load_experience_manifest(const std::string& path,
  }
  const Json* experiments = root->find("experiments");
  if (experiments != nullptr) {
- if (!experiments->is_array() || experiments->as_array().empty() ||
- experiments->as_array().size() > 4) {
- out_error = "experience experiments must contain one to four entries";
+ // The current flow is one controlled A/B per chapter. Reject additional
+ // entries instead of silently running only experiments.front().
+ if (!experiments->is_array() || experiments->as_array().size() != 1) {
+ out_error = "experience must contain exactly one controlled experiment";
  return false;
  }
  std::set<std::string> experiment_ids;
@@ -270,19 +364,30 @@ bool load_experience_manifest(const std::string& path,
  return false;
  }
  ExperienceExperiment experiment;
+ std::string controlled_variable_id;
  if (!take_string(node, "experiment_id", experiment.experiment_id,
  out_error) ||
  !take_string(node, "title", experiment.title, out_error) ||
  !take_string(node, "controlled_variable",
- experiment.controlled_variable, out_error)) {
+ controlled_variable_id, out_error)) {
  return false;
  }
  const Json* variant = node.find("variant_value");
  const Json* budget = node.find("step_budget");
+ const ExperienceVariableSpec* variable_spec = nullptr;
+ if (parse_experience_variable(
+ controlled_variable_id, experiment.controlled_variable)) {
+ variable_spec = &experience_variable_spec(experiment.controlled_variable);
+ }
  if (!experiment_ids.insert(experiment.experiment_id).second ||
- experiment.controlled_variable != "lidar.scan_period_s" ||
+ variable_spec == nullptr ||
  variant == nullptr || !variant->is_num() ||
- !std::isfinite(variant->as_num()) || !(variant->as_num() > 0.0) ||
+ !std::isfinite(variant->as_num()) ||
+ variant->as_num() < variable_spec->minimum ||
+ variant->as_num() > variable_spec->maximum ||
+ (variable_spec->physics_grid && std::abs(
+ variant->as_num() * 1000.0 -
+ std::round(variant->as_num() * 1000.0)) > 1e-9) ||
  budget == nullptr || !budget->is_num() ||
  !std::isfinite(budget->as_num()) || budget->as_num() < 1.0 ||
  std::floor(budget->as_num()) != budget->as_num()) {
@@ -307,6 +412,36 @@ bool load_experience_manifest(const std::string& path,
       return false;
     }
  parsed.experiments.push_back(std::move(experiment));
+ }
+ }
+ if (has_comparison_evidence && parsed.experiments.empty()) {
+ out_error = "comparison evidence requires a controlled experiment";
+ return false;
+ }
+ if (has_comparison_evidence) {
+ const auto& experiment = parsed.experiments.front();
+ if (experiment.minimum_elapsed_increase_s <=
+ experiment.equivalent_elapsed_tolerance_s &&
+ experiment.minimum_clearance_loss_m <=
+ experiment.equivalent_clearance_tolerance_m) {
+ out_error = "comparison tradeoff and equivalent evidence overlap";
+ return false;
+ }
+ }
+ parsed.progression.require_experiment = !parsed.experiments.empty();
+ const Json* progression = root->find("progression");
+ if (progression != nullptr) {
+ if (!progression->is_object() || !take_optional_bool(
+ *progression, "require_mission", parsed.progression.require_mission,
+ out_error) || !take_optional_bool(
+ *progression, "require_experiment",
+ parsed.progression.require_experiment, out_error)) {
+ if (out_error.empty()) out_error = "experience progression must be an object";
+ return false;
+ }
+ if (parsed.progression.require_experiment && parsed.experiments.empty()) {
+ out_error = "experience progression requires a missing experiment";
+ return false;
  }
  }
  const std::filesystem::path manifest_root =

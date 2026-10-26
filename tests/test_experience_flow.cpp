@@ -51,6 +51,11 @@ int main() {
  assert(choice_supported(tradeoff, evidence));
  assert(!choice_supported(equivalent, evidence));
  assert(!choice_supported(unsafe, evidence));
+ std::vector<ExperienceChoice> outcomes{tradeoff, equivalent, unsafe};
+ assert(assess_prediction(0, outcomes, evidence) ==
+ PredictionAssessment::kSupported);
+ assert(assess_prediction(1, outcomes, evidence) ==
+ PredictionAssessment::kRefuted);
  evidence.elapsed_delta_s = 0.2;
  evidence.clearance_delta_m = -0.01;
  assert(!choice_supported(tradeoff, evidence));
@@ -58,6 +63,15 @@ int main() {
  evidence.variant_safe = false;
  assert(!choice_supported(equivalent, evidence));
  assert(choice_supported(unsafe, evidence));
+ assert(assess_prediction(2, outcomes, evidence) ==
+ PredictionAssessment::kSupported);
+ evidence.comparison_complete = false;
+ assert(assess_prediction(2, outcomes, evidence) ==
+ PredictionAssessment::kPending);
+ evidence.comparison_complete = true;
+ evidence.baseline_safe = false;
+ assert(assess_prediction(2, outcomes, evidence) ==
+ PredictionAssessment::kInsufficientEvidence);
 
  ExperienceFlow flow({4, 3, 10});
  assert(flow.phase() == ExperiencePhase::kBriefing);

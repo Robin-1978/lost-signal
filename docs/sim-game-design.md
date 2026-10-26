@@ -370,13 +370,13 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 
 ### G4：探索战役垂直切片
 
-- 当前首章流程以可见的单变量实验为核心：玩家只需检查驱动轮与 LiDAR，caster 和车体保留为可选知识卡；随后预测 LiDAR 从 20 ms 变为 100 ms 会怎样，亲眼运行基线，在 `ROBOT Done → SIM verdict` 复盘后点击运行慢扫描变体。第二次运行从 authored files 重建相同世界、机器人、初态和 seed，只改变 `lidar.scan_period_s`。完成后并排显示耗时、碰撞、最小净空及差值，两次都通过独立安全门才解锁下一章。manifest 中带单位的差异阈值只用于判断教学假设是否得到本局证据支持，不进入 ROBOT 决策或 SIM 验收。本条取代下方旧的“后台运行 A/B”和“四个部件全部必看”描述。
+- 当前首章流程以可见的单变量实验为核心：玩家只需检查驱动轮与 LiDAR，caster 和车体保留为可选知识卡；随后预测 LiDAR 从 20 ms 变为 100 ms 会怎样，亲眼运行基线，在 `ROBOT Done → SIM verdict` 复盘后点击运行慢扫描变体。第二次运行从 authored files 重建相同世界、机器人、初态和 seed，只改变 `lidar.scan_period_s`。完成后并排显示耗时、碰撞、最小净空及差值；SIM 有效、安全、任务和实验四项裁决分别显示，章节 progression policy 决定任务成功是否为解锁条件，而 SIM 有效和安全始终是硬门槛。manifest 中的差异阈值只判断教学证据，不进入 ROBOT 决策或 SIM 验收。
 
 - 已落地首个新框架原生 `first_contact` field lab：内容清单在启动前选择普通 robot/sim/map/scene 配置和 `place_id` 目标；仿真时间先暂停，玩家可用鼠标或键盘检查部件并开始预测，之后才运行同一个 `ScenarioSession`。简报使用 safe-zero 执行器模式编译 MuJoCo plant，并直接显示零时刻 body/joint pose；该准备过程不推进物理、actor、传感器、ROBOT cadence、episode 或 score。`walkaround` 内容卡声明驱动轮、caster、LiDAR 和车体四个教学停靠点，Viewer 以实际物理 link 或传感器 frame 为镜头目标和高亮点。流程已下沉为与 raylib、World 和 RobotApplication 无关的纯状态机，任务时间上限只触发暂停和失败复盘，不修改 ROBOT 阈值或场景验收。复盘把 ROBOT 输入与 SIM 离线真值指标分栏，碰撞为硬失败；端到端门禁验证玻璃门停靠零碰撞、真值到达、最大定位误差与最小净空。游戏层没有算法专用捷径。
 - 已把首章设为 Viewer 的零参数默认入口，并提供 `--play`、`--sandbox`、`--experience FILE` 和完整 `--help`；第一次运行直接看到任务简报、物理部件和下一步按键，工程用户仍可显式进入开放沙盒。
-- 首个 3–5 分钟章节固定为“研究基地维修间 → 玻璃标定门停靠位”。玻璃门当前属于先验静态地图，因此本章明确教授 measurement、estimate、ROBOT 到达报告和 SIM 独立物理验收，不宣称机器人发现了未知玻璃障碍。玩家预测两套结论是否会独立一致；复盘结论由本局结构化 outcome 计算，能够区分独立通过、ROBOT 报告完成但 SIM 拒绝、以及时间预算内未完成，不再仅回显 manifest 的静态正确答案。离线关键帧现覆盖首次有效观测、首次运动、开始制动、稳定停车、ROBOT Done、首次碰撞、超时和 SIM Accepted/Rejected；ROBOT Done 来自记录的 ROBOT goal 状态，SIM 终态来自运行结束后的目标真值验收、碰撞和时间门槛，两者保持不同 authority。停车速度和连续样本数直接读取所选 robot 的版本化 arrival policy，不另设复盘魔法值。每个 episode step 同步保存轻量动态物理快照；复盘按选中索引重建同一时刻的 body、轮/caster joint、actor、接触冲量、观测、估计、决策和截止轨迹，未来完成的目标不会提前点亮。已提供同 seed 单变量 A/B：experience 显式声明受控变量、variant 值和 step budget，复盘按 `A` 在后台重新加载完全相同的 authored files 与 seed 两次，只覆盖 `lidar.scan_period_s`；Viewer 与命令行报告任务结果、碰撞、最小净空、首次 scan、首次 brake、stable stop、有效配置 digest 和完整 command digest。实验配置拒绝 SIM truth 等不受支持变量。
+- 首个 3–5 分钟章节固定为“研究基地维修间 → 玻璃标定门停靠位”。玻璃门当前属于先验静态地图，因此本章明确教授 measurement、estimate、ROBOT 到达报告和 SIM 独立物理验收，不宣称机器人发现了未知玻璃障碍。玩家预测两套结论是否会独立一致；复盘结论由本局结构化 outcome 计算，能够区分独立通过、ROBOT 报告完成但 SIM 拒绝、以及时间预算内未完成。证据题不再允许在 manifest 预写 `correct`；完整运行后才得到 Supported、Refuted 或 Insufficient Evidence。离线关键帧覆盖首次有效观测、首次运动、开始制动、稳定停车、ROBOT Done、首次碰撞、超时和 SIM Accepted/Rejected；ROBOT Done 与 SIM 终态保持不同 authority。停车速度和连续样本数读取所选 robot 的版本化 arrival policy，不另设复盘魔法值。每个 episode step 同步保存动态物理快照；复盘按选中索引重建同一时刻的 body、轮/caster joint、actor、接触冲量、观测、估计、决策和截止轨迹。受控变量通过 typed registry 应用；当前已登记 `lidar.scan_period_s` 的单位、范围和固定物理网格约束，未知变量与一个章节内的多个变量都会在加载时拒绝。
 - 首章只教授三个结论：传感器实际收到什么、机器人估计自己在哪里、为什么物理停靠结果被独立接受。未建图障碍和最终 Safety 停车另设下一关，通过通用先验地图可见性构造，不能借用当前已知门体伪造结论。安全失败直接判失败，时间、平滑与能耗不能补偿碰撞。
-- 首章简报现已形成可操作门槛：任务合同与当前物理部件卡同时显示，驱动轮、caster、LiDAR、车体四个停靠点都有独立已检查状态，全部查看前不能进入预测。运行 HUD 使用 ROBOT observation、estimate 和 decision 推导 `OBSERVE`、`ESTIMATE`、`PLAN / MOVE`、`BRAKE / SETTLE` 教学阶段，并显示 manifest 的运行提示；它不读取 truth。复盘关键帧和同 seed 单变量 A/B 都提供鼠标按钮，1100×750 截图验收确认首屏任务文字、模型热点、检查进度与按钮没有遮挡。
+- 首章简报现已形成可操作门槛：驱动轮与 LiDAR 是必看的真实 3D hotspot，caster 与车体是可选知识卡；切换卡片、移动镜头或模型进入画面都不会自动记为检查完成，键盘 Enter 提供同语义无障碍路径。运行 HUD 使用 ROBOT observation、estimate 和 decision 推导 `OBSERVE`、`ESTIMATE`、`PLAN / MOVE`、`BRAKE / SETTLE`，并显示当前目标、ROBOT 估计距离与仿真时间；它不读取 truth。
 - 已落地第二个 `safety_unknown_obstacle` field lab：先验地图明确缺少一组真实碰撞箱体，ROBOT 只从带时间戳的 LiDAR、滚动局部占据和自身估计发现变化；SIM truth 只做碰撞与终态评分。动态跟踪现在要求跨完整时间窗口的连续运动证据，不再把“与先验不同”直接等同于移动物体；停止后的轨迹按时间证据退回静态障碍层，避免同一箱体被静态占据和动态预测永久重复计费。端到端回归在 886 个 transition 内完成，零碰撞，最小净空 0.230 m。
 - 随后完成第 0–2 章、五个短任务、简报、预测题、复盘和一键 A/B。内容可迁移 `main` 的 campaign/chapter/presentation/locale/scene 配置，但任务层不得控制 ROBOT 决策，也不得暴露 actor id、未来 waypoint 或真值位姿。
 - 验收：新用户十分钟内完成首局并能正确回答“真值是否给了机器人”“odom 与 map 为何不同”。
@@ -481,6 +481,8 @@ A/B 同时是玩法核心和严肃实验能力：
 - 随机实验运行 seed matrix，报告成功率、分位数与置信区间；单 seed 只证明确定性复现，不能证明普遍优势。
 - planner 对比优先复用完全相同的 observation replay；传感器或物理参数对比必须重新运行 physics，并在报告中明确证据类型不同。
 
+当前实现已在启动下一次 runtime 前深拷贝完整 baseline/variant Episode、score、任务状态、受控变量和值，并用 Episode 完整性校验生成 SIM validity；安全、任务和实验裁决已分离。同步双回放、invariant hash、导出和事件对齐仍属于下一步，不能把当前并排指标称作完整专业 A/B。
+
 暂停冻结 sim time，相机仍可操作。事件跳转必须继续执行完整仿真并从有上限的 pre-roll 回放，不能先读取未来 actor 脚本。1× 用于第一次观察，2×–8× 用于重复实验，Turbo/headless 用于长任务与 benchmark；倍率只能改变墙钟调度和表现层 LOD。
 
 ## 19. 视觉、模型与效果的“惊艳”标准
@@ -500,10 +502,10 @@ A/B 同时是玩法核心和严肃实验能力：
 ## 20. 下一轮交付次序
 
 1. 完成所有物理和算法回归，尤其 Mecanum 能量闭合、连续地形任务和真机 runtime；保持 truth isolation 门禁。
-2. 实现 `EpisodePair`、同步双回放与三层 ViewModel，作为后续所有章节的共同底座。
+2. 在已完成完整 `EpisodePair` 捕获和四项裁决的基础上，补同步双回放、invariant hash、导出与三层 ViewModel。
 3. 重排 First Contact：五秒任务钩子、真实 3D hotspot、任务型 Running HUD、因果型 Debrief。
 4. 把 `safety_unknown_obstacle` 编成第 1 章第二任务，证明未知障碍、原始扫描 Safety 与预期安全停车。
-5. 扩展通用 `ExperimentSpec`，按第 2–9 章逐章接入定位、SLAM、规划、动态避障、Safety、底盘、地形与部署验证。
+5. 扩展已落地的 typed experiment-variable registry，按第 2–9 章逐章接入定位、SLAM、规划、动态避障、Safety、底盘、地形与部署验证。
 6. 用 Blender 改进机器人家族、叉车、行人和环境 kit，再以真实 physics replay 驱动材质、粒子、声音和教学 overlay。
 
 发布验收至少满足：启动五秒内出现视觉钩子、十秒内完成第一次主动决定、九十秒内完成 First Contact A/B 与因果复盘；baseline/variant 均保留完整 Episode；720p、1080p 和超宽屏无关键遮挡；同配置同 seed 在全部倍率和 headless 下逐 step 的 observation、command、collision、终态与 score 一致；所有可动部件和粒子事件能追溯到物理记录；native artifact 中不出现 SIM truth、actor id、score 或渲染类型。

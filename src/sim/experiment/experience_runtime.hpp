@@ -8,8 +8,15 @@
 #include "robot/platform/robot_config.hpp"
 #include "sim/eval/sim_config.hpp"
 #include "sim/scenario/scenario_session.hpp"
+#include "sim/viewer/experience_manifest.hpp"
 
 namespace lost_signal::sim::experiment {
+
+struct ExperienceVariableOverride {
+ viewer::ExperienceVariable variable =
+ viewer::ExperienceVariable::kLidarScanPeriodS;
+ double value = 0.0;
+};
 
 struct ExperienceRuntimeConfig {
  std::string robot_path;
@@ -19,7 +26,7 @@ struct ExperienceRuntimeConfig {
  // Optional controlled experiment input. It is applied before the fresh
  // session publishes its first observation; every other authored value and
  // random seed remains unchanged.
- std::optional<double> scan_period_s_override;
+ std::optional<ExperienceVariableOverride> variable_override;
 };
 
 struct ExperienceRuntime {
@@ -37,5 +44,8 @@ struct ExperienceRuntime {
 bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  ExperienceRuntime& runtime,
  std::string* error = nullptr);
+
+double experience_variable_value(viewer::ExperienceVariable variable,
+ const eval::SimConfig& config);
 
 } // namespace lost_signal::sim::experiment

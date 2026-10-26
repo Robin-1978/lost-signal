@@ -39,6 +39,21 @@ struct ExperienceEvidence {
 bool choice_supported(const ExperienceChoice& choice,
  const ExperienceEvidence& evidence);
 
+enum class PredictionAssessment {
+ kPending,
+ kSupported,
+ kRefuted,
+ kInsufficientEvidence,
+};
+
+// Evidence-driven questions are evaluated after the run. A prediction is
+// refuted only when another declared outcome is supported; otherwise a
+// completed run with no matching outcome is reported honestly as
+// insufficient evidence.
+PredictionAssessment assess_prediction(
+ std::size_t selected_choice, const std::vector<ExperienceChoice>& choices,
+ const ExperienceEvidence& evidence);
+
 // Presentation-only state machine. It owns no World, RobotApplication, or
 // truth state; callers report only terminal status and recorded step count.
 // Keyboard, mouse, and future gamepad inputs therefore share identical

@@ -39,9 +39,9 @@
  "prediction": {
  "question": "激光雷达从每 20 ms 更新一次变为每 100 ms 更新一次后，会发生什么？",
  "choices": [
- {"choice_id":"safe_tradeoff","label":"两次都安全，但慢扫描耗时更长、最小净空更小","explanation":"两次可视运行保持世界、机器人、初始状态和随机种子一致，由记录的时间和物理净空判断这个取舍是否发生。","correct":true,"evidence_rule":"comparison_tradeoff"},
- {"choice_id":"equivalent","label":"两次的完成时间和最小净空基本相同","explanation":"只有两个实测差值都在实验声明的等效容差内，才算基本相同。","correct":false,"evidence_rule":"comparison_equivalent"},
- {"choice_id":"unsafe_variant","label":"慢扫描发生碰撞或未通过安全验收","explanation":"碰撞、超时、任务未完成或物理到达被拒绝，都会使慢扫描运行判为不安全。","correct":false,"evidence_rule":"comparison_unsafe"}
+ {"choice_id":"safe_tradeoff","label":"两次都安全，但慢扫描耗时更长、最小净空更小","explanation":"两次可视运行保持世界、机器人、初始状态和随机种子一致，由记录的时间和物理净空判断这个取舍是否发生。","evidence_rule":"comparison_tradeoff"},
+ {"choice_id":"equivalent","label":"两次的完成时间和最小净空基本相同","explanation":"只有两个实测差值都在实验声明的等效容差内，才算基本相同。","evidence_rule":"comparison_equivalent"},
+ {"choice_id":"unsafe_variant","label":"慢扫描发生碰撞或未通过安全验收","explanation":"碰撞、超时、任务未完成或物理到达被拒绝，都会使慢扫描运行判为不安全。","evidence_rule":"comparison_unsafe"}
  ]
  },
  "running_prompt": "观察测量、估计和决策三层机器人证据。按 L 查看基于机器人估计投影的雷达，按 E 查看估计，按 T 开启确定性极速模式。",

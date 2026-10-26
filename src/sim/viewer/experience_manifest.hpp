@@ -16,10 +16,34 @@ enum class ExperienceEvidenceRule {
  kComparisonUnsafe,
 };
 
+// Whitelisted controlled variables. A chapter changes exactly one value;
+// the runtime owns the typed patch and rejects values outside this registry.
+// Adding a variable therefore requires an explicit implementation and test,
+// rather than a stringly-typed branch in the raylib frontend.
+enum class ExperienceVariable {
+ kLidarScanPeriodS,
+};
+
+struct ExperienceVariableSpec {
+ ExperienceVariable variable = ExperienceVariable::kLidarScanPeriodS;
+ const char* id = "lidar.scan_period_s";
+ const char* unit = "s";
+ double minimum = 0.001;
+ double maximum = 10.0;
+ bool physics_grid = true;
+};
+
+const ExperienceVariableSpec& experience_variable_spec(
+ ExperienceVariable variable);
+bool parse_experience_variable(const std::string& id,
+ ExperienceVariable& variable);
+
 struct ExperienceChoice {
  std::string choice_id;
  std::string label;
  std::string explanation;
+ // Used only by legacy static-answer questions. Evidence-driven choices are
+ // assessed from the completed run and do not carry an authored answer key.
  bool correct = false;
  ExperienceEvidenceRule evidence_rule = ExperienceEvidenceRule::kStaticAnswer;
 };
@@ -36,7 +60,8 @@ struct ExperienceWalkaroundStop {
 struct ExperienceExperiment {
  std::string experiment_id;
  std::string title;
- std::string controlled_variable;
+ ExperienceVariable controlled_variable =
+ ExperienceVariable::kLidarScanPeriodS;
  double variant_value = 0.0;
  long step_budget = 0;
  // Presentation-only evidence classifier. These authored tolerances decide
@@ -46,6 +71,15 @@ struct ExperienceExperiment {
  double minimum_clearance_loss_m = 0.0;
  double equivalent_elapsed_tolerance_s = 0.0;
  double equivalent_clearance_tolerance_m = 0.0;
+};
+
+struct ExperienceProgressionPolicy {
+ // Safety and SIM validity are unconditional gates. A safety lesson may
+ // deliberately fail its delivery mission after performing the correct
+ // emergency stop, so mission completion is configurable per chapter.
+ bool require_mission = true;
+ // Defaults to true when an experiment is declared and false otherwise.
+ bool require_experiment = false;
 };
 
 struct ExperienceManifest {
@@ -67,6 +101,7 @@ struct ExperienceManifest {
  std::vector<std::string> briefing;
  std::vector<ExperienceWalkaroundStop> walkaround;
  std::vector<ExperienceExperiment> experiments;
+ ExperienceProgressionPolicy progression;
  std::string prediction_question;
  std::vector<ExperienceChoice> choices;
  std::string running_prompt;

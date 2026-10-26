@@ -25,9 +25,9 @@
  "prediction": {
  "question": "实时雷达发现先验地图中没有的障碍时，机器人应该怎样做？",
  "choices": [
- {"choice_id":"observe_avoid_complete","label":"机器人观测障碍，安全改变运动，并在零接触下完成任务","explanation":"即使全局先验已经过期，实时局部几何和最终原始扫描安全闸门仍具有权威。","correct":true,"evidence_rule":"independent_acceptance"},
- {"choice_id":"drive_through_prior","label":"机器人沿先验路线直接穿过障碍","explanation":"先验地图只是规划输入，不代表机器人可以忽略当前测距。","correct":false,"evidence_rule":"sim_rejected"},
- {"choice_id":"cannot_finish","label":"先验不完美，所以机器人只能永远停车","explanation":"只要实时观测提供足够自由空间，安全的局部绕行仍然可以完成任务。","correct":false,"evidence_rule":"incomplete"}
+ {"choice_id":"observe_avoid_complete","label":"机器人观测障碍，安全改变运动，并在零接触下完成任务","explanation":"即使全局先验已经过期，实时局部几何和最终原始扫描安全闸门仍具有权威。","evidence_rule":"independent_acceptance"},
+ {"choice_id":"drive_through_prior","label":"机器人沿先验路线直接穿过障碍","explanation":"先验地图只是规划输入，不代表机器人可以忽略当前测距。","evidence_rule":"sim_rejected"},
+ {"choice_id":"cannot_finish","label":"先验不完美，所以机器人只能永远停车","explanation":"只要实时观测提供足够自由空间，安全的局部绕行仍然可以完成任务。","evidence_rule":"incomplete"}
  ]
  },
  "running_prompt": "观察实测雷达、滚动估计、规划决策和最终安全裁决。未上报的箱体存在于物理世界，却不在先验地图中。",

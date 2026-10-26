@@ -2,6 +2,7 @@
 #include <string>
 
 #include "sim/experiment/experience_runtime.hpp"
+#include "sim/experiment/episode_pair.hpp"
 #include "sim/viewer/experience_manifest.hpp"
 
 int main() {
@@ -115,7 +116,8 @@ int main() {
  // cadence changes; motion and IMU cadence, seeds, world, and zero-time plant
  // remain authored and deterministic.
  sim::experiment::ExperienceRuntimeConfig variant_config = config;
- variant_config.scan_period_s_override = 0.10;
+ variant_config.variable_override = sim::experiment::ExperienceVariableOverride{
+ sim::viewer::ExperienceVariable::kLidarScanPeriodS, 0.10};
  sim::experiment::ExperienceRuntime variant;
  assert(sim::experiment::build_experience_runtime(
  variant_config, variant, &error));
@@ -129,10 +131,53 @@ int main() {
  assert(variant.session->setup_world().actors().size() ==
  first.session->setup_world().actors().size());
 
- variant_config.scan_period_s_override = 0.0105;
+ variant_config.variable_override = sim::experiment::ExperienceVariableOverride{
+ sim::viewer::ExperienceVariable::kLidarScanPeriodS, 0.0105};
  assert(!sim::experiment::build_experience_runtime(
  variant_config, variant, &error));
- assert(error ==
- "scan period override must be positive and on the physics grid");
+ assert(error == "experiment override is outside its typed contract");
+
+ // A completed run is copied into an immutable review artifact before a
+ // second runtime replaces the live session. The four progression verdicts
+ // remain independent: SIM validity, safety, mission, and experiment.
+ auto baseline_artifact = sim::experiment::capture_episode_artifact(
+ "baseline", &sim::viewer::experience_variable_spec(
+ sim::viewer::ExperienceVariable::kLidarScanPeriodS),
+ first.sim_config->scan_period_s, false, *first.session);
+ assert(baseline_artifact.simulation_valid);
+ assert(baseline_artifact.safety_passed());
+ assert(baseline_artifact.mission_passed());
+ assert(baseline_artifact.episode.size() == first_score.steps);
+ sim::experiment::EpisodePair pair;
+ pair.baseline = baseline_artifact;
+ auto waiting = sim::experiment::evaluate_experience_gate(
+ experience.progression, *pair.baseline, pair);
+ assert(waiting.simulation_valid == false);
+ assert(!waiting.experiment_passed);
+ pair.variant = sim::experiment::capture_episode_artifact(
+ "variant", &sim::viewer::experience_variable_spec(
+ sim::viewer::ExperienceVariable::kLidarScanPeriodS),
+ variant.sim_config->scan_period_s, false, *first.session);
+ auto complete = sim::experiment::evaluate_experience_gate(
+ experience.progression, *pair.variant, pair);
+ assert(complete.simulation_valid);
+ assert(complete.safety_passed);
+ assert(complete.mission_passed);
+ assert(complete.experiment_passed);
+ assert(complete.can_advance);
+
+ auto safe_stop_lesson = baseline_artifact;
+ safe_stop_lesson.timed_out = true;
+ safe_stop_lesson.objectives_done = false;
+ safe_stop_lesson.objectives_passed = false;
+ sim::viewer::ExperienceProgressionPolicy safety_policy;
+ safety_policy.require_mission = false;
+ safety_policy.require_experiment = false;
+ const auto safety_gate = sim::experiment::evaluate_experience_gate(
+ safety_policy, safe_stop_lesson, {});
+ assert(safety_gate.simulation_valid);
+ assert(safety_gate.safety_passed);
+ assert(!safety_gate.mission_passed);
+ assert(safety_gate.can_advance);
  return 0;
 }

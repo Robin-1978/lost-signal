@@ -314,6 +314,7 @@ target_link_libraries(lost_signal_sim_viewer PUBLIC
 
 add_library(lost_signal_sim_experiment STATIC
  src/sim/experiment/ab_experiment.cpp
+ src/sim/experiment/episode_pair.cpp
  src/sim/experiment/experience_runtime.cpp
 )
 target_include_directories(lost_signal_sim_experiment PUBLIC src)

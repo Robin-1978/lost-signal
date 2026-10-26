@@ -37,6 +37,34 @@ bool choice_supported(const ExperienceChoice& choice,
  return false;
 }
 
+PredictionAssessment assess_prediction(
+ std::size_t selected_choice, const std::vector<ExperienceChoice>& choices,
+ const ExperienceEvidence& evidence) {
+ if (selected_choice >= choices.size()) {
+ return PredictionAssessment::kInsufficientEvidence;
+ }
+ const auto& selected = choices[selected_choice];
+ const bool comparison =
+ selected.evidence_rule == ExperienceEvidenceRule::kComparisonTradeoff ||
+ selected.evidence_rule == ExperienceEvidenceRule::kComparisonEquivalent ||
+ selected.evidence_rule == ExperienceEvidenceRule::kComparisonUnsafe;
+ if ((comparison && !evidence.comparison_complete) ||
+ (!comparison &&
+ selected.evidence_rule != ExperienceEvidenceRule::kStaticAnswer &&
+ !evidence.terminal)) {
+ return PredictionAssessment::kPending;
+ }
+ if (choice_supported(selected, evidence)) {
+ return PredictionAssessment::kSupported;
+ }
+ for (std::size_t index = 0; index < choices.size(); ++index) {
+ if (index != selected_choice && choice_supported(choices[index], evidence)) {
+ return PredictionAssessment::kRefuted;
+ }
+ }
+ return PredictionAssessment::kInsufficientEvidence;
+}
+
 ExperienceFlow::ExperienceFlow(Config config) : config_(config) {
  if (config_.choice_count < 2 || config_.choice_count > 4) {
  throw std::invalid_argument("experience flow needs two to four choices");

@@ -43,6 +43,9 @@ int main() {
  const std::size_t english_experiment_count = experience.experiments.size();
  assert(experience.experiments.size() == 1);
  assert(experience.experiments.front().controlled_variable ==
+ lost_signal::sim::viewer::ExperienceVariable::kLidarScanPeriodS);
+ assert(std::string(lost_signal::sim::viewer::experience_variable_spec(
+ experience.experiments.front().controlled_variable).id) ==
  "lidar.scan_period_s");
  assert(experience.experiments.front().variant_value == 0.10);
  assert(experience.experiments.front().step_budget == 1200);
@@ -55,7 +58,7 @@ int main() {
  for (const auto& choice : experience.choices) {
  if (choice.correct) ++correct;
  }
- assert(correct == 1);
+ assert(correct == 0); // evidence decides the outcome after both runs
  assert(std::filesystem::is_regular_file(experience.map_path));
  assert(std::filesystem::is_regular_file(experience.robot_path));
 
