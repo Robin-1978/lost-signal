@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "robot/autonomy/planning/prediction.hpp"
+#include "robot/core/deskew.hpp"
 #include "robot/core/transform.hpp"
 #include "sim/world/terrain.hpp"
 
@@ -41,8 +42,11 @@ const char* impact_material_name(world::ImpactMaterial material) {
 
 std::vector<std::pair<double, double>> lidar_endpoints(
     double body_x_m, double body_y_m, double body_yaw_rad,
-    const robot::iface::ObservationFrame& obs, const LidarMount& mount) {
+ const robot::iface::ObservationFrame& obs, const LidarMount& mount,
+ double measured_forward_mps, double measured_yaw_rate_radps,
+ std::vector<float>* retained_time_offsets_s) {
   std::vector<std::pair<double, double>> hits;
+ if (retained_time_offsets_s != nullptr) retained_time_offsets_s->clear();
   if (!obs.scan_valid || obs.ranges_m.empty()) return hits;
   const double inc = obs.scan_angle_increment_rad;
   if (!(inc > 0.0) || !std::isfinite(inc)) return hits;
@@ -54,12 +58,29 @@ std::vector<std::pair<double, double>> lidar_endpoints(
   const double fan =
       (std::isfinite(mount.rpy_rad[2]) ? mount.rpy_rad[2] : 0.0);
   hits.reserve(obs.ranges_m.size());
+ if (retained_time_offsets_s != nullptr) {
+ retained_time_offsets_s->reserve(obs.ranges_m.size());
+ }
+ const bool has_time_offsets = obs.time_offset_valid &&
+ obs.time_offsets_s.size() == obs.ranges_m.size();
+ const robot::core::DeskewTwist twist{
+ measured_forward_mps, measured_yaw_rate_radps};
   for (std::size_t i = 0; i < obs.ranges_m.size(); ++i) {
     const float r = obs.ranges_m[i];
     if (!std::isfinite(r) || r <= 0.0f) continue;
-    const double a =
-        body_yaw_rad + fan + obs.scan_angle_min_rad + i * inc;
-    hits.emplace_back(ox + r * std::cos(a), oy + r * std::sin(a));
+ const double beam_angle = obs.scan_angle_min_rad + i * inc;
+ const float time_offset_s = has_time_offsets
+ ? obs.time_offsets_s[i] : 0.0f;
+ const robot::core::Vec2 local = robot::core::deskew_beam(
+ r, beam_angle, time_offset_s, twist);
+ const double a = body_yaw_rad + fan;
+ const double ca = std::cos(a), sa = std::sin(a);
+ hits.emplace_back(
+ ox + ca * local.x - sa * local.y,
+ oy + sa * local.x + ca * local.y);
+ if (retained_time_offsets_s != nullptr) {
+ retained_time_offsets_s->push_back(time_offset_s);
+ }
   }
   return hits;
 }
@@ -458,11 +479,15 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  if (f.observation.projection_valid) {
  f.lidar_hits = lidar_endpoints(
  step.diag.estimate.x_m, step.diag.estimate.y_m,
- step.diag.estimate.yaw_rad, step.obs, mount);
+ step.diag.estimate.yaw_rad, step.obs, mount,
+ step.diag.estimate.forward_mps, step.diag.estimate.yaw_rate_radps,
+ &f.lidar_time_offsets_s);
  }
   f.lidar_valid = !f.lidar_hits.empty();
  f.truth_lidar_hits = lidar_endpoints(
- t.body_x_m, t.body_y_m, t.body_yaw_rad, step.obs, mount);
+ t.body_x_m, t.body_y_m, t.body_yaw_rad, step.obs, mount,
+ t.forward_mps, t.yaw_rate_radps,
+ &f.truth_lidar_time_offsets_s);
  f.truth_lidar_valid = !f.truth_lidar_hits.empty();
   f.static_collision = step.judge.static_collision;
   f.dynamic_collision = step.judge.dynamic_collision;

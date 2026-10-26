@@ -334,6 +334,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 加速验收使用同一 seed 和配置分别运行 1×、8×、64×、Turbo 与 headless；现有门禁逐 step 比较 scan/motion/IMU acquisition stamp、观测接受状态、完整 ROBOT command、碰撞、最终 truth 和 score。性能报告同时给出 physics、sensor、ROBOT、actuation、record 分项，视觉 LOD 可以降低，但 1 ms 物理子步、传感器采集时刻和算法 cadence 不得改变。
 - MuJoCo 模型同步已使用独立的 typed model revision：1 kHz 固定步快路只比较 revision 与 actuator layout，完整 motor/几何/材质/地形签名只在模型输入变化时序列化，等价内容不会编译第二次。actor、任务、环境时间线和 place 编辑不进入模型 revision；测试直接检查 sync、fast-path、signature 和 rebuild 计数，避免用不稳定墙钟阈值掩盖回退。
 - 已完成 3D 近景跟随默认构图、自由轨道/平移/缩放、稀疏 LiDAR 诊断和默认隐藏的 SIM actor 路线。默认画面不再展示未来脚本或全量红色射线。
+- 已修正大地图 3D 跟随的首帧构图：Follow 模式直接从机器人真实 body pose 开始，不再从地图中心缓慢漂回而让机器人长时间出画；First Contact 驱动轮镜头选择相机侧真实 driven link，并同时保留轮、轴、底盘、caster 和 LiDAR 桅杆，3D hotspot 不再穿过车体指向远侧轮。
 - 已将跟随镜头的平滑时间、前视时间、速度拉远增益和距离范围放入 scene manifest；相机按墙钟平滑而不改变仿真状态，倒车沿真实运动方向前视，玩家缩放会成为新的跟随基准距离。场景光方向、环境光、雾和局部任务灯也由 manifest 控制；shader 每帧读取真实相机位置，机器人灯跟随 MuJoCo body，目标灯只消费 Viewer 的任务表现数据。
 - 已迁移 `main` 的 HDR 后处理骨架并适配当前 Viewer：3D 场景先进入半浮点渲染目标，再做亮区提取、半分辨率双向高斯模糊、ACES tone mapping、曝光与暗角；所有表现参数归 scene manifest 管理，窗口尺寸变化时安全重建目标，无 shader 时保持直接渲染回退。后处理发生在 HUD 之前，也不参与仿真步进、传感器或 ROBOT 状态。
 - 已接入 3×3 PCF directional shadow map；分辨率、强度和正交覆盖范围由 scene manifest 声明。阴影相机以 MuJoCo 机器人 body 为局部中心，因此地图扩大到 20 万平方米时不会把固定纹理浪费在全图；阴影 pass 排除假接触阴影、网格、诊断线和粒子，只渲染可见实体几何。
@@ -366,7 +367,8 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 已将碰撞效果接到 MuJoCo 真实接触冲量：每个 1 ms 子步积分机器人与实体静态物的法向力，并读取接触点相对速度；地面、地形、材质区和普通轮地承载被排除。Viewer 只在冲量和相对速度满足版本化表现配置时发射短寿命、受重力影响的确定性火花；暂停不重复发射，回放倒退清池。地表材质显式声明 `surface_effect` 与 `fluid_depth_m`，水面高度、粒子起点、发射密度和速度按水深调制；粒子系统不再从材质名称猜测水、泥或松散地面。
 - 任务目标使用独立的 GAME 表现信标：接地圆环、方向箭头、悬浮光点和脉冲只消费 `FramePlace` 的目标位姿、完成状态与固定 SIM step。箭头明确教授终态航向约束，绿色只表示任务层已完成；信标不参与传感器、定位、规划、碰撞或评分，并且暂停时不会继续动画。
 - 已把 ROBOT 匿名动态轨迹接入 2D/3D 工程视图：青色显示当前感知 footprint 和速度，紫色显示与 Behavior、DWA/TEB、Validator、Safety 共用的多假设预测，圆环显示随时间增长的显式不确定性包络；未成熟轨迹弱化并画成断续线。Frame 只从记录的 `Diagnostics::dynamic_tracks` 重建，测试用空间上不同的 SIM actor 证明 overlay 不读取 actor truth。战役运行态禁止开启 SIM actor 未来路线和真值雷达，只有复盘或开放沙盒允许显式真值诊断。
-- 后续加入按采集时刻展开的 LiDAR 扫描、costmap、footprint swept volume 和 Safety 区域。
+- 已将 LiDAR 表现改为与 ROBOT mapping/validator 相同的 measured-twist deskew：端点按 observation 中每束真实 acquisition offset 重投影，青色明暗和点大小从旧束到 scan-end 束连续变化；无 offset 的冻结式设备保持同一时刻显示，miss 不生成端点。真值辅助扇仍只允许在显式 SIM 调试视图使用琥珀色。
+- 后续加入 costmap、footprint swept volume 和 Safety 区域。
 - 验收：单轮低摩擦只在该轮产生滑移效果；干地无水花；关闭渲染不改变 episode。
 
 ### G4：探索战役垂直切片

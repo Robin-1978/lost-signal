@@ -57,6 +57,9 @@ std::optional<Frame> build_episode_frame(
 std::vector<std::pair<double, double>> lidar_endpoints(
     double body_x_m, double body_y_m, double body_yaw_rad,
     const robot::iface::ObservationFrame& obs,
-    const LidarMount& mount = LidarMount{});
+ const LidarMount& mount = LidarMount{},
+ double measured_forward_mps = 0.0,
+ double measured_yaw_rate_radps = 0.0,
+ std::vector<float>* retained_time_offsets_s = nullptr);
 
 }  // namespace lost_signal::sim::viewer

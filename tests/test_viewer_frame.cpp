@@ -158,6 +158,8 @@ int main() {
  assert(f.places.size() == 1 && f.places[0].reached);
     assert(!f.places[0].selected);
  assert(f.lidar_valid && f.lidar_hits.size() == 5);
+ assert(f.lidar_time_offsets_s.size() == f.lidar_hits.size());
+ for (float offset : f.lidar_time_offsets_s) assert(offset == 0.0f);
  assert(f.observation.projection_valid);
  assert(f.observation.scan_sequence == 12);
  assert(std::abs(f.observation.scan_stamp_s - 7.0) < 1e-12);
@@ -410,6 +412,32 @@ int main() {
  assert(f.truth_lidar_valid && f.truth_lidar_hits.size() == 5);
  }
 
-  std::printf("viewer_frame ok\n");
-  return 0;
+ // The visible scan uses the same measured-twist rolling-shutter deskew as
+ // ROBOT mapping and preserves the provider's actual beam acquisition order.
+ {
+ sim::world::World w;
+ auto step = make_step();
+ step.obs.ranges_m = {2.0f, 2.0f};
+ step.obs.scan_angle_min_rad = 0.0;
+ step.obs.scan_angle_increment_rad = 0.5;
+ step.obs.time_offset_valid = true;
+ step.obs.time_offsets_s = {-0.1f, 0.0f};
+ step.diag.estimate.valid = true;
+ step.diag.estimate.x_m = 0.0;
+ step.diag.estimate.y_m = 0.0;
+ step.diag.estimate.yaw_rad = 0.0;
+ step.diag.estimate.forward_mps = 1.0;
+ step.diag.estimate.yaw_rate_radps = 0.0;
+ const auto f = sim::viewer::build_frame(w, step, {}, {});
+ assert(f.lidar_hits.size() == 2);
+ assert(f.lidar_time_offsets_s.size() == 2);
+ assert(std::abs(f.lidar_time_offsets_s[0] + 0.1f) < 1e-6f);
+ assert(f.lidar_time_offsets_s[1] == 0.0f);
+ assert(std::abs(f.lidar_hits[0].first - 1.9) < 1e-6);
+ assert(std::abs(f.lidar_hits[0].second) < 1e-6);
+ assert(std::abs(f.lidar_hits[1].first - 2.0 * std::cos(0.5)) < 1e-6);
+ }
+
+ std::printf("viewer_frame ok\n");
+ return 0;
 }

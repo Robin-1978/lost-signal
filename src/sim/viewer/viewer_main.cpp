@@ -51,6 +51,7 @@ using lost_signal::sim::viewer::Frame;
 using lost_signal::sim::viewer::FrameBody;
 using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::FramePlace;
+using lost_signal::sim::viewer::FrameWheel;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
@@ -1459,7 +1460,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  const float screen_width = static_cast<float>(GetScreenWidth());
  const float screen_height = static_cast<float>(GetScreenHeight());
  const float panel_width = briefing
- ? std::min(430.0f, screen_width - 48.0f)
+ ? std::min(400.0f, screen_width - 48.0f)
  : std::min(720.0f, screen_width - 100.0f);
  const float panel_height = briefing
  ? std::min(700.0f, screen_height - 48.0f)
@@ -2005,18 +2006,42 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
  const auto o = view.world_to_screen(
  f.observation.projected_sensor_x_m,
  f.observation.projected_sensor_y_m);
-    for (const auto& hit : f.lidar_hits) {
+ const float oldest = f.lidar_time_offsets_s.empty() ? 0.0f
+ : *std::min_element(f.lidar_time_offsets_s.begin(),
+ f.lidar_time_offsets_s.end());
+ const float sweep_span = std::max(1e-6f, -oldest);
+ for (std::size_t i = 0; i < f.lidar_hits.size(); ++i) {
+ const auto& hit = f.lidar_hits[i];
+ const float phase = i < f.lidar_time_offsets_s.size()
+ ? std::clamp((f.lidar_time_offsets_s[i] - oldest) / sweep_span,
+ 0.0f, 1.0f)
+ : 1.0f;
+ const auto alpha = static_cast<unsigned char>(35.0f + 105.0f * phase);
       const auto s = view.world_to_screen(hit.first, hit.second);
-      DrawLineV({o.x_px, o.y_px}, {s.x_px, s.y_px}, {255, 0, 0, 60});
-      DrawPixelV({s.x_px, s.y_px}, RED);
+ DrawLineV({o.x_px, o.y_px}, {s.x_px, s.y_px},
+ {64, 220, 225, alpha});
+ DrawCircleV({s.x_px, s.y_px}, 1.0f + phase,
+ {95, 245, 235, static_cast<unsigned char>(120.0f + 120.0f * phase)});
     }
   }
  if (show_truth_debug && f.truth_lidar_valid) {
  const auto o = view.world_to_screen(f.body.sens_x_m, f.body.sens_y_m);
- for (const auto& hit : f.truth_lidar_hits) {
+ const float oldest = f.truth_lidar_time_offsets_s.empty() ? 0.0f
+ : *std::min_element(f.truth_lidar_time_offsets_s.begin(),
+ f.truth_lidar_time_offsets_s.end());
+ const float sweep_span = std::max(1e-6f, -oldest);
+ for (std::size_t i = 0; i < f.truth_lidar_hits.size(); ++i) {
+ const auto& hit = f.truth_lidar_hits[i];
+ const float phase = i < f.truth_lidar_time_offsets_s.size()
+ ? std::clamp((f.truth_lidar_time_offsets_s[i] - oldest) / sweep_span,
+ 0.0f, 1.0f)
+ : 1.0f;
  const auto s = view.world_to_screen(hit.first, hit.second);
- DrawLineV({o.x_px, o.y_px}, {s.x_px, s.y_px}, {246, 169, 61, 45});
- DrawPixelV({s.x_px, s.y_px}, Color{246, 169, 61, 210});
+ DrawLineV({o.x_px, o.y_px}, {s.x_px, s.y_px},
+ {246, 169, 61, static_cast<unsigned char>(22.0f + 55.0f * phase)});
+ DrawPixelV({s.x_px, s.y_px},
+ Color{246, 169, 61,
+ static_cast<unsigned char>(100.0f + 110.0f * phase)});
  }
  }
   // ROBOT estimate ghost (offline truth-vs-estimate overlay, live).
@@ -2155,14 +2180,31 @@ WalkaroundView walkaround_view(const Frame& frame,
  state.pitch_deg = 27.0f;
  if (component_id == "drive_wheel" && !frame.body.wheels.empty() &&
  frame.body.wheels.front().pose.valid) {
- const Vector3 p = body_local_to_world(
- frame.body, frame.body.wheels.front().pose);
+ state.yaw_deg = -100.0f;
+ // Pick the driven wheel on the camera-facing side. Focusing the far-side
+ // wheel projected the clickable hotspot through the chassis deck and taught
+ // the wrong part even though the wheel pose itself was physically correct.
+ const bool camera_on_positive_y = std::sin(state.yaw_deg * DEG2RAD) > 0.0;
+ const FrameWheel* visible_wheel = nullptr;
+ for (const auto& wheel : frame.body.wheels) {
+ if (!wheel.driven || !wheel.pose.valid) continue;
+ if (visible_wheel == nullptr ||
+ (camera_on_positive_y
+ ? wheel.pose.y_m > visible_wheel->pose.y_m
+ : wheel.pose.y_m < visible_wheel->pose.y_m)) {
+ visible_wheel = &wheel;
+ }
+ }
+ if (visible_wheel == nullptr) visible_wheel = &frame.body.wheels.front();
+ const Vector3 p = body_local_to_world(frame.body, visible_wheel->pose);
  focus_x = p.x;
  focus_y = -p.z;
  focus_z = p.y;
- state.dist_m = 1.35f;
- state.pitch_deg = 20.0f;
- state.yaw_deg = -100.0f;
+ // Show the selected tire together with its axle, chassis, rear support and
+ // sensor mast. The previous close crop hid the mechanical relationships
+ // that the lesson is meant to teach.
+ state.dist_m = 1.75f;
+ state.pitch_deg = 23.0f;
  } else if (component_id == "caster" && !frame.body.casters.empty() &&
  frame.body.casters.front().wheel_pose.valid) {
  const Vector3 p = body_local_to_world(
@@ -2186,7 +2228,7 @@ WalkaroundView walkaround_view(const Frame& frame,
  state.target_z = focus_z;
  // Compose the highlighted part in the clear right-hand viewport.
  const double yaw_rad = state.yaw_deg * DEG2RAD;
- const double optical_offset_m = 0.22 * std::min(1.0f, state.dist_m);
+ const double optical_offset_m = 0.18 * std::min(1.0f, state.dist_m);
  state.target_x += optical_offset_m * std::sin(yaw_rad);
  state.target_y -= optical_offset_m * std::cos(yaw_rad);
  return {camera_from_state(state), to_raylib(focus_x, focus_y, focus_z)};
@@ -2550,13 +2592,23 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  f.observation.projected_sensor_z_m);
  const std::size_t stride =
  std::max<std::size_t>(1, f.lidar_hits.size() / 72);
+ const float oldest = f.lidar_time_offsets_s.empty() ? 0.0f
+ : *std::min_element(f.lidar_time_offsets_s.begin(),
+ f.lidar_time_offsets_s.end());
+ const float sweep_span = std::max(1e-6f, -oldest);
  for (std::size_t i = 0; i < f.lidar_hits.size(); i += stride) {
  const auto& hit = f.lidar_hits[i];
+ const float phase = i < f.lidar_time_offsets_s.size()
+ ? std::clamp((f.lidar_time_offsets_s[i] - oldest) / sweep_span,
+ 0.0f, 1.0f)
+ : 1.0f;
  const Vector3 endpoint =
  to_raylib(hit.first, hit.second,
  f.observation.projected_sensor_z_m);
- DrawLine3D(o, endpoint, {64, 220, 225, 52});
- DrawSphere(endpoint, 0.018f, {95, 245, 235, 180});
+ DrawLine3D(o, endpoint,
+ {64, 220, 225, static_cast<unsigned char>(25.0f + 70.0f * phase)});
+ DrawSphere(endpoint, 0.012f + 0.010f * phase,
+ {95, 245, 235, static_cast<unsigned char>(95.0f + 145.0f * phase)});
     }
   }
  if (show_actor_routes && f.truth_lidar_valid) {
@@ -2564,12 +2616,22 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  f.body.sens_x_m, f.body.sens_y_m, f.body.sens_z_m);
  const std::size_t stride =
  std::max<std::size_t>(1, f.truth_lidar_hits.size() / 72);
+ const float oldest = f.truth_lidar_time_offsets_s.empty() ? 0.0f
+ : *std::min_element(f.truth_lidar_time_offsets_s.begin(),
+ f.truth_lidar_time_offsets_s.end());
+ const float sweep_span = std::max(1e-6f, -oldest);
  for (std::size_t i = 0; i < f.truth_lidar_hits.size(); i += stride) {
  const auto& hit = f.truth_lidar_hits[i];
+ const float phase = i < f.truth_lidar_time_offsets_s.size()
+ ? std::clamp((f.truth_lidar_time_offsets_s[i] - oldest) / sweep_span,
+ 0.0f, 1.0f)
+ : 1.0f;
  const Vector3 endpoint =
  to_raylib(hit.first, hit.second, f.body.sens_z_m);
- DrawLine3D(o, endpoint, {246, 169, 61, 38});
- DrawSphere(endpoint, 0.014f, {246, 169, 61, 170});
+ DrawLine3D(o, endpoint,
+ {246, 169, 61, static_cast<unsigned char>(18.0f + 45.0f * phase)});
+ DrawSphere(endpoint, 0.010f + 0.006f * phase,
+ {246, 169, 61, static_cast<unsigned char>(85.0f + 105.0f * phase)});
  }
  }
   // Estimate ghost: wireframe box at the ROBOT pose.
@@ -3530,7 +3592,10 @@ int main(int argc, char** argv) {
  cam_st.target_x = camera_target_x;
  cam_st.target_y = camera_target_y;
  follow = false;
- } else if (experience_loaded) {
+ } else if (follow) {
+ // A 3D follow view must start on the robot immediately. Starting at the
+ // authored map center and easing toward the robot left it off-screen for
+ // several seconds on large maps, even though the HUD already said FOLLOW.
  cam_st.target_x = session->setup_world().truth().body_x_m;
  cam_st.target_y = session->setup_world().truth().body_y_m;
  }

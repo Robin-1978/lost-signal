@@ -274,9 +274,14 @@ struct Frame {
   // ROBOT observation projected with the recorded ROBOT estimate. This is the
   // only scan shown during a live run.
   std::vector<std::pair<double, double>> lidar_hits;
+ // Acquisition offsets parallel to lidar_hits (seconds relative to scan-end,
+ // <= 0). Presentation uses the real sensor timing to show the sweep order;
+ // these values are recorded ROBOT observations, not generated animation.
+ std::vector<float> lidar_time_offsets_s;
   bool lidar_valid = false;
   // SIM truth-assisted projection for explicit debrief/evaluation views only.
   std::vector<std::pair<double, double>> truth_lidar_hits;
+ std::vector<float> truth_lidar_time_offsets_s;
   bool truth_lidar_valid = false;
   bool static_collision = false;
   bool dynamic_collision = false;
