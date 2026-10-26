@@ -173,6 +173,13 @@ ExperienceGateVerdict evaluate_experience_gate(
  const EpisodeArtifact& active, const EpisodePair& pair) {
  ExperienceGateVerdict verdict;
  if (policy.require_experiment) {
+ // Before the controlled pair is complete, expose the active run's own
+ // validity, safety, and mission verdicts. Only the experiment verdict stays
+ // pending. Reporting every dimension as failed made a successful baseline
+ // contradict its debrief even though progression correctly remained locked.
+ verdict.simulation_valid = active.simulation_valid;
+ verdict.safety_passed = active.safety_passed();
+ verdict.mission_passed = active.mission_passed();
  if (!pair.complete()) return verdict;
  const auto& baseline = *pair.baseline;
  const auto& variant = *pair.variant;

@@ -53,6 +53,12 @@ int main() {
  assert(keyframes[4].kind ==
  sim::viewer::ReviewKeyframeKind::kRobotDone);
  assert(keyframes[4].evidence.find("dock / arrived") != std::string::npos);
+ const auto causal = sim::viewer::build_review_causal_chain(keyframes);
+ assert(causal.first_observation == 1);
+ assert(causal.braking_command == 2);
+ assert(causal.stable_stop == 3);
+ assert(causal.robot_done == 4);
+ assert(!causal.sim_verdict.has_value());
 
  sim::viewer::KeyframeReviewOutcome accepted;
  accepted.terminal = true;
@@ -62,6 +68,8 @@ int main() {
  assert(accepted_review.size() == 6);
  assert(accepted_review.back().kind ==
  sim::viewer::ReviewKeyframeKind::kSimAccepted);
+ assert(sim::viewer::build_review_causal_chain(
+ accepted_review).sim_verdict.has_value());
 
  sim::eval::EpisodeRecorder rejected_episode = episode;
  auto rejected_steps = rejected_episode.steps();
@@ -83,6 +91,9 @@ int main() {
  sim::viewer::ReviewKeyframeKind::kSimRejected);
  assert(rejected_review[7].evidence ==
  "experiment_time_limit / collision");
+ const auto rejected_causal =
+ sim::viewer::build_review_causal_chain(rejected_review);
+ assert(rejected_causal.sim_verdict == 7);
  const auto braking_alignment =
  sim::viewer::align_review_keyframes_by_event(
  accepted_review, rejected_review,

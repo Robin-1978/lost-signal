@@ -36,6 +36,20 @@ struct ReviewKeyframeAlignment {
  std::size_t variant_keyframe_index = 0;
 };
 
+// Canonical teaching chain for the debrief drawer. Missing stages stay empty:
+// the presentation must never manufacture a ROBOT observation, command, goal
+// verdict, or SIM acceptance merely to make a successful-looking timeline.
+struct ReviewCausalChain {
+ std::optional<std::size_t> first_observation;
+ std::optional<std::size_t> braking_command;
+ std::optional<std::size_t> stable_stop;
+ std::optional<std::size_t> robot_done;
+ std::optional<std::size_t> sim_verdict;
+};
+
+ReviewCausalChain build_review_causal_chain(
+ const std::vector<ReviewKeyframe>& keyframes);
+
 // Matches causal milestones across completed runs. Accepted and rejected SIM
 // verdicts belong to the same terminal event class, so a failed variant can
 // still be compared with a successful baseline at the moment each judge made

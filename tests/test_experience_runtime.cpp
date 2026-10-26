@@ -185,8 +185,11 @@ int main() {
  pair.baseline = baseline_artifact;
  auto waiting = sim::experiment::evaluate_experience_gate(
  experience.progression, *pair.baseline, pair);
- assert(waiting.simulation_valid == false);
+ assert(waiting.simulation_valid);
+ assert(waiting.safety_passed);
+ assert(waiting.mission_passed);
  assert(!waiting.experiment_passed);
+ assert(!waiting.can_advance);
  pair.variant = sim::experiment::capture_episode_artifact(
  "variant", &sim::viewer::experience_variable_spec(
  sim::viewer::ExperienceVariable::kLidarScanPeriodS),

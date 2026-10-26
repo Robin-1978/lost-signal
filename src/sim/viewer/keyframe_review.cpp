@@ -44,6 +44,32 @@ bool same_event_class(ReviewKeyframeKind lhs, ReviewKeyframeKind rhs) {
 
 } // namespace
 
+ReviewCausalChain build_review_causal_chain(
+ const std::vector<ReviewKeyframe>& keyframes) {
+ ReviewCausalChain chain;
+ for (std::size_t index = 0; index < keyframes.size(); ++index) {
+ const auto kind = keyframes[index].kind;
+ if (kind == ReviewKeyframeKind::kFirstObservation &&
+ !chain.first_observation.has_value()) {
+ chain.first_observation = index;
+ } else if (kind == ReviewKeyframeKind::kBrakeCommand &&
+ !chain.braking_command.has_value()) {
+ chain.braking_command = index;
+ } else if (kind == ReviewKeyframeKind::kStableStop &&
+ !chain.stable_stop.has_value()) {
+ chain.stable_stop = index;
+ } else if (kind == ReviewKeyframeKind::kRobotDone &&
+ !chain.robot_done.has_value()) {
+ chain.robot_done = index;
+ } else if ((kind == ReviewKeyframeKind::kSimAccepted ||
+ kind == ReviewKeyframeKind::kSimRejected) &&
+ !chain.sim_verdict.has_value()) {
+ chain.sim_verdict = index;
+ }
+ }
+ return chain;
+}
+
 std::optional<ReviewKeyframeAlignment> align_review_keyframes_by_event(
  const std::vector<ReviewKeyframe>& baseline,
  const std::vector<ReviewKeyframe>& variant,

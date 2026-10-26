@@ -22,6 +22,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 #include "robot/core/json.hpp"
 #include "robot/platform/robot_config.hpp"
@@ -1158,6 +1159,7 @@ struct ExperienceHitRegions {
  Rectangle next_chapter{};
  std::vector<Rectangle> walkaround;
  std::vector<Rectangle> choices;
+ std::vector<std::pair<Rectangle, std::size_t>> causal_keyframes;
 
  void clear() {
  world_hotspot = {};
@@ -1168,6 +1170,7 @@ struct ExperienceHitRegions {
  next_chapter = {};
  walkaround.clear();
  choices.clear();
+ causal_keyframes.clear();
  }
 };
 
@@ -1409,6 +1412,255 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  constexpr Color kAmber{246, 169, 61, 255};
  constexpr Color kRed{236, 82, 72, 255};
  if (hit_regions != nullptr) hit_regions->clear();
+ if (phase == ExperiencePhase::kDebrief) {
+ const float screen_width = static_cast<float>(GetScreenWidth());
+ const float screen_height = static_cast<float>(GetScreenHeight());
+ const float drawer_width = std::min(448.0f, screen_width - 32.0f);
+ const float drawer_height = screen_height - 24.0f;
+ const float x = screen_width - drawer_width - 12.0f;
+ const float y0 = 12.0f;
+ const bool safe = !timed_out && objectives_done && objectives_passed &&
+ score.collision_steps == 0;
+
+ DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+ Color{5, 10, 12, 38});
+ DrawRectangleRounded({x, y0, drawer_width, drawer_height}, 0.025f, 10,
+ kPanel);
+ DrawRectangleRoundedLinesEx(
+ {x, y0, drawer_width, drawer_height}, 0.025f, 10, 2.0f,
+ safe ? kCyan : kRed);
+
+ draw_ui_text(tr("CAUSAL DEBRIEF", "因果复盘"),
+ static_cast<int>(x + 22), 31, 14, kCyan);
+ draw_ui_text((safe ? experience.success_title
+ : experience.failure_title).c_str(),
+ static_cast<int>(x + 22), 57, 20, safe ? kCyan : kRed);
+
+ char metrics[256];
+ std::snprintf(metrics, sizeof(metrics),
+ g_zh_cn
+ ? "SIM 离线验收　碰撞 %zu　净空 %.2f m　估计误差 %.2f m"
+ : "SIM offline | collisions %zu | clearance %.2f m | estimate error %.2f m",
+ score.collision_steps, score.min_clearance_m, score.mean_pos_err_m);
+ draw_wrapped_text(metrics, x + 22, 89, drawer_width - 44, 13, 3,
+ safe ? kText : kRed);
+
+ if (!action_error.empty()) {
+ draw_wrapped_text(std::string(tr("ACTION FAILED: ", "操作失败：")) +
+ action_error, x + 22, 118, drawer_width - 44, 12, 2, kRed);
+ }
+
+ if (gate_verdict != nullptr) {
+ struct VerdictChip {
+ const char* label;
+ bool passed;
+ bool pending;
+ };
+ const std::array<VerdictChip, 4> verdicts{{
+ {tr("SIM", "仿真"), gate_verdict->simulation_valid, false},
+ {tr("SAFETY", "安全"), gate_verdict->safety_passed, false},
+ {tr("MISSION", "任务"), gate_verdict->mission_passed, false},
+ {tr("EXPERIMENT", "实验"), gate_verdict->experiment_passed,
+ !comparison_complete},
+ }};
+ const float gap = 6.0f;
+ const float chip_width =
+ (drawer_width - 44.0f - gap * 3.0f) / 4.0f;
+ for (std::size_t index = 0; index < verdicts.size(); ++index) {
+ const float chip_x = x + 22.0f + index * (chip_width + gap);
+ const Color accent = verdicts[index].pending ? kAmber
+ : verdicts[index].passed ? kCyan : kRed;
+ DrawRectangleRounded({chip_x, 137.0f, chip_width, 29.0f},
+ 0.16f, 6, Color{25, 43, 43, 255});
+ DrawRectangleRoundedLinesEx({chip_x, 137.0f, chip_width, 29.0f},
+ 0.16f, 6, 1.0f, accent);
+ char verdict[48];
+ std::snprintf(verdict, sizeof(verdict), "%s %s", verdicts[index].label,
+ verdicts[index].pending ? "..." :
+ verdicts[index].passed ? "PASS" : "FAIL");
+ const float text_width = measure_ui_text(verdict, 11.0f);
+ draw_ui_text(verdict,
+ static_cast<int>(chip_x + (chip_width - text_width) * 0.5f),
+ 146, 11, accent);
+ }
+ }
+
+ draw_ui_text(tr("WHY DID THIS RUN END HERE?", "为什么本次运行止于这里？"),
+ static_cast<int>(x + 22), 184, 14, kAmber);
+ draw_ui_text(tr("CLICK A STEP / LEFT RIGHT TO REPLAY",
+ "点击步骤 / 左右键回放记录"),
+ static_cast<int>(x + 22), 205, 11, kMuted);
+
+ const auto chain =
+ lost_signal::sim::viewer::build_review_causal_chain(review_keyframes);
+ struct CausalRow {
+ const char* label;
+ std::optional<std::size_t> keyframe_index;
+ };
+ const std::array<CausalRow, 5> rows{{
+ {tr("FIRST VALID OBSERVATION", "首次有效观测"),
+ chain.first_observation},
+ {tr("BRAKING COMMAND", "制动命令"), chain.braking_command},
+ {tr("STABLE STOP", "稳定停车"), chain.stable_stop},
+ {tr("ROBOT DONE", "机器人报告完成"), chain.robot_done},
+ {tr("SIM ACCEPTED / REJECTED", "仿真验收 / 拒绝"),
+ chain.sim_verdict},
+ }};
+ constexpr float kRowHeight = 51.0f;
+ constexpr float kRowsY = 225.0f;
+ DrawLineEx({x + 37.0f, kRowsY + 19.0f},
+ {x + 37.0f, kRowsY + kRowHeight * 4.0f + 19.0f},
+ 2.0f, Color{64, 96, 90, 255});
+ for (std::size_t row = 0; row < rows.size(); ++row) {
+ const float row_y = kRowsY + row * kRowHeight;
+ const Rectangle bounds{x + 18.0f, row_y, drawer_width - 36.0f,
+ kRowHeight - 4.0f};
+ const bool recorded = rows[row].keyframe_index.has_value();
+ const bool selected = recorded &&
+ static_cast<int>(*rows[row].keyframe_index) == selected_review_keyframe;
+ bool rejected = false;
+ const ReviewKeyframe* keyframe = nullptr;
+ if (recorded && *rows[row].keyframe_index < review_keyframes.size()) {
+ keyframe = &review_keyframes[*rows[row].keyframe_index];
+ rejected = keyframe->kind ==
+ lost_signal::sim::viewer::ReviewKeyframeKind::kSimRejected;
+ }
+ const Color accent = !recorded ? Color{88, 105, 100, 255}
+ : rejected ? kRed : selected ? kAmber : kCyan;
+ if (selected) {
+ DrawRectangleRounded(bounds, 0.08f, 6, Color{45, 48, 35, 255});
+ }
+ DrawCircle(static_cast<int>(x + 37.0f),
+ static_cast<int>(row_y + 19.0f), 9.0f,
+ recorded ? accent : Color{35, 51, 48, 255});
+ if (recorded) {
+ DrawCircle(static_cast<int>(x + 37.0f),
+ static_cast<int>(row_y + 19.0f), 3.0f, kPanel);
+ }
+ draw_ui_text(rows[row].label, static_cast<int>(x + 57.0f),
+ static_cast<int>(row_y + 5.0f), 13, recorded ? kText : kMuted);
+ if (keyframe != nullptr) {
+ const double time_s = keyframe->stamp_ns ==
+ lost_signal::robot::core::kInvalidTime ? 0.0
+ : static_cast<double>(keyframe->stamp_ns) * 1e-9;
+ char stamp[96];
+ std::snprintf(stamp, sizeof(stamp), "t %.2f s / record %llu", time_s,
+ static_cast<unsigned long long>(keyframe->step));
+ draw_ui_text(stamp, static_cast<int>(x + 57.0f),
+ static_cast<int>(row_y + 25.0f), 11, accent);
+ if (hit_regions != nullptr) {
+ hit_regions->causal_keyframes.push_back(
+ {bounds, *rows[row].keyframe_index});
+ }
+ } else {
+ draw_ui_text(tr("NOT RECORDED", "未记录"),
+ static_cast<int>(x + 57.0f), static_cast<int>(row_y + 25.0f),
+ 11, kMuted);
+ }
+ }
+
+ const ReviewKeyframe* selected_keyframe = nullptr;
+ if (selected_review_keyframe >= 0 &&
+ selected_review_keyframe < static_cast<int>(review_keyframes.size())) {
+ selected_keyframe =
+ &review_keyframes[static_cast<std::size_t>(selected_review_keyframe)];
+ }
+ if (selected_keyframe != nullptr) {
+ const bool sim_record = selected_keyframe->kind ==
+ lost_signal::sim::viewer::ReviewKeyframeKind::kSimAccepted ||
+ selected_keyframe->kind ==
+ lost_signal::sim::viewer::ReviewKeyframeKind::kSimRejected ||
+ selected_keyframe->kind ==
+ lost_signal::sim::viewer::ReviewKeyframeKind::kCollision ||
+ selected_keyframe->kind ==
+ lost_signal::sim::viewer::ReviewKeyframeKind::kTimeout;
+ draw_ui_text(sim_record ? tr("SIM OFFLINE EVIDENCE", "仿真离线证据")
+ : tr("ROBOT RECORDED EVIDENCE", "机器人记录证据"),
+ static_cast<int>(x + 22), 486, 11,
+ sim_record ? kAmber : kCyan);
+ draw_wrapped_text(selected_keyframe->evidence, x + 22, 506,
+ drawer_width - 44, 12, 3, kText);
+ }
+
+ const bool has_comparison = !experience.experiments.empty() &&
+ experiment_ui != nullptr && experiment_ui->baseline.recorded;
+ float summary_y = 558.0f;
+ if (has_comparison) {
+ const auto& baseline = experiment_ui->baseline;
+ char comparison[256];
+ if (comparison_complete && experiment_ui->variant.recorded) {
+ const auto& variant = experiment_ui->variant;
+ std::snprintf(comparison, sizeof(comparison),
+ g_zh_cn
+ ? "A/B　基线 %.2fs / %.3fm　变体 %.2fs / %.3fm"
+ : "A/B | base %.2fs / %.3fm | variant %.2fs / %.3fm",
+ baseline.score.elapsed_s, baseline.score.min_clearance_m,
+ variant.score.elapsed_s, variant.score.min_clearance_m);
+ } else {
+ std::snprintf(comparison, sizeof(comparison),
+ g_zh_cn ? "基线已记录 %.2fs / 净空 %.3fm；下一步只改变扫描周期"
+ : "Baseline recorded %.2fs / %.3fm; next run changes scan cadence only",
+ baseline.score.elapsed_s, baseline.score.min_clearance_m);
+ }
+ draw_wrapped_text(comparison, x + 22, summary_y,
+ drawer_width - 44, 12, 3, kText);
+ summary_y += 38.0f;
+ }
+ if (selected_choice >= 0 &&
+ selected_choice < static_cast<int>(experience.choices.size())) {
+ const char* prediction = prediction_assessment ==
+ PredictionAssessment::kSupported
+ ? tr("PREDICTION SUPPORTED", "预测得到支持")
+ : prediction_assessment == PredictionAssessment::kRefuted
+ ? tr("PREDICTION REFUTED", "预测被证据反驳")
+ : tr("PREDICTION LOCKED UNTIL BOTH RUNS FINISH",
+ "预测将在两次运行完成后验证");
+ draw_ui_text(prediction, static_cast<int>(x + 22),
+ static_cast<int>(summary_y), 12,
+ prediction_assessment == PredictionAssessment::kSupported
+ ? kCyan : kAmber);
+ }
+
+ const float actions_y = y0 + drawer_height - 58.0f;
+ float primary_width = 0.0f;
+ if (!experience.experiments.empty() && experiment_ui != nullptr &&
+ experiment_ui->baseline.recorded && !comparison_complete) {
+ const Rectangle variant_button{x + 20.0f, actions_y, 184.0f, 34.0f};
+ const bool can_run = actions_enabled &&
+ run_kind == ExperienceRunKind::kBaseline;
+ draw_panel_button(variant_button,
+ tr("RUN VISIBLE VARIANT", "运行可视变体"),
+ true, kAmber, kText, can_run);
+ if (hit_regions != nullptr && can_run) {
+ hit_regions->primary = variant_button;
+ }
+ primary_width = variant_button.width + 8.0f;
+ } else if (!experience.next_experience_path.empty()) {
+ const Rectangle next_button{x + 20.0f, actions_y, 184.0f, 34.0f};
+ const bool can_advance = actions_enabled && gate_verdict != nullptr &&
+ gate_verdict->can_advance;
+ draw_panel_button(next_button,
+ can_advance ? tr("NEXT CHAPTER", "下一章")
+ : tr("PASS GATES TO CONTINUE", "通过验收后继续"),
+ true, kCyan, kText, can_advance);
+ if (hit_regions != nullptr && can_advance) {
+ hit_regions->next_chapter = next_button;
+ }
+ primary_width = next_button.width + 8.0f;
+ }
+ const Rectangle retry_button{x + 20.0f + primary_width, actions_y,
+ 104.0f, 34.0f};
+ draw_panel_button(retry_button, tr("RETRY", "重试"), false, kCyan,
+ kText, actions_enabled);
+ if (hit_regions != nullptr && actions_enabled) {
+ hit_regions->retry = retry_button;
+ }
+ draw_ui_text(tr("ROBOT never received SIM truth.",
+ "机器人从未收到仿真真值。"),
+ static_cast<int>(x + 22), static_cast<int>(y0 + drawer_height - 17.0f),
+ 11, kAmber);
+ return;
+ }
  if (phase == ExperiencePhase::kRunning) {
  if (view_layer != ExperienceViewLayer::kEngineering) {
  const bool learning = view_layer == ExperienceViewLayer::kLearning;
@@ -1781,208 +2033,7 @@ std::snprintf(progress, sizeof(progress),
  return;
  }
 
- const bool safe = !timed_out && objectives_done && objectives_passed &&
- score.collision_steps == 0;
-draw_ui_text((safe ? experience.success_title : experience.failure_title).c_str(),
- static_cast<int>(x + 34), static_cast<int>(y), 20,
- safe ? kCyan : kRed);
- y += 38.0f;
- if (timed_out) {
- y = draw_wrapped_text(
-tr("TIME LIMIT REACHED: the robot did not produce a terminal mission result within the authored experiment budget.",
-"时间用尽：机器人未能在本次实验的时间预算内给出终态任务结果。"),
- x + 34, y, panel_width - 68, 15, 5, kRed) + 10.0f;
- }
- if (!action_error.empty()) {
-y = draw_wrapped_text(std::string(tr("ACTION FAILED: ", "操作失败：")) +
-action_error,
- x + 34, y, panel_width - 68, 14, 4, kRed) + 8.0f;
- }
- char metrics[256];
- std::snprintf(metrics, sizeof(metrics),
- "SIM OFFLINE EVAL   collisions=%zu   min clearance=%.2f m   mean estimate error=%.2f m",
- score.collision_steps, score.min_clearance_m, score.mean_pos_err_m);
- if (g_zh_cn) {
- std::snprintf(metrics, sizeof(metrics),
- "仿真离线验收　碰撞=%zu　最小净空=%.2f m　平均估计误差=%.2f m",
- score.collision_steps, score.min_clearance_m, score.mean_pos_err_m);
- }
- y = draw_wrapped_text(metrics, x + 34, y, panel_width - 68, 15, 5,
- safe ? kText : kRed) + 12.0f;
- if (gate_verdict != nullptr) {
- char gates[320];
- const auto mark = [](bool value) { return value ? "PASS" : "FAIL"; };
- std::snprintf(gates, sizeof(gates),
- g_zh_cn
- ? "四项裁决　仿真 %s　安全 %s　任务 %s　实验 %s"
- : "VERDICTS | SIM %s | SAFETY %s | MISSION %s | EXPERIMENT %s",
- mark(gate_verdict->simulation_valid),
- mark(gate_verdict->safety_passed),
- mark(gate_verdict->mission_passed),
- mark(gate_verdict->experiment_passed));
- y = draw_wrapped_text(gates, x + 34, y, panel_width - 68, 14, 4,
- gate_verdict->can_advance ? kCyan : kAmber) + 10.0f;
- }
- const bool has_comparison = !experience.experiments.empty() &&
- experiment_ui != nullptr && experiment_ui->baseline.recorded;
- if (has_comparison) {
- const auto& baseline = experiment_ui->baseline;
- const auto& experiment = experience.experiments.front();
- draw_ui_text(comparison_complete
- ? tr("VISIBLE CONTROLLED COMPARISON", "可视化受控对照完成")
- : tr("BASELINE RECORDED / VARIANT NEXT", "基线已记录 / 下一步运行变体"),
- static_cast<int>(x + 34), static_cast<int>(y), 14, kAmber);
- y += 22.0f;
- if (!comparison_complete || !experiment_ui->variant.recorded) {
- char baseline_line[320];
- std::snprintf(baseline_line, sizeof(baseline_line),
- g_zh_cn
- ? "基线 LiDAR %.0f ms　时间 %.2f s　碰撞 %zu　最小净空 %.3f m"
- : "Baseline LiDAR %.0f ms | time %.2f s | collisions %zu | clearance %.3f m",
- baseline.scan_period_s * 1000.0, baseline.score.elapsed_s,
- baseline.score.collision_steps, baseline.score.min_clearance_m);
- y = draw_wrapped_text(baseline_line, x + 34, y,
- panel_width - 68, 14, 4, kText) + 7.0f;
- char invitation[320];
- std::snprintf(invitation, sizeof(invitation),
- g_zh_cn
- ? "下一次运行只把 %s 改为 %.0f ms；场景、机器人、初始状态和随机种子全部重建为相同值。"
- : "The next visible run changes only %s to %.0f ms. World, robot, initial state, and seeds are rebuilt identically.",
- lost_signal::sim::viewer::experience_variable_spec(
- experiment.controlled_variable).id,
- experiment.variant_value * 1000.0);
- y = draw_wrapped_text(invitation, x + 34, y,
- panel_width - 68, 14, 4, kMuted) + 8.0f;
- } else {
- const auto& variant = experiment_ui->variant;
- const double elapsed_delta_s =
- variant.score.elapsed_s - baseline.score.elapsed_s;
- const double clearance_delta_m =
- variant.score.min_clearance_m - baseline.score.min_clearance_m;
- char comparison[384];
- std::snprintf(comparison, sizeof(comparison),
- g_zh_cn
- ? "基线 %.0f ms：%.2f s / 净空 %.3f m / 碰撞 %zu\n变体 %.0f ms：%.2f s / 净空 %.3f m / 碰撞 %zu"
- : "Baseline %.0f ms: %.2f s / %.3f m clearance / %zu collisions\nVariant %.0f ms: %.2f s / %.3f m clearance / %zu collisions",
- baseline.scan_period_s * 1000.0, baseline.score.elapsed_s,
- baseline.score.min_clearance_m, baseline.score.collision_steps,
- variant.scan_period_s * 1000.0, variant.score.elapsed_s,
- variant.score.min_clearance_m, variant.score.collision_steps);
- y = draw_wrapped_text(comparison, x + 34, y,
- panel_width - 68, 14, 4, kText) + 7.0f;
- char delta[256];
- std::snprintf(delta, sizeof(delta),
- g_zh_cn ? "实际差值　时间 %+.2f s　最小净空 %+.3f m"
- : "Measured delta | time %+.2f s | minimum clearance %+.3f m",
- elapsed_delta_s, clearance_delta_m);
- y = draw_wrapped_text(delta, x + 34, y,
- panel_width - 68, 15, 4,
- baseline.safe() && variant.safe() ? kCyan : kRed) + 8.0f;
- }
- }
- if (!review_keyframes.empty()) {
- const int count = static_cast<int>(review_keyframes.size());
- const int index = std::clamp(selected_review_keyframe, 0, count - 1);
- const auto& keyframe =
- review_keyframes[static_cast<std::size_t>(index)];
- char event_header[160];
- const double time_s = keyframe.stamp_ns ==
- lost_signal::robot::core::kInvalidTime
- ? 0.0 : static_cast<double>(keyframe.stamp_ns) * 1e-9;
- std::snprintf(event_header, sizeof(event_header),
- "KEYFRAME %02d/%02d  t=%.2fs  record=%llu",
- index + 1, count, time_s,
- static_cast<unsigned long long>(keyframe.step));
- DrawText(event_header, static_cast<int>(x + 34), static_cast<int>(y),
- 13, kAmber);
- y += 24.0f;
- DrawText(keyframe.title.c_str(), static_cast<int>(x + 34),
- static_cast<int>(y), 17, kCyan);
- y = draw_wrapped_text(keyframe.evidence, x + 34, y + 24,
- panel_width - 68, 14, 4, kText) + 10.0f;
-  const float controls_y = y0 + panel_height - 72.0f;
-  const Rectangle previous{x + 34.0f, controls_y, 46.0f, 34.0f};
-  const Rectangle next{x + 88.0f, controls_y, 46.0f, 34.0f};
-  draw_panel_button(previous, "<", false, kCyan, kText);
-  draw_panel_button(next, ">", false, kCyan, kText);
-  if (hit_regions != nullptr) {
-   hit_regions->previous = previous;
-   hit_regions->next = next;
-  }
- }
- if (selected_choice >= 0 &&
- selected_choice < static_cast<int>(experience.choices.size())) {
- const auto& choice = experience.choices[static_cast<std::size_t>(selected_choice)];
- const bool prediction_pending =
- prediction_assessment == PredictionAssessment::kPending;
- const bool prediction_supported =
- prediction_assessment == PredictionAssessment::kSupported;
- const bool prediction_refuted =
- prediction_assessment == PredictionAssessment::kRefuted;
- draw_ui_text(prediction_pending
- ? tr("YOUR PREDICTION IS LOCKED UNTIL BOTH RUNS FINISH",
- "你的预测已锁定，完成两次运行后验证")
- : prediction_supported
- ? tr("YOUR PREDICTION: SUPPORTED BY BOTH RUNS",
- "你的预测：得到两次运行的证据支持")
- : prediction_refuted
- ? tr("YOUR PREDICTION: REFUTED BY THE RUN",
- "你的预测：被本次运行的证据反驳")
- : tr("YOUR PREDICTION: INSUFFICIENT EVIDENCE",
- "你的预测：当前证据不足"),
- static_cast<int>(x + 34), static_cast<int>(y), 15,
- !prediction_pending && prediction_supported ? kCyan : kAmber);
- y = draw_wrapped_text(choice.explanation, x + 34, y + 26,
- panel_width - 68, 16, 5, kText) + 13.0f;
- }
- draw_ui_text(tr("WHAT THE RUN ESTABLISHED", "本次运行证明了什么"),
- static_cast<int>(x + 34),
- static_cast<int>(y), 15, kAmber);
- y += 28.0f;
- for (const auto& lesson : experience.lessons) {
- DrawCircle(static_cast<int>(x + 42), static_cast<int>(y + 7), 3.5f,
- kCyan);
- y = draw_wrapped_text(lesson, x + 56, y, panel_width - 100, 15, 5,
- kText) + 6.0f;
- }
- if (!experience.experiments.empty() && experiment_ui != nullptr &&
- experiment_ui->baseline.recorded && !comparison_complete) {
- const Rectangle experiment_button{x + 136.0f, y0 + panel_height - 72.0f,
-   158.0f, 34.0f};
- const bool can_run = actions_enabled &&
- run_kind == ExperienceRunKind::kBaseline;
-  draw_panel_button(experiment_button,
- tr("RUN VISIBLE VARIANT", "可视运行慢扫描"),
-   true, kAmber, kText, can_run);
-  if (hit_regions != nullptr && can_run) {
-   hit_regions->primary = experiment_button;
-  }
- }
- const Rectangle retry_button{x + 306.0f, y0 + panel_height - 72.0f,
- 116.0f, 34.0f};
- draw_panel_button(retry_button, tr("RETRY RUN", "重试本局"),
- false, kCyan, kText,
- actions_enabled);
- if (hit_regions != nullptr && actions_enabled) {
- hit_regions->retry = retry_button;
- }
- if (!experience.next_experience_path.empty()) {
- const Rectangle next_chapter_button{
- x + 434.0f, y0 + panel_height - 72.0f, 252.0f, 34.0f};
- const bool can_advance = actions_enabled && gate_verdict != nullptr &&
- gate_verdict->can_advance;
- draw_panel_button(next_chapter_button,
- can_advance ? tr("NEXT CHAPTER", "下一章")
- : tr("NEXT: PASS SAFETY GATE", "下一章：通过安全验收后解锁"),
- true, kCyan, kText, can_advance);
- if (hit_regions != nullptr && can_advance) {
- hit_regions->next_chapter = next_chapter_button;
- }
- }
- draw_ui_text(tr("KEYFRAMES / CONTROLLED A/B / ROBOT never received SIM truth.",
- "关键帧 / 受控 A/B / 机器人从未收到仿真真值。"),
-  static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 27),
-  13, kAmber);
+
 }
 
 // Map extents over every authored layer (auto-fit on --map load).
@@ -4434,6 +4485,15 @@ int main(int argc, char** argv) {
  pointer, experience_hit_regions.next_chapter);
  if (requested_next && advance_experience()) {
  continue;
+ }
+ if (clicked) {
+ for (const auto& [bounds, keyframe_index] :
+ experience_hit_regions.causal_keyframes) {
+ if (CheckCollisionPointRec(pointer, bounds)) {
+ selected_review_keyframe = static_cast<int>(keyframe_index);
+ break;
+ }
+ }
  }
  if (!review_keyframes.empty()) {
  const int count = static_cast<int>(review_keyframes.size());
