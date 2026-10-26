@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -37,20 +38,30 @@ int main() {
       lost_signal::robot::autonomy::StartupMode::kSlamOnly);
 
   std::size_t max_loops = 0;
-  std::size_t max_keyframes = 0;
+ std::size_t max_keyframes = 0;
+ std::size_t completed_objectives_at_first_loop = 0;
+ double first_loop_truth_distance_m = -1.0;
  // Pure SLAM owns the frame in this test; allow the final loop correction,
  // heading alignment, and settled arrival to finish without survey assists.
  for (int i = 0; i < 2400 && !session.objectives_done(); ++i) {
     session.step_once();
-    const auto& diag = session.episode().steps().back().diag;
-    max_loops = std::max(max_loops, diag.slam_loops_closed);
+ const auto& diag = session.episode().steps().back().diag;
+ if (max_loops == 0 && diag.slam_loops_closed > 0) {
+ completed_objectives_at_first_loop = session.objectives().results().size();
+ const auto& truth = session.episode().steps().back().truth_after;
+ first_loop_truth_distance_m = std::hypot(
+ truth.body_x_m, truth.body_y_m);
+ }
+ max_loops = std::max(max_loops, diag.slam_loops_closed);
     max_keyframes = std::max(max_keyframes, diag.slam_keyframes);
   }
-  std::printf("loop: objectives_done=%d loops=%zu keyframes=%zu steps=%zu\n",
-              session.objectives_done(), max_loops, max_keyframes,
-              session.episode().size());
+ std::printf("loop: objectives_done=%d loops=%zu keyframes=%zu steps=%zu "
+ "first_loop_objectives=%zu first_loop_truth=%.3f\n",
+ session.objectives_done(), max_loops, max_keyframes,
+ session.episode().size(), completed_objectives_at_first_loop,
+ first_loop_truth_distance_m);
   fflush(stdout);
- if (!session.objectives_done()) {
+ if (!session.objectives_done() || max_loops == 0) {
  const auto& diag = session.episode().steps().back().diag;
  const auto& truth = session.episode().steps().back().truth_after;
  std::fprintf(stderr,
@@ -62,6 +73,17 @@ int main() {
  diag.estimate.position_sigma_m, diag.localization_action.c_str(),
  diag.evidence.reason_code.c_str(), static_cast<int>(diag.goal.state),
  diag.goal.detail.c_str());
+ std::map<std::string, std::pair<std::size_t, std::uint64_t>> loop_reasons;
+ for (const auto& step : session.episode().steps()) {
+ auto& summary = loop_reasons[step.diag.slam_loop_diagnostic];
+ ++summary.first;
+ summary.second = step.step;
+ }
+ for (const auto& [reason, summary] : loop_reasons) {
+ std::fprintf(stderr, " loop diagnostic count=%zu last_step=%llu: %s\n",
+ summary.first, static_cast<unsigned long long>(summary.second),
+ reason.c_str());
+ }
  }
   assert(session.objectives_done());
   const auto& results = session.objectives().results();
@@ -71,7 +93,11 @@ int main() {
   // The machinery engaged: keyframes along the way, at least one accepted
   // closure when the square revisited its own submaps.
   assert(max_keyframes >= 10);  // ~16 m at 0.5 m spacing, minus holds
-  assert(max_loops >= 1);
+ assert(max_loops >= 1);
+ // The first three mission events establish that the robot traversed east,
+ // north, and west before any closure. SIM truth distance is diagnostic
+ // only; the ROBOT loop detector receives neither mission progress nor truth.
+ assert(completed_objectives_at_first_loop >= 3);
 
   // Bounded final error after ~16 m of travel: open-loop drift at the
   // measured 0.07 m/m rate would leave > 1 m; the closure pulls it back.

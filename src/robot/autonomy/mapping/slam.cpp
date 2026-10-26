@@ -192,8 +192,15 @@ struct SlamSession::LoopSearchWork {
  struct Candidate {
  std::uint64_t id = 0;
  double distance = 0.0;
+ Pose2 pose;
  };
- enum class Phase { kPrepare, kCoarse, kForward, kReverse };
+ struct VerifiedCandidate {
+ std::uint64_t old_id = 0;
+ ScanMatchResult forward;
+ ScanMatchResult reverse;
+ double rank = -std::numeric_limits<double>::infinity();
+ };
+ enum class Phase { kPrepare, kCoarse, kForward, kReverse, kSelect };
 
  EstimatedState match_est;
  iface::ObservationFrame match_obs;
@@ -206,6 +213,7 @@ struct SlamSession::LoopSearchWork {
  ScanMatchResult coarse;
  ScanMatchResult forward;
  ScanMatchResult reverse;
+ std::vector<VerifiedCandidate> verified;
  std::string last_rejection = "no candidate reached the matcher";
 };
 
@@ -235,6 +243,7 @@ void SlamSession::reset() {
  pending_opposing_track_observer_pose_ = Pose2{};
  pending_loop_valid_ = false;
  pending_loop_s_ = 0.0;
+ pending_loop_anchor_id_ = 0;
  pending_loop_transform_ = Pose2{};
  pending_loop_observer_pose_ = Pose2{};
 }
@@ -724,6 +733,7 @@ SlamLoopResult SlamSession::try_close_loops(
  if (pending_loop_valid_ &&
  now_s - pending_loop_s_ > pending_timeout_s) {
  pending_loop_valid_ = false;
+ pending_loop_anchor_id_ = 0;
  }
   ScanMatcherConfig match_cfg;
  match_cfg.expected_range_validation = false;
@@ -767,7 +777,6 @@ SlamLoopResult SlamSession::try_close_loops(
  last_result_ = out;
  return out;
  }
- last_attempt_s_ = now_s;
  keyframes_at_last_attempt_ = keyframes_.size();
  loop_search_ = std::make_unique<LoopSearchWork>();
  loop_search_->match_est = est;
@@ -792,19 +801,64 @@ SlamLoopResult SlamSession::try_close_loops(
  }
  const double distance = std::hypot(
  est.x_m - kf.pose.position.x, est.y_m - kf.pose.position.y);
- if (distance <= config_.gate.maximum_candidate_distance_m) {
- loop_search_->candidates.push_back({kf.id, distance});
+ // Candidate retrieval and pose refinement must share one correction
+ // envelope. A submap can extend well beyond its anchor; retrieving anchors
+ // farther away than the matcher can correct lets adjacent, repetitive
+ // corners masquerade as revisits even though no odometric loop exists.
+ const double candidate_radius_m = std::min(
+ config_.gate.maximum_candidate_distance_m,
+ config_.match_search_translation_m);
+ if (distance <= candidate_radius_m) {
+ loop_search_->candidates.push_back({kf.id, distance, kf.pose});
  }
  }
  std::sort(loop_search_->candidates.begin(),
  loop_search_->candidates.end(),
  [](const LoopSearchWork::Candidate& a,
  const LoopSearchWork::Candidate& b) {
- return a.distance < b.distance;
+ if (a.distance != b.distance) return a.distance < b.distance;
+ return a.id < b.id;
  });
- if (loop_search_->candidates.size() >
+ // Spend the bounded matcher budget on distinct historical hypotheses,
+ // rather than letting several adjacent keyframes from one place consume
+ // every slot. The matcher already defines the spatial/angular resolution
+ // at which hypotheses are the same mode, so candidate suppression adds no
+ // second place-recognition threshold. Preserve a pending anchor first so
+ // temporal confirmation can verify the exact same causal submap.
+ const std::vector<LoopSearchWork::Candidate> retrieved =
+ std::move(loop_search_->candidates);
+ const auto same_historical_mode = [&](
+ const LoopSearchWork::Candidate& a,
+ const LoopSearchWork::Candidate& b) {
+ return std::hypot(a.pose.position.x - b.pose.position.x,
+ a.pose.position.y - b.pose.position.y) <=
+ match_cfg.ambiguity_distance_m &&
+ std::abs(core::wrap_angle(a.pose.heading_rad - b.pose.heading_rad)) <=
+ match_cfg.ambiguity_heading_rad;
+ };
+ const auto append_if_distinct = [&](
+ const LoopSearchWork::Candidate& candidate) {
+ if (loop_search_->candidates.size() >=
  config_.max_candidates_per_attempt) {
- loop_search_->candidates.resize(config_.max_candidates_per_attempt);
+ return;
+ }
+ const bool duplicate = std::any_of(
+ loop_search_->candidates.begin(), loop_search_->candidates.end(),
+ [&](const LoopSearchWork::Candidate& selected) {
+ return same_historical_mode(candidate, selected);
+ });
+ if (!duplicate) loop_search_->candidates.push_back(candidate);
+ };
+ if (pending_loop_valid_) {
+ const auto pending = std::find_if(
+ retrieved.begin(), retrieved.end(),
+ [&](const LoopSearchWork::Candidate& candidate) {
+ return candidate.id == pending_loop_anchor_id_;
+ });
+ if (pending != retrieved.end()) append_if_distinct(*pending);
+ }
+ for (const auto& candidate : retrieved) {
+ append_if_distinct(candidate);
  }
  if (loop_search_->candidates.empty()) {
  loop_search_.reset();
@@ -812,6 +866,11 @@ SlamLoopResult SlamSession::try_close_loops(
  last_result_ = out;
  return out;
  }
+ // Candidate retrieval is cheap and runs once per new keyframe. An empty
+ // retrieval must not consume the expensive-search cooldown: doing so can
+ // blind the frontend for the entire short approach into a real revisit.
+ // Start the cadence only when scan matching work actually begins.
+ last_attempt_s_ = now_s;
  }
 
  auto find_keyframe = [&](std::uint64_t id) -> SlamKeyframe* {
@@ -829,14 +888,14 @@ SlamLoopResult SlamSession::try_close_loops(
  LoopSearchWork& work = *loop_search_;
  work.last_rejection = diagnostic;
  ++work.candidate_index;
- work.phase = LoopSearchWork::Phase::kPrepare;
- if (work.candidate_index >= work.candidates.size()) {
- const std::string final_diagnostic =
- "no candidate verified: " + work.last_rejection;
- loop_search_.reset();
- return defer(final_diagnostic);
- }
+ work.phase = work.candidate_index >= work.candidates.size()
+ ? LoopSearchWork::Phase::kSelect
+ : LoopSearchWork::Phase::kPrepare;
  return defer("loop search pending: " + diagnostic);
+ };
+ auto reject_search = [&](const std::string& diagnostic) {
+ loop_search_.reset();
+ return defer(diagnostic);
  };
 
  LoopSearchWork& work = *loop_search_;
@@ -911,9 +970,11 @@ SlamLoopResult SlamSession::try_close_loops(
  work.phase = LoopSearchWork::Phase::kReverse;
  return defer("loop reverse verification pending");
  }
- if (!work.lattice.advance(config_.match_work_budget)) {
+ if (work.phase == LoopSearchWork::Phase::kReverse &&
+ !work.lattice.advance(config_.match_work_budget)) {
  return defer("loop reverse verification pending");
  }
+ if (work.phase == LoopSearchWork::Phase::kReverse) {
  work.reverse = work.lattice.result;
  if (!work.reverse.accepted) {
  return reject_candidate(
@@ -922,6 +983,103 @@ SlamLoopResult SlamSession::try_close_loops(
  if (work.reverse.overlap < config_.gate.minimum_overlap) {
  return reject_candidate("reverse overlap below loop gate");
  }
+ // Compare the bidirectional fraction of explained returns. Both match
+ // quality and overlap contribute evidence; a high score over a small
+ // accidental fragment must not outrank a broadly supported revisit.
+ const double two_way_score = 0.5 *
+ (work.forward.score * work.forward.overlap +
+ work.reverse.score * work.reverse.overlap);
+ work.verified.push_back({work.old_id, work.forward, work.reverse,
+ two_way_score});
+ ++work.candidate_index;
+ work.phase = work.candidate_index >= work.candidates.size()
+ ? LoopSearchWork::Phase::kSelect
+ : LoopSearchWork::Phase::kPrepare;
+ return defer("loop candidate comparison pending");
+ }
+ if (work.phase != LoopSearchWork::Phase::kSelect) {
+ loop_search_.reset();
+ return defer("loop search entered invalid phase");
+ }
+ if (work.verified.empty()) {
+ const std::string final_diagnostic =
+ "no candidate verified: " + work.last_rejection;
+ loop_search_.reset();
+ return defer(final_diagnostic);
+ }
+ std::sort(work.verified.begin(), work.verified.end(),
+ [](const LoopSearchWork::VerifiedCandidate& lhs,
+ const LoopSearchWork::VerifiedCandidate& rhs) {
+ if (lhs.rank != rhs.rank) return lhs.rank > rhs.rank;
+ return lhs.old_id < rhs.old_id;
+ });
+ // Candidates from neighbouring historical anchors can still describe the
+ // same global alignment. Cluster them by the correction transform produced
+ // for the frozen scan, using the matcher's existing ambiguity resolution.
+ const auto candidate_correction = [&](
+ const LoopSearchWork::VerifiedCandidate& candidate) {
+ Pose2 correction;
+ correction.heading_rad = core::wrap_angle(
+ candidate.forward.yaw_rad - work.match_est.yaw_rad);
+ const double c = std::cos(correction.heading_rad);
+ const double s = std::sin(correction.heading_rad);
+ correction.position.x = candidate.forward.x_m -
+ (c * work.match_est.x_m - s * work.match_est.y_m);
+ correction.position.y = candidate.forward.y_m -
+ (s * work.match_est.x_m + c * work.match_est.y_m);
+ return correction;
+ };
+ const auto same_correction_mode = [&](
+ const LoopSearchWork::VerifiedCandidate& a,
+ const LoopSearchWork::VerifiedCandidate& b) {
+ const Pose2 ca = candidate_correction(a);
+ const Pose2 cb = candidate_correction(b);
+ return std::hypot(ca.position.x - cb.position.x,
+ ca.position.y - cb.position.y) <= match_cfg.ambiguity_distance_m &&
+ std::abs(core::wrap_angle(ca.heading_rad - cb.heading_rad)) <=
+ match_cfg.ambiguity_heading_rad;
+ };
+ const LoopSearchWork::VerifiedCandidate best_mode = work.verified.front();
+ // If the pending anchor independently verifies inside the winning alignment
+ // mode, use that exact anchor for the second observation. This prevents a
+ // sliding neighbouring submap from resetting temporal confirmation.
+ if (pending_loop_valid_) {
+ const auto pending = std::find_if(
+ work.verified.begin(), work.verified.end(),
+ [&](const LoopSearchWork::VerifiedCandidate& candidate) {
+ return candidate.old_id == pending_loop_anchor_id_ &&
+ same_correction_mode(best_mode, candidate);
+ });
+ if (pending != work.verified.end()) {
+ std::iter_swap(work.verified.begin(), pending);
+ }
+ }
+ const LoopSearchWork::VerifiedCandidate* competing_place = nullptr;
+ for (const auto& candidate : work.verified) {
+ if (!same_correction_mode(best_mode, candidate)) {
+ competing_place = &candidate;
+ break;
+ }
+ }
+ if (competing_place != nullptr) {
+ // The winning correction mode must separate from the strongest genuinely
+ // different alignment using the same score-margin contract as the matcher.
+ const double cross_candidate_margin =
+ best_mode.rank - competing_place->rank;
+ if (cross_candidate_margin < config_.gate.minimum_score_margin) {
+ const std::string diagnostic =
+ "loop rejected: ambiguous historical places " +
+ std::to_string(best_mode.old_id) + " vs " +
+ std::to_string(competing_place->old_id);
+ loop_search_.reset();
+ return defer(diagnostic);
+ }
+ work.verified[0].forward.score_margin = std::min(
+ work.verified[0].forward.score_margin, cross_candidate_margin);
+ }
+ work.old_id = work.verified[0].old_id;
+ work.forward = work.verified[0].forward;
+ work.reverse = work.verified[0].reverse;
 
  SlamKeyframe* old_ptr = find_keyframe(work.old_id);
  SlamKeyframe* to_ptr = find_keyframe(work.to_id);
@@ -951,7 +1109,7 @@ SlamLoopResult SlamSession::try_close_loops(
                                                   fwd.heading_sigma_rad);
     const LoopClosureDecision decision = gate.validate(from, to, evidence);
  if (!decision.accepted) {
- return reject_candidate(decision.diagnostic);
+ return reject_search(decision.diagnostic);
  }
 
  // In a surveyed region, reject a keyframe association before graph
@@ -983,7 +1141,7 @@ SlamLoopResult SlamSession::try_close_loops(
  candidate_score.score - prior_score.score >=
  config_.gate.minimum_score_margin;
  if (!supported || !improves) {
- return reject_candidate(
+ return reject_search(
  "loop rejected early: conflicts with surveyed-map evidence");
  }
  }
@@ -1002,7 +1160,7 @@ SlamLoopResult SlamSession::try_close_loops(
  PoseGraphBackend candidate_graph = graph_;
  std::string reason;
  if (!candidate_graph.add_constraint(loop, &reason)) {
- return reject_candidate("constraint rejected: " + reason);
+ return reject_search("constraint rejected: " + reason);
  }
  const PoseGraphOptimizationResult opt = candidate_graph.optimize();
  if (!opt.success) {
@@ -1069,7 +1227,7 @@ SlamLoopResult SlamSession::try_close_loops(
  // than the local tracking window. Otherwise several plausible-looking
  // small loops can cumulatively walk the robot away from the map.
  if (absolute == AbsoluteEvidence::kConflicts) {
- return reject_candidate(
+ return reject_search(
  "loop rejected: conflicts with surveyed-map evidence");
  }
  // Without an independent surveyed-map confirmation, every map-frame loop
@@ -1118,23 +1276,32 @@ SlamLoopResult SlamSession::try_close_loops(
  const bool independent_view =
  observed_motion_m >= required_motion_m ||
  observed_motion_rad >= required_motion_rad;
- const bool consistent =
+ const bool same_historical_place = pending_loop_valid_ &&
+ pending_loop_anchor_id_ == old.id;
+ const bool consistent = same_historical_place &&
  correction_disagreement_m <= 2.0 * config_.match_translation_step_m &&
  correction_disagreement_rad <= 2.0 * config_.match_heading_step_rad;
  if (!pending_loop_valid_ || !independent_view || !consistent) {
  if (!pending_loop_valid_ || !consistent) {
  pending_loop_valid_ = true;
  pending_loop_s_ = now_s;
+ pending_loop_anchor_id_ = old.id;
  pending_loop_transform_ = correction;
  pending_loop_observer_pose_ = current_pose;
  }
- out.diagnostic = "loop candidate pending temporal confirmation";
+ out.diagnostic = "loop candidate pending temporal confirmation for submap " +
+ std::to_string(old.id);
  loop_search_.reset();
  last_result_ = out;
  return out;
  }
- pending_loop_valid_ = false;
  }
+
+ // A confirmed constraint consumes any outstanding temporal proposal. This
+ // also clears a proposal left by an earlier inconclusive search when an
+ // independent surveyed-map observation confirms the current constraint.
+ pending_loop_valid_ = false;
+ pending_loop_anchor_id_ = 0;
 
  out.forward_score = fwd.score;
  out.reverse_score = rev.score;

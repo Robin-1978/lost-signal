@@ -242,6 +242,7 @@ class SlamSession {
  // recur after independently observed motion before it may enter the graph.
  bool pending_loop_valid_ = false;
  double pending_loop_s_ = 0.0;
+ std::uint64_t pending_loop_anchor_id_ = 0;
  Pose2 pending_loop_transform_;
  Pose2 pending_loop_observer_pose_;
  std::unique_ptr<LoopSearchWork> loop_search_;

@@ -1,5 +1,9 @@
 # SIM Phase Plan (Phase 2: sim re-integration — now with MuJoCo backend track, see below)
 
+The active cross-session release checklist and recovery point are maintained in
+[`release-continuation-plan.md`](release-continuation-plan.md). Resume from the
+first incomplete stage there before extending this historical phase plan.
+
 Robot side is continuously gated by a clean rebuild, the full CTest suite,
 and the boundary check (currently 51/51 green).
 This phase ports the **deployable** sim algorithms from `main` onto the new
