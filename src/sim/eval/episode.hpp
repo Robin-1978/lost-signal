@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <utility>
 #include <vector>
 
 #include "robot/app/robot_application.hpp"
@@ -69,13 +71,42 @@ struct EvalStep {
 // (JSON/JSONL file or RL transition batch), consumed after the run.
 class EpisodeRecorder {
  public:
-  void record(EvalStep step) { steps_.push_back(step); }
-  void clear() { steps_.clear(); }
+ // Zero keeps the full episode. A positive limit turns the recorder into a
+ // recent-history ring for interactive viewers; aggregate scoring remains in
+ // ScenarioSession and is therefore independent of retention.
+ void set_maximum_steps(std::size_t maximum_steps) {
+ maximum_steps_ = maximum_steps;
+ trim();
+ }
+ void record(EvalStep step) {
+ ++total_recorded_;
+ steps_.push_back(std::move(step));
+ trim();
+ }
+ void clear() {
+ steps_.clear();
+ total_recorded_ = 0;
+ dropped_steps_ = 0;
+ }
   std::size_t size() const { return steps_.size(); }
-  const std::vector<EvalStep>& steps() const { return steps_; }
+ std::size_t total_recorded() const { return total_recorded_; }
+ std::size_t dropped_steps() const { return dropped_steps_; }
+ std::size_t maximum_steps() const { return maximum_steps_; }
+ bool complete() const { return dropped_steps_ == 0; }
+ const std::deque<EvalStep>& steps() const { return steps_; }
 
  private:
-  std::vector<EvalStep> steps_;
+ void trim() {
+ while (maximum_steps_ > 0 && steps_.size() > maximum_steps_) {
+ steps_.pop_front();
+ ++dropped_steps_;
+ }
+ }
+
+ std::deque<EvalStep> steps_;
+ std::size_t maximum_steps_ = 0;
+ std::size_t total_recorded_ = 0;
+ std::size_t dropped_steps_ = 0;
 };
 
 }  // namespace lost_signal::sim::eval

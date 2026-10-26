@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -65,6 +66,9 @@ using lost_signal::sim::viewer::SceneManifest;
 
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
+// Open-ended sandbox runs retain a local replay window. Authored experiences
+// keep their complete, independently scored episode for debrief and A/B.
+constexpr double kDefaultSandboxHistorySeconds = 120.0;
 
 Font g_ui_font{};
 bool g_owns_ui_font = false;
@@ -3149,6 +3153,7 @@ int main(int argc, char** argv) {
  experience_path;
  std::string requested_locale = "auto";
  double initial_playback_rate = 1.0;
+ double sandbox_history_seconds = kDefaultSandboxHistorySeconds;
  bool initial_turbo = false;
  RenderQuality render_quality = RenderQuality::kHigh;
  bool sandbox_requested = false;
@@ -3162,7 +3167,7 @@ int main(int argc, char** argv) {
  "usage: sim_viewer [--play | --sandbox | --experience FILE]\n"
  " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
  " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
- " [--locale auto|en|zh-CN] [--mute]\n"
+ " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
  "\n"
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
  "open engineering demo. During a run: Space pause, N step, F follow,\n"
@@ -3194,6 +3199,17 @@ int main(int argc, char** argv) {
  source_requested = true;
  }
  if (a == "--locale" && i + 1 < argc) requested_locale = argv[++i];
+ if (a == "--history-seconds" && i + 1 < argc) {
+ char* end = nullptr;
+ const double parsed = std::strtod(argv[++i], &end);
+ if (end == argv[i] || *end != '\0' || !std::isfinite(parsed) ||
+ parsed < 0.0) {
+ std::fprintf(stderr,
+ "bad --history-seconds: expected a finite non-negative value\n");
+ return 1;
+ }
+ sandbox_history_seconds = parsed;
+ }
  if (a == "--turbo") initial_turbo = true;
  if (a == "--quality" && i + 1 < argc) {
  const std::string quality = argv[++i];
@@ -3300,6 +3316,27 @@ int main(int argc, char** argv) {
  // copy, so a misconfigured mount shows up instead of hiding).
  sim::viewer::LidarMount session_lidar_mount;
  session->lidar_mount(session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
+
+ // A deque-backed recent window keeps Turbo and 64x sandbox sessions bounded
+ // without changing full-run scoring. Zero explicitly requests full history.
+ if (!experience_loaded && sandbox_history_seconds > 0.0) {
+ constexpr double transition_s =
+ static_cast<double>(sim::kScenarioTransitionNs) /
+ static_cast<double>(sim::kNanosecondsPerSecond);
+ const double record_period_s = sim_config.has_value()
+ ? std::max(transition_s, sim_config->record_period_s) : transition_s;
+ const double requested_steps = std::ceil(
+ sandbox_history_seconds / record_period_s);
+ const double size_limit = static_cast<double>(
+ std::numeric_limits<std::size_t>::max());
+ const std::size_t history_steps = requested_steps >= size_limit
+ ? std::numeric_limits<std::size_t>::max()
+ : static_cast<std::size_t>(std::max(1.0, requested_steps));
+ session->set_episode_history_limit(history_steps);
+ std::fprintf(stderr,
+ "viewer history: recent %.1f sim seconds (%zu records); full score retained\n",
+ sandbox_history_seconds, history_steps);
+ }
 
  InitWindow(kScreenW, kScreenH, experience_loaded
  ? tr("Robot Simu - First Contact", "Robot Simu - 初次接触")

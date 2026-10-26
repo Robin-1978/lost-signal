@@ -78,6 +78,12 @@ class ScenarioSession {
  retain_episode_history_ = enabled;
  if (!enabled) episode_.clear();
  }
+ // Interactive long runs keep a recent replay window while the independent
+ // score accumulator and last_eval_step retain full-run results. Zero keeps
+ // the entire episode for authored debriefs and explicit exports.
+ void set_episode_history_limit(std::size_t maximum_steps) {
+ episode_.set_maximum_steps(maximum_steps);
+ }
  void clear_episode() {
  episode_.clear();
  score_accumulator_.reset();

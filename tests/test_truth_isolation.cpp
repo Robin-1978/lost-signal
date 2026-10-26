@@ -83,6 +83,23 @@ int main() {
  assert(streaming.last_eval_step() != nullptr);
  assert(streaming.last_eval_step()->step == 99);
 
+ // Interactive recent-history mode is a bounded deque, not a repeatedly
+ // reallocating vector. Dropping old presentation frames cannot change the
+ // full-run aggregate score or latest diagnostic.
+ sim::scenario::ScenarioSession recent;
+ recent.set_episode_history_limit(8);
+ for (int i = 0; i < 100; ++i) recent.step_once();
+ assert(recent.episode().steps().size() == 8);
+ assert(recent.episode().maximum_steps() == 8);
+ assert(recent.episode().total_recorded() == 100);
+ assert(recent.episode().dropped_steps() == 92);
+ assert(!recent.episode().complete());
+ assert(recent.episode().steps().front().step == 92);
+ assert(recent.episode().steps().back().step == 99);
+ assert(recent.score().steps == 100);
+ assert(recent.last_eval_step() != nullptr);
+ assert(recent.last_eval_step()->step == 99);
+
   std::printf("truth_isolation ok: steps=%zu mean_pos_err=%f reward=%f\n",
               score.steps, score.mean_pos_err_m, r0);
   return 0;

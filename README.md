@@ -263,6 +263,11 @@ safety. Campaign runs keep `K` SIM truth diagnostics locked until debrief;
 the overlay never reads actor identities, future waypoints, or truth poses.
 For unattended parameter sweeps and CI, use `lost_signal_sim` directly so no
 graphics work competes with the fixed-step simulation.
+Open sandbox runs keep a deque-backed recent replay window (120 simulated
+seconds by default) while full-run score and the latest diagnostic continue to
+accumulate. Use `--history-seconds N` to choose that local window or `0` for a
+complete in-memory history. Authored campaign runs always keep the complete
+episode required for debrief and controlled A/B comparison.
 The Viewer plays presentation-only cues for physical collision, ROBOT safety
 hold/recovery, and independently accepted task completion; `--mute` disables
 them. Turbo suppresses compressed cue bursts while still synchronizing audio

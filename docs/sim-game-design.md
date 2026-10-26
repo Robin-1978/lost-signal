@@ -293,6 +293,7 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 - Headless 固定步全速运行；Viewer 提供运行时可点击的 1×/2×/4×/8×/Turbo 控件，同时支持 `--rate` 与 `--turbo`，所有倍率都只改变墙钟调度，不得改变结果。
 - Viewer 提供 `high/fast` 画质档，Turbo 在运行期间自动使用 Fast 并采用独立且有上限的单帧工作预算；阴影和 HDR 可以降级，MuJoCo 1 ms 子步、传感器采样、ROBOT cadence、物理事件和记录内容不能降级。无人值守批量实验直接使用 headless runner，避免 GPU/窗口抢占吞吐。
+- 开放沙盒的回放历史使用 deque 时间窗：默认仅保留最近 120 秒供轨迹、暂停和局部复查，淘汰旧帧是常数时间；完整累计 score 和最新诊断不随窗口丢失。`--history-seconds` 可调整窗口，`0` 显式选择全量内存历史。短战役及 A/B 为完整复盘保留全部 episode；headless 无导出时继续使用 summary-only 常量内存模式。
 - 支持 seed matrix、参数 sweep、失败即保存 replay、并发 worker 和中途 checkpoint。
 - 20 万平方米地图持续作为性能基线；大图采用局部窗口、分层或稀疏数据结构，禁止固定 12 万 cell 一类与地图面积直接冲突的魔法限制。
 - 报告 physics、sensors、robot tick、actuation、record 的 p50/p95/p99/max，并给出造成慢 tick 的模块事件。
