@@ -114,15 +114,15 @@
 - manifest 到 runtime 的字段复制已收敛到 `experience_runtime_config()`；初始章节与 campaign 跳转共用同一路径，`slam_loop` 的 `slam_only` 不会再丢失。重复 `snprintf` 已清理。
 - 定向构建通过；Experience/asset/scene/keyframe/A-B/runtime 共 10 项回归 10/10 通过，包含 v2 bundle 和两份 v4 replay round-trip、三层视图策略、首个决定预算及 startup mode。
 
-### 阶段 6 当前检查点（2026-10-27）
+### 阶段 6 完成检查点（2026-10-27）
 
-- 阶段 6 的算法/物理稳定性子阶段已完成，Viewer/音频效果仍待单独提交：
+- 阶段 6 的算法/物理稳定性与 Viewer/音频效果已完成，提交为 `cdea986 feat: drive viewer effects from physical evidence`：
  - `PhysicalAudioEvidence` 按 sim step 消费真实 wheel speed、逐轮 normal load/contact motion/slip、service brake、impact impulse/relative speed。
  - Viewer 播放 motor、rolling、slip、brake 四层循环声及由物理碰撞证据控制增益的 impact；暂停、Turbo、静音、重复帧和回放回退不会补播历史事件。
  - 2D/3D Validator 与 Safety sweep 使用连续 capsule/tube；Viewer 直接消费 ROBOT costmap、Validator 和 Safety Monitor 证据，不在绘制时重建算法结果。
  - `--lidar`、`--robot-evidence`、`--shot` 支持可复现视觉验收；HUD 明确区分 `ROBOT OBS/AI`、`ROBOT ESTIMATE` 与 `SIM PHYSICS/AUDIO`。
  - 新增无音频设备依赖的 `test_physical_audio`、`test_viewer_audio`，以及 `motor_drive.wav`、`wheel_roll.wav`、`tire_slip.wav`、`service_brake.wav`。
-- Release/Debug 定向回归已通过；`stage6-*.png` 是临时验收截图，Viewer 提交前必须删除。
+- Release/Debug 定向回归已通过；Debug 全量 CTest 78/78 通过，Release 定向 9/9 通过；临时 `stage6-*.png` 已删除。
 - 终端差速重捕获按位置误差投影选择前进/倒退 gear；低抓地斜坡的终端转向只在 ROBOT 有效姿态证据下允许由剩余位置误差推导的 crawl，默认平面/未知姿态仍保持纯旋转。
 - MuJoCo 接触求解按真实 SIM 接触几何选择：普通平面保持默认 PGS；存在非平面、粗糙或有高程的 terrain patch 时使用 elliptic Newton、`impratio=10`、50 次主迭代和显式线搜索容差。该条件不读取关卡 ID、actor 真值或 ROBOT 状态。
 - Release/Debug 的 autonomy、perception、DWA、dynamic escape/crossing、terrain、scenario、safety experience、composite、signal_town 和 20 万平方米定向回归均通过；terrain 与 industrial 均为 5/5、零碰撞。
@@ -179,5 +179,5 @@
 | 3. 算法与系统回归 | 已完成 | `2c13308` | 完整构建；定向 14/14；全量 75/75；20 万平方米、signal_town、四底盘、SLAM/回环、truth isolation 均通过 |
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
-| 6. 物理证据可视化与效果 | 算法/物理完成，Viewer 待提交 | 待提交 | Debug/Release 定向回归通过；terrain、signal_town、scenario、safety experience、composite 和 20 万平方米任务通过，Viewer/音频仍需独立提交 |
+| 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
 | 7. 模型与场景升级 | 待开始 | - | 待完成 |
