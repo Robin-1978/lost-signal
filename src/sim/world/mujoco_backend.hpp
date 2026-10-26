@@ -9,10 +9,10 @@
 // Determinism contract: fixed 1 ms substeps, single-threaded, no noise.
 // Same duties + same steps = bit-identical truth, verified by the M1
 // parity tests. Anything nondeterministic fails the backend, not the test.
-#ifdef LOST_SIGNAL_WITH_MUJOCO
 #include <array>
 #include <cmath>
 #include <cstdint>
+#ifdef LOST_SIGNAL_WITH_MUJOCO
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,6 +41,28 @@ struct MaterialZone;
 struct TerrainPatch;
 struct SupportSlab;
 struct EnvironmentKeyframe;
+
+// Typed generation for inputs that can change the compiled MuJoCo model.
+// World advances it only from model-input setters; dynamic environment,
+// actors, tasks, controls and truth never participate. Keeping it distinct
+// from the survey geometry revision prevents map-only edits from entering
+// the 1 kHz model-build path.
+struct MujocoModelRevision {
+  std::uint64_t value = 0;
+
+  friend bool operator==(const MujocoModelRevision&,
+                         const MujocoModelRevision&) = default;
+};
+
+// SIM-side performance diagnostics. Tests can enforce the constant-time
+// generation gate without depending on allocator or wall-clock noise.
+struct MujocoBuildStats {
+  std::uint64_t sync_requests = 0;
+  std::uint64_t fast_path_hits = 0;
+  std::uint64_t signature_serializations = 0;
+  std::uint64_t rebuild_attempts = 0;
+  std::uint64_t successful_rebuilds = 0;
+};
 
 // Rigid link pose expressed in the MuJoCo base-body frame. This is SIM-only
 // presentation state read from mjData::xpos/xquat after stepping; renderers
@@ -143,7 +165,8 @@ class MujocoBackend {
             const std::vector<MaterialZone>& zones,
             const std::vector<TerrainPatch>& patches,
             const std::vector<SupportSlab>& slabs,
-            std::uint64_t geometry_version, int drive_count, int steer_count);
+            MujocoModelRevision model_revision, int drive_count,
+            int steer_count);
   // One plant tick: efforts from duties (duty-implied motor force + brake
   // capacity against shaft velocity, dissipative only), gravity tilted by
   // the longitudinal grade around the current heading, 1 ms substeps.
@@ -269,6 +292,7 @@ class MujocoBackend {
   double body_pitch() const { return body_pitch_; }
  double total_mass_kg() const { return total_mass_kg_; }
  double system_com_z_m() const { return system_com_z_m_; }
+  const MujocoBuildStats& build_stats() const { return build_stats_; }
   // True 3D raycast against the compiled static scene (floor + boxes),
   // for sensor simulation. Robot geoms live in group 1 and are excluded,
   // so a sensor mounted on the body never self-hits; actors have no engine
@@ -285,10 +309,16 @@ class MujocoBackend {
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
-  // Cached build inputs; mismatch triggers a rebuild on next sync().
+  // Check the generation/layout key before inspecting model inputs. A changed
+  // key permits one signature serialization; the signature then prevents a
+  // redundant rebuild for equivalent compiled content.
+  bool has_sync_key_ = false;
+  MujocoModelRevision synced_model_revision_{};
+  int synced_drive_count_ = 0;
+  int synced_steer_count_ = 0;
   std::string built_signature_;
-  std::uint64_t built_geometry_version_ = 0;
   bool ever_built_ = false;
+  MujocoBuildStats build_stats_{};
   // Geometry needed by the per-step roller wrench.
   int base_qpos_ = -1;
   int base_dof_ = -1;
@@ -411,7 +441,7 @@ class MujocoBackend {
   void sync(const MotorParams&, const std::vector<StaticBox>&,
             const std::vector<MaterialEntry>&, const std::vector<MaterialZone>&,
             const std::vector<TerrainPatch>&, const std::vector<SupportSlab>&,
-            std::uint64_t, int, int) {}
+            MujocoModelRevision, int, int) {}
   void step(double, const MotorParams&, const std::array<double, 4>&,
             const std::array<double, 4>&, const std::array<double, 4>&, double,
             const std::vector<MaterialZone>&, const std::vector<MaterialEntry>&,
@@ -437,11 +467,13 @@ class MujocoBackend {
   double body_pitch() const { return 0.0; }
  double total_mass_kg() const { return 0.0; }
  double system_com_z_m() const { return 0.0; }
+  const MujocoBuildStats& build_stats() const { return build_stats_; }
  int casters(CasterViz*, int) const { return 0; }
  const ImpactViz& impact() const { return impact_; }
 
  private:
  ImpactViz impact_;
+  MujocoBuildStats build_stats_{};
 };
 
 #endif  // LOST_SIGNAL_WITH_MUJOCO

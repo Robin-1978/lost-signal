@@ -244,8 +244,19 @@ void MujocoBackend::sync(const MotorParams& motor,
                           const std::vector<MaterialZone>& zones,
                           const std::vector<TerrainPatch>& patches,
                           const std::vector<SupportSlab>& slabs,
-                          std::uint64_t geometry_version, int drive_count,
+ MujocoModelRevision model_revision, int drive_count,
                           int steer_count) {
+ ++build_stats_.sync_requests;
+ if (has_sync_key_ && model_revision == synced_model_revision_ &&
+ drive_count == synced_drive_count_ &&
+ steer_count == synced_steer_count_) {
+ ++build_stats_.fast_path_hits;
+ return;
+ }
+ has_sync_key_ = true;
+ synced_model_revision_ = model_revision;
+ synced_drive_count_ = drive_count;
+ synced_steer_count_ = steer_count;
   // Supported layouts mirror the actuator modes: (2,0) diff, (2,2)
   // ackermann, (4,4) swerve, (4,0) mecanum. Anything else is not
   // approximated.
@@ -279,7 +290,8 @@ void MujocoBackend::sync(const MotorParams& motor,
       return;
     }
   }
-  std::ostringstream sig;
+ ++build_stats_.signature_serializations;
+ std::ostringstream sig;
   sig << motor.free_speed_mps << "|" << motor.stall_force_N << "|"
       << motor.vehicle_mass_kg << "|" << motor.wheel_radius_m << "|"
       << motor.track_width_m << "|" << motor.wheel_base_m << "|"
@@ -340,10 +352,10 @@ void MujocoBackend::sync(const MotorParams& motor,
         << s.center_height_m << "," << s.grade_along_local_x << ";";
   }
   const std::string signature = sig.str();
-  if (ever_built_ && signature == built_signature_ &&
-      geometry_version == built_geometry_version_ && valid()) {
+ if (ever_built_ && signature == built_signature_ && valid()) {
     return;
   }
+ ++build_stats_.rebuild_attempts;
   // Preserve every compatible named joint independently. Topology changes
   // may add or remove caster and future arm joints without teleporting the
   // base or resetting wheel/steering state.
@@ -1191,8 +1203,8 @@ void MujocoBackend::sync(const MotorParams& motor,
   base_qpos_ = base_qpos;
   base_dof_ = model->jnt_dofadr[base_joint];
   built_signature_ = signature;
-  built_geometry_version_ = geometry_version;
   ever_built_ = true;
+ ++build_stats_.successful_rebuilds;
  restore_joint_state(saved_joint_state, model, data);
  {
  // Preserve a live vehicle's elevation when it is above the new contact

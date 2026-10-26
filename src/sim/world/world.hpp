@@ -71,6 +71,7 @@ struct StaticBox {
  // A stale survey may omit a real obstacle. Physics, raycast, collision,
  // and SIM evaluation still include it; only the ROBOT map prior omits it.
  bool prior_map_visible = true;
+ friend bool operator==(const StaticBox&, const StaticBox&) = default;
 };
 
 struct Actor {
@@ -92,6 +93,7 @@ struct Actor {
 struct NamedPlace {
   std::string place_id;
   double x_m = 0.0, y_m = 0.0, yaw_rad = 0.0;
+  friend bool operator==(const NamedPlace&, const NamedPlace&) = default;
 };
 
 // Authored operator/dock prior for the ROBOT map frame. This is deployment
@@ -124,6 +126,7 @@ struct MaterialEntry {
   // shallow-water surface above the ground contact plane.
   std::string surface_effect = "none";  // none, dust, mud, water
   double fluid_depth_m = 0.0;
+  friend bool operator==(const MaterialEntry&, const MaterialEntry&) = default;
 };
 
 // Rectangular ground-material override. Later entries win on overlap.
@@ -132,6 +135,7 @@ struct MaterialZone {
   std::string zone_id;
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
   std::string material_id;
+  friend bool operator==(const MaterialZone&, const MaterialZone&) = default;
 };
 
 // Authored terrain height patch (SIM-side truth). Plane + bilinear
@@ -147,6 +151,7 @@ struct TerrainPatch {
   double grade_y = 0.0;
   double grade_xy_per_m = 0.0;  // bilinear cross-slope transition
   double roughness = 0.0;       // T2: relief waveform amplitude
+  friend bool operator==(const TerrainPatch&, const TerrainPatch&) = default;
 };
 
 // Bounded oriented support slab (bridge/deck): later revisions overlay
@@ -159,6 +164,7 @@ struct SupportSlab {
   double yaw_rad = 0.0;
   double center_height_m = 0.0;
   double grade_along_local_x = 0.0;
+  friend bool operator==(const SupportSlab&, const SupportSlab&) = default;
 };
 
 // Environment keyframe: simulation-time-interpolated grip multiplier per
@@ -166,7 +172,9 @@ struct SupportSlab {
 // materials stay 1.0; ends clamp.
 struct EnvironmentKeyframe {
   double time_s = 0.0;
-  std::vector<std::pair<std::string, double>> material_grip;
+ std::vector<std::pair<std::string, double>> material_grip;
+  friend bool operator==(const EnvironmentKeyframe&,
+                         const EnvironmentKeyframe&) = default;
 };
 
 struct MotorParams {
@@ -236,6 +244,7 @@ struct MotorParams {
     double swivel_damping_Nms = 0.005;
     double swivel_friction_Nm = 0.0;
     double rolling_friction_m = 0.0005; // MuJoCo rolling-friction length
+    friend bool operator==(const SupportParams&, const SupportParams&) = default;
   };
   static constexpr int kMaxSupports = 4;
   SupportParams supports[kMaxSupports];
@@ -244,6 +253,7 @@ struct MotorParams {
   // revolution). The provider quantizes angles and differentiates; the
   // ROBOT loop closes on the quantized joints, like native hardware.
   int encoder_counts_per_revolution = 2048;
+  friend bool operator==(const MotorParams&, const MotorParams&) = default;
 };
 
 class World {
@@ -268,6 +278,10 @@ class World {
   const MotorParams& motor_params() const { return motor_; }
  double compiled_mass_kg() const { return mujoco_.total_mass_kg(); }
  double system_com_z_m() const { return mujoco_.system_com_z_m(); }
+ // SIM-only build diagnostics used to enforce the O(1) sync contract.
+  const MujocoBuildStats& mujoco_build_stats() const {
+    return mujoco_.build_stats();
+  }
   // SIM-side scenario/test hook (not a ROBOT channel): normalized parking /
   // e-stop style brake request per drive wheel, clamped to [0, 1].
   // Out-of-range wheels are ignored. Reconfiguring the motor params resets
@@ -306,40 +320,51 @@ class World {
   }
 
   void set_static_boxes(std::vector<StaticBox> boxes) {
+    if (static_boxes_ == boxes) return;
     static_boxes_ = std::move(boxes);
     ++geometry_version_;
+    ++mujoco_model_revision_.value;
   }
   const std::vector<StaticBox>& static_boxes() const { return static_boxes_; }
   std::uint64_t geometry_version() const { return geometry_version_; }
   // Authored terrain + materials (SIM-side truth, same revision discipline:
   // every setter bumps the geometry version, rebuilding engine + survey).
   void set_materials(std::vector<MaterialEntry> materials) {
+    if (materials_ == materials) return;
     materials_ = std::move(materials);
     ++geometry_version_;
+    ++mujoco_model_revision_.value;
   }
   const std::vector<MaterialEntry>& materials() const { return materials_; }
   void set_material_zones(std::vector<MaterialZone> zones) {
+    if (material_zones_ == zones) return;
     material_zones_ = std::move(zones);
     ++geometry_version_;
+    ++mujoco_model_revision_.value;
   }
   const std::vector<MaterialZone>& material_zones() const {
     return material_zones_;
   }
   void set_terrain_patches(std::vector<TerrainPatch> patches) {
+    if (terrain_patches_ == patches) return;
     terrain_patches_ = std::move(patches);
     ++geometry_version_;
+    ++mujoco_model_revision_.value;
   }
   const std::vector<TerrainPatch>& terrain_patches() const {
     return terrain_patches_;
   }
   void set_support_slabs(std::vector<SupportSlab> slabs) {
+    if (support_slabs_ == slabs) return;
     support_slabs_ = std::move(slabs);
     ++geometry_version_;
+    ++mujoco_model_revision_.value;
   }
   const std::vector<SupportSlab>& support_slabs() const {
     return support_slabs_;
   }
   void set_environment(std::vector<EnvironmentKeyframe> environment) {
+    if (environment_ == environment) return;
     environment_ = std::move(environment);
     ++geometry_version_;
   }
@@ -354,6 +379,7 @@ class World {
   }
   // Editor/scene bulk replace (SIM-side only). Mirrors set_static_boxes.
   void set_places(std::vector<NamedPlace> places) {
+    if (places_ == places) return;
     places_ = std::move(places);
     ++geometry_version_;
   }
@@ -393,6 +419,7 @@ class World {
   std::vector<NamedPlace> places_;
  std::optional<InitialPosePrior> initial_pose_prior_;
   std::uint64_t geometry_version_ = 0;
+  MujocoModelRevision mujoco_model_revision_{};
 };
 
 }  // namespace lost_signal::sim::world

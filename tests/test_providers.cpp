@@ -15,6 +15,64 @@
 int main() {
   using namespace lost_signal;
 
+#ifdef LOST_SIGNAL_WITH_MUJOCO
+ // The 1 kHz path inspects only a typed model revision + actuator layout.
+ // Serialization and compilation happen once, then only after a model input
+ // changes. Dynamic environment/place edits stay outside the compiled plant.
+ {
+ sim::world::World w;
+ robot::iface::ActuatorCommand zero;
+ zero.mode = robot::iface::ActuatorMode::kDiffDuty;
+ w.apply(zero);
+ w.prepare();
+ const auto built = w.mujoco_build_stats();
+ assert(built.sync_requests == 1);
+ assert(built.signature_serializations == 1);
+ assert(built.rebuild_attempts == 1);
+ assert(built.successful_rebuilds == 1);
+
+ for (int i = 0; i < 100; ++i) w.step(0.001);
+ const auto unchanged = w.mujoco_build_stats();
+ assert(unchanged.sync_requests == built.sync_requests + 100);
+ assert(unchanged.fast_path_hits == built.fast_path_hits + 100);
+ assert(unchanged.signature_serializations ==
+ built.signature_serializations);
+ assert(unchanged.rebuild_attempts == built.rebuild_attempts);
+
+ w.set_environment({{0.0, {{"default", 0.8}}}});
+ w.set_places({{"dock", 4.0, 2.0, 0.0}});
+ w.prepare();
+ const auto dynamic_edit = w.mujoco_build_stats();
+ assert(dynamic_edit.signature_serializations ==
+ unchanged.signature_serializations);
+ assert(dynamic_edit.rebuild_attempts == unchanged.rebuild_attempts);
+
+ const std::vector<sim::world::StaticBox> boxes = {
+ {100.0, 100.0, 101.0, 101.0, 1.0}};
+ w.set_static_boxes(boxes);
+ w.prepare();
+ const auto geometry_edit = w.mujoco_build_stats();
+ assert(geometry_edit.signature_serializations ==
+ dynamic_edit.signature_serializations + 1);
+ assert(geometry_edit.rebuild_attempts ==
+ dynamic_edit.rebuild_attempts + 1);
+ assert(geometry_edit.successful_rebuilds ==
+ dynamic_edit.successful_rebuilds + 1);
+
+ // Replacing configuration with identical content advances neither survey
+ // nor model revision, so even the one-time serializer is skipped.
+ const std::uint64_t geometry_version = w.geometry_version();
+ w.set_static_boxes(boxes);
+ w.set_motor_params(w.motor_params());
+ w.prepare();
+ const auto identical_edit = w.mujoco_build_stats();
+ assert(w.geometry_version() == geometry_version);
+ assert(identical_edit.signature_serializations ==
+ geometry_edit.signature_serializations);
+ assert(identical_edit.rebuild_attempts == geometry_edit.rebuild_attempts);
+ }
+#endif
+
   sim::world::World world;
   sim::providers::SimSensorSuite suite(&world);
   robot::app::RobotApplication app(nullptr);

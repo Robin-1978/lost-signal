@@ -50,6 +50,7 @@ void accumulate_impact(ImpactViz& aggregate, const ImpactViz& sample) {
 World::World() = default;
 
 void World::set_motor_params(const MotorParams& params) {
+  if (!(motor_ == params)) ++mujoco_model_revision_.value;
   motor_ = params;
   brake_request_ = {};
 }
@@ -99,7 +100,7 @@ void World::read_engine_truth() {
 
 void World::prepare() {
  mujoco_.sync(motor_, static_boxes_, materials_, material_zones_,
- terrain_patches_, support_slabs_, geometry_version_,
+ terrain_patches_, support_slabs_, mujoco_model_revision_,
  truth_.drive_count, truth_.steer_count);
  if (mujoco_.valid()) read_engine_truth();
 }
@@ -113,7 +114,7 @@ void World::end_fixed_transition() { aggregating_impact_ = false; }
 
 void World::step_engine(double dt_s) {
   mujoco_.sync(motor_, static_boxes_, materials_, material_zones_,
-               terrain_patches_, support_slabs_, geometry_version_,
+ terrain_patches_, support_slabs_, mujoco_model_revision_,
                truth_.drive_count, truth_.steer_count);
   if (!mujoco_.valid() || !(dt_s > 0.0)) return;
   mujoco_.step(dt_s, motor_, truth_.drive_duty, truth_.steer_duty,
