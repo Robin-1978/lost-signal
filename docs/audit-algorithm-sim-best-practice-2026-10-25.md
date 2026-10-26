@@ -105,7 +105,12 @@ plant、不会反向驱动车辆，并覆盖非法请求和过期降级。低抓
 
 ### P1-4 协方差模型仍过于简化；REP-105 状态分层已修复
 
-`FusedOdometryEstimator` 仍只有标量 position sigma 与 heading sigma，没有完整状态 covariance、IMU bias、innovation covariance、NIS/NEES。
+`FusedOdometryEstimator` 已持有完整二维 `[x,y,yaw]` covariance，并用运动
+Jacobian 将航向不确定度传播到横向位置；对完整匹配使用协方差缩放的创新门，
+对走廊/墙面等部分可观测匹配在信息矩阵的可观测子空间执行
+`delta' I delta` 门限。模糊方向不会压小 covariance，连续的局部 ridge 也不能
+绕过门限逐步拖走 `map->odom`。剩余缺口是 IMU bias 状态和按传感器模型校准的
+innovation covariance / NIS / NEES 一致性统计。
 
 **REP-105 修复状态：已完成。** estimator 现在分别持有连续 odom 状态与允许绝对定位校正的 map 状态；wheel/IMU prediction 同时推进二者，`correct_pose`、relative SLAM correction 和 operator seed 只改变 map 状态。Coordinator 只发布 `odom→base_link` 以及由两状态计算的持久 `map→odom`，不再用单 tick 的“校正前/后”临时差值。RobotDescription 中的 `world→base_link` 只作为根标记，不进入静态 TF，避免与动态链形成冲突环。回归覆盖 map jump 前后 odom 连续、`map→odom` 跳变和组合后的 map pose 一致。
 
@@ -116,9 +121,16 @@ correction 改善局部一致性，不再把每帧 tracking 当作独立绝对�
 或 pose-graph loop constraint 才能增加独立全局信息。模块回归实际触发一次
 mapless tracking correction，并断言位姿可修正而绝对 position sigma 不下降。
 
-执行跟踪也只观察连续 odom 状态，避免定位修正被误判为底盘失控。2026-10-25 验证结果：Debug 与 Release 均 59/59 通过，ROBOT/SIM 边界检查通过；异步 `signal_town` 在 984 步完成，行驶 20.68 m、0 碰撞、最大定位误差 0.285 m，robot tick p99/max 为 12.353/13.382 ms。
+执行跟踪也只观察连续 odom 状态，避免定位修正被误判为底盘失控。全局搜索
+仍只由 covariance 越过丢失门限触发；搜索进行时沿现有局部路线以声明的观测
+crawl envelope 运动，不会因正常规划仍有解而以巡航速度扩大里程计误差。
+20 万平方米 Ackermann 直达门禁由此从墙前永久恢复变为 13,506 step 完成，
+250.09 m、零碰撞、真值终点误差 0.174 m，运行中最大定位误差从 10.328 m
+降至 3.038 m；SIM 真值只用于离线验收，没有进入恢复策略。
 
-剩余修复是至少估计陀螺 bias 和二维相关 covariance，对每种 measurement 做 timestamp、frame、innovation/NIS gate。增加长走廊、重复纹理、稀疏特征、玻璃/缺测和异步传感器测试，并验证 covariance consistency，而不只看离线真值最大误差。
+剩余修复是至少估计陀螺 bias，对每种 measurement 校准 innovation
+covariance 并报告 NIS/NEES。继续增加长走廊、重复纹理、稀疏特征、玻璃/缺测
+和异步传感器测试，验证 covariance consistency，而不只看离线真值最大误差。
 
 ### P1-5 动态障碍在 raw scan 与预测层中重复表示
 

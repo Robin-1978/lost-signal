@@ -486,7 +486,7 @@ set_tests_properties(industrial_200k_mission PROPERTIES
  RUN_SERIAL TRUE
  TIMEOUT 1200)
 add_test(NAME industrial_200k_direct_mission
- COMMAND test_industrial_200k_mission --steps=15000 central_gate)
+ COMMAND test_industrial_200k_mission central_gate)
 set_tests_properties(industrial_200k_direct_mission PROPERTIES
  LABELS "long;physics"
  RUN_SERIAL TRUE

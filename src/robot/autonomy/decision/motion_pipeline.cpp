@@ -109,6 +109,23 @@ MotionDecisionResult MotionDecisionPipeline::run(
  effective.max_forward_mps =
  std::min(effective.max_forward_mps, out.behavior.max_forward_mps);
  }
+ if (observation_motion_requested) {
+ // A global recovery search owns a frozen scan while the live robot keeps
+ // moving. Let the ordinary local planner choose the path so it can retain
+ // route and obstacle context, but constrain that motion to the same declared
+ // observation envelope used by fallback recovery. Otherwise a valid route
+ // can keep the robot at cruise speed for the whole cooperative search,
+ // growing the very odometry error the search is trying to resolve. The
+ // dynamic window still enforces acceleration/deceleration reachability and
+ // every resulting trajectory still passes the independent validator.
+ effective.max_forward_mps = std::min(
+ effective.max_forward_mps, std::max(0.0, config_.recovery_speed_mps));
+ effective.max_lateral_mps = std::min(
+ effective.max_lateral_mps, std::max(0.0, config_.recovery_speed_mps));
+ effective.max_yaw_rate_radps = std::min(
+ effective.max_yaw_rate_radps,
+ std::max(0.0, config_.recovery_yaw_rate_radps));
+ }
  const LocalPlan plan = local_planner.plan(
  est, perception, prediction, local_map, route, effective);
  out.local_costmap = plan.local_costmap;

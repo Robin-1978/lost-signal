@@ -611,11 +611,43 @@ bool LocalizationSystem::try_local_correction(
  const double heading_limit = std::max(
  cfg.local_innovation_floor_rad,
  cfg.local_innovation_sigma_factor * heading_sigma);
- if (!partial_observation &&
- (!std::isfinite(innovation_m) || !std::isfinite(innovation_rad) ||
- innovation_m > position_limit || innovation_rad > heading_limit)) {
+ bool innovation_rejected =
+ !std::isfinite(innovation_m) || !std::isfinite(innovation_rad);
+ if (partial_observation && !innovation_rejected) {
+ // A ridge supplies information only in its observable subspace. Applying
+ // the full-pose Euclidean gate would reject harmless motion along the null
+ // space, while skipping the gate lets a sequence of locally plausible
+ // ridges walk the map pose across repeated walls. Gate the same innovation
+ // by the matcher's measured information instead: delta' I delta is the
+ // squared normalized residual in exactly the directions the scan claims to
+ // observe. The supervisor's existing sigma factor is therefore also the
+ // statistical acceptance radius; no distance threshold is invented here.
+ const double delta[3] = {
+ match.x_m - est.x_m,
+ match.y_m - est.y_m,
+ core::wrap_angle(match.yaw_rad - est.yaw_rad)};
+ double normalized_residual2 = 0.0;
+ for (int row = 0; row < 3; ++row) {
+ for (int column = 0; column < 3; ++column) {
+ normalized_residual2 += delta[row] *
+ match.pose_information[static_cast<std::size_t>(row * 3 + column)] *
+ delta[column];
+ }
+ }
+ const double acceptance_radius2 =
+ cfg.local_innovation_sigma_factor * cfg.local_innovation_sigma_factor;
+ innovation_rejected = !std::isfinite(normalized_residual2) ||
+ normalized_residual2 < 0.0 ||
+ normalized_residual2 > acceptance_radius2;
+ } else if (!partial_observation) {
+ innovation_rejected = innovation_rejected ||
+ innovation_m > position_limit || innovation_rad > heading_limit;
+ }
+ if (innovation_rejected) {
  supervisor_.record_local(false, match);
- action = "local_correction:innovation rejected";
+ action = partial_observation
+ ? "local_correction:partial innovation rejected"
+ : "local_correction:innovation rejected";
  return false;
  }
  if (match.pose_information_valid) {

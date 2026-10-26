@@ -201,6 +201,24 @@ int main() {
  assert(std::abs(estimator.estimate().x_m - 1.0) < 0.3);
  assert(std::abs(estimator.estimate().y_m - 0.4) < 1e-9);
 
+ // A partial ridge is still a measurement in its observable directions.
+ // A separated wall may look locally identical, but its wall-normal
+ // innovation must pass the normalized information gate before it can move
+ // map->odom. Motion along the null corridor axis remains irrelevant.
+ LocalizationSystem separated_localization;
+ separated_localization.mark_localized();
+ FusedOdometryEstimator separated_estimator;
+ separated_estimator.reset();
+ separated_estimator.seed_pose(2.0, 0.4, 0.0, 0.4, 0.1, 1);
+ RayClearingMapper separated_mapper;
+ const auto separated = separated_localization.update(
+ map, observation, observation.stamp_ns, true,
+ separated_estimator, separated_mapper);
+ assert(separated.action ==
+ "local_correction:partial innovation rejected");
+ assert(std::abs(separated_estimator.estimate().x_m - 2.0) < 1e-9);
+ assert(std::abs(separated_estimator.estimate().y_m - 0.4) < 1e-9);
+
  // A decisive global candidate entering temporal recovery must survive the
  // same wall ridge. Later scans validate the observable wall normal and yaw;
  // measured odometry owns motion along the unobservable corridor axis.

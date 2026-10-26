@@ -92,6 +92,23 @@ class HoldPlanner final : public ILocalPlanner {
  }
 };
 
+class LimitEchoPlanner final : public ILocalPlanner {
+ public:
+ void reset() override {}
+ LocalPlan plan(const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const LocalMap&, const Route&,
+ const platform::ChassisLimits& limits) override {
+ last_limits = limits;
+ LocalPlan result;
+ result.has_plan = true;
+ result.best.feasible = true;
+ result.best.forward_mps = limits.max_forward_mps;
+ result.candidates.push_back(result.best);
+ return result;
+ }
+ platform::ChassisLimits last_limits;
+};
+
 class SwitchablePlanner final : public ILocalPlanner {
  public:
  void reset() override {}
@@ -283,9 +300,28 @@ int main() {
  assert(clearance_recovery.constraint == "dynamic_clearance");
  assert(clearance_recovery.command.forward_mps < 0.0);
 
- // A supervised localization search requests observation motion only when
- // the normal planner has no accepted moving candidate. The fallback crawl
- // remains validator-approved and respects Ackermann curvature.
+ // A supervised localization search keeps ordinary route/obstacle planning,
+ // but bounds even a valid moving plan to the declared observation envelope.
+ // If no moving plan exists, the validator-approved fallback crawl remains
+ // available and respects Ackermann curvature.
+ MotionDecisionPipeline::Config observation_config;
+ observation_config.recovery_speed_mps = 0.25;
+ observation_config.recovery_yaw_rate_radps = 0.6;
+ MotionDecisionPipeline observation_pipeline(observation_config);
+ LimitEchoPlanner echo_planner;
+ const MotionDecisionResult bounded_observation = observation_pipeline.run(
+ globally_uncertain, perception, map, route, limits, limits, observation,
+ survey, estimate.stamp_ns, behavior, echo_planner, validator, controller,
+ false, true);
+ assert(!bounded_observation.command.is_safe_stop());
+ assert(bounded_observation.command.forward_mps ==
+ observation_config.recovery_speed_mps);
+ assert(echo_planner.last_limits.max_forward_mps ==
+ observation_config.recovery_speed_mps);
+ assert(echo_planner.last_limits.max_lateral_mps == 0.0);
+ assert(echo_planner.last_limits.max_yaw_rate_radps ==
+ observation_config.recovery_yaw_rate_radps);
+
  pipeline.reset();
  HoldPlanner hold_planner;
  platform::ChassisLimits ackermann_limits = limits;

@@ -308,6 +308,15 @@ route, pre-activation hold).
  the declared loss threshold starts global recovery. Recovery search and
  admission share one probability-derived joint position/heading ellipsoid,
  rather than separate map-size limits or tuned jump multipliers.
+- A geometrically ambiguous local match may contribute only the directions
+  supported by its information matrix. Its innovation is gated in that same
+  observable subspace (`delta' I delta`) before fusion, so repeated wall
+  ridges cannot walk `map->odom` while an unobservable corridor axis remains
+  under odometry authority. While a cooperative global search or temporal
+  hypothesis confirmation is active, normal route planning continues but its
+  motion envelope is bounded by the declared localization-observation crawl
+  speed. Acceleration limits, Validator and Safety still apply; the ROBOT does
+  not stop blindly and does not keep cruising while a frozen scan is resolved.
 - `FusedOdometryEstimator` maintains full planar `[x,y,yaw]` covariance in
  both REP-105 map and continuous odom estimates. The motion Jacobian projects
  heading uncertainty into cross-track position; independent process-noise
