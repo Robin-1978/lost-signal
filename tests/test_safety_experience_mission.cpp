@@ -74,11 +74,14 @@ int main() {
  const auto* last = session.last_eval_step();
  if (last != nullptr &&
  (!session.objectives_done() || !session.objectives_passed() ||
- score.collision_steps != 0)) {
+ score.collision_steps != 0 || score.min_clearance_m <
+ robot_config.navigation.clearance_margin_m)) {
  std::fprintf(stderr,
  "safety_lab done=%d passed=%d truth=(%.3f,%.3f,%.3f) "
  "estimate=(%.3f,%.3f,%.3f) goal=%d/%s safety=%s "
- "decision=%s/%s cmd=(%.3f,%.3f) est_vel=(%.3f,%.3f) "
+ "decision=%s/%s cmd=(%.3f,%.3f) proposed=(%.3f,%.3f) "
+ "target=(%.3f,%.3f) candidates=%zu brake=%d/%.3f "
+ "est_vel=(%.3f,%.3f) "
  "truth_vel=(%.3f,%.3f) slip=%d/%d "
  "clear=%.3f collisions=%llu steps=%zu/%llu\n",
  session.objectives_done(), session.objectives_passed(),
@@ -89,7 +92,13 @@ int main() {
  last->diag.safety_reason.c_str(),
  last->diag.evidence.constraint_code.c_str(),
  last->diag.evidence.reason_code.c_str(), last->cmd.forward_mps,
- last->cmd.yaw_rate_radps, last->diag.estimate.forward_mps,
+ last->cmd.yaw_rate_radps, last->diag.evidence.proposed_speed_mps,
+ last->diag.evidence.proposed_yaw_rate_radps,
+ last->diag.evidence.target_speed_mps,
+ last->diag.evidence.target_yaw_rate_radps,
+ last->diag.evidence.moving_candidate_count,
+ last->diag.braking_active, last->diag.braking_distance_m,
+ last->diag.estimate.forward_mps,
  last->diag.estimate.yaw_rate_radps, last->truth_after.forward_mps,
  last->truth_after.yaw_rate_radps,
  last->truth_after.drive_slipping[0],

@@ -39,8 +39,8 @@
  {"instance_id":"south_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"south_wall","position_m":[3.5,-3.175,0.0],"scale":[2.57,1.0,1.0],"yaw_deg":0.0},
  {"instance_id":"west_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"west_wall","position_m":[-1.175,0.0,0.0],"scale":[1.71,1.0,1.0],"yaw_deg":90.0},
  {"instance_id":"east_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"east_wall","position_m":[8.175,0.0,0.0],"scale":[1.71,1.0,1.0],"yaw_deg":90.0},
- {"instance_id":"unreported_crates_visual","asset_id":"environment.research_base.maintenance_crates","collision_box_id":"unreported_crates","position_m":[3.3,0.375,0.0],"scale":[0.75,0.44,1.0],"yaw_deg":0.0},
+ {"instance_id":"unreported_crates_visual","asset_id":"environment.research_base.maintenance_crates","collision_box_id":"unreported_crates","position_m":[3.3,0.475,0.0],"scale":[0.75,0.44,1.0],"yaw_deg":0.0},
  {"instance_id":"start_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[0.0,0.0,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
- {"instance_id":"exit_marker","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[6.5,0.0,0.004],"scale":[0.7,0.7,1.0],"yaw_deg":90.0}
+ {"instance_id":"exit_marker","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[6.5,0.0,0.004],"scale":[0.7,0.7,1.0],"yaw_deg":5.73}
  ]
 }

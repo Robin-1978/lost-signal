@@ -49,9 +49,9 @@
  "impact_material": "wood",
  "prior_map_visible": false,
  "x0": 3.0,
- "y0": 0.1,
+ "y0": 0.2,
  "x1": 3.6,
- "y1": 0.65,
+ "y1": 0.75,
  "height_m": 0.95
  }
  ],
@@ -60,7 +60,7 @@
  "place_id": "safety_exit",
  "x_m": 6.5,
  "y_m": 0.0,
- "yaw_rad": 0.0
+ "yaw_rad": 0.1
  }
  ],
  "materials": [],
