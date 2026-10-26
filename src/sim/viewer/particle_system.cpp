@@ -35,6 +35,156 @@ ParticleKind effect_for(const FrameWheel& wheel,
 
 } // namespace
 
+SurfaceTraceSystem::SurfaceTraceSystem(
+ SurfaceTracePresentationConfig config)
+ : config_(config), traces_(config.capacity) {
+ if (config.capacity == 0 || !std::isfinite(config.sim_step_s) ||
+ !(config.sim_step_s > 0.0) ||
+ !std::isfinite(config.minimum_spacing_m) ||
+ !(config.minimum_spacing_m > 0.0) ||
+ !std::isfinite(config.maximum_continuous_gap_m) ||
+ config.maximum_continuous_gap_m < config.minimum_spacing_m ||
+ !std::isfinite(config.loose_motion_threshold_mps) ||
+ config.loose_motion_threshold_mps < 0.0 ||
+ !std::isfinite(config.rubber_slip_threshold_mps) ||
+ config.rubber_slip_threshold_mps < 0.0 ||
+ !std::isfinite(config.reference_activity_mps) ||
+ !(config.reference_activity_mps > 0.0) ||
+ !std::isfinite(config.width_scale) || !(config.width_scale > 0.0) ||
+ !std::isfinite(config.surface_offset_m) || config.surface_offset_m < 0.0 ||
+ !std::isfinite(config.dust_lifetime_s) ||
+ !(config.dust_lifetime_s > 0.0) ||
+ !std::isfinite(config.mud_lifetime_s) ||
+ !(config.mud_lifetime_s > 0.0) ||
+ !std::isfinite(config.water_lifetime_s) ||
+ !(config.water_lifetime_s > 0.0) ||
+ !std::isfinite(config.rubber_lifetime_s) ||
+ !(config.rubber_lifetime_s > 0.0)) {
+ throw std::invalid_argument("invalid surface trace presentation config");
+ }
+}
+
+void SurfaceTraceSystem::clear() {
+ for (auto& trace : traces_) trace = SurfaceTrace{};
+ anchors_.fill(ContactAnchor{});
+ replacement_cursor_ = 0;
+ last_step_ = 0;
+ has_step_ = false;
+}
+
+std::size_t SurfaceTraceSystem::active_count() const {
+ return static_cast<std::size_t>(std::count_if(
+ traces_.begin(), traces_.end(),
+ [](const SurfaceTrace& trace) { return trace.active; }));
+}
+
+std::size_t SurfaceTraceSystem::acquire_slot() {
+ for (std::size_t index = 0; index < traces_.size(); ++index) {
+ const std::size_t slot = (replacement_cursor_ + index) % traces_.size();
+ if (!traces_[slot].active) {
+ replacement_cursor_ = (slot + 1) % traces_.size();
+ return slot;
+ }
+ }
+ const std::size_t slot = replacement_cursor_;
+ replacement_cursor_ = (replacement_cursor_ + 1) % traces_.size();
+ return slot;
+}
+
+void SurfaceTraceSystem::advance(const Frame& frame) {
+ if (has_step_ && frame.step == last_step_) return;
+ if (has_step_ && frame.step < last_step_) clear();
+ const std::uint64_t elapsed_steps = has_step_ && frame.step > last_step_
+ ? frame.step - last_step_ : 1;
+ const double elapsed_s = elapsed_steps * config_.sim_step_s;
+ for (auto& trace : traces_) {
+ if (!trace.active) continue;
+ trace.age_s += elapsed_s;
+ if (trace.age_s >= trace.lifetime_s) trace.active = false;
+ }
+
+ for (std::size_t index = 0; index < anchors_.size(); ++index) {
+ ContactAnchor& anchor = anchors_[index];
+ if (index >= frame.body.wheels.size()) {
+ anchor.valid = false;
+ continue;
+ }
+ const FrameWheel& wheel = frame.body.wheels[index];
+ if (!wheel.contact_valid || !(wheel.contact_normal_force_N > 0.0)) {
+ anchor.valid = false;
+ continue;
+ }
+
+ const double motion_mps = std::hypot(
+ wheel.contact_motion_x_mps, wheel.contact_motion_y_mps);
+ const double slip_mps = std::hypot(
+ wheel.contact_slip_x_mps, wheel.contact_slip_y_mps);
+ SurfaceTraceKind kind = SurfaceTraceKind::kDust;
+ double activity_mps = motion_mps;
+ double lifetime_s = config_.dust_lifetime_s;
+ bool enabled = false;
+ if (wheel.contact_surface_effect == "water" &&
+ wheel.contact_fluid_depth_m > 0.0 &&
+ motion_mps >= config_.loose_motion_threshold_mps) {
+ kind = SurfaceTraceKind::kWater;
+ lifetime_s = config_.water_lifetime_s;
+ enabled = true;
+ } else if (wheel.contact_surface_effect == "mud" &&
+ motion_mps >= config_.loose_motion_threshold_mps) {
+ kind = SurfaceTraceKind::kMud;
+ lifetime_s = config_.mud_lifetime_s;
+ enabled = true;
+ } else if (wheel.contact_surface_effect == "dust" &&
+ motion_mps >= config_.loose_motion_threshold_mps) {
+ kind = SurfaceTraceKind::kDust;
+ enabled = true;
+ } else if (wheel.slipping &&
+ wheel.slip_speed_mps >= config_.rubber_slip_threshold_mps) {
+ kind = SurfaceTraceKind::kRubber;
+ activity_mps = slip_mps;
+ lifetime_s = config_.rubber_lifetime_s;
+ enabled = true;
+ }
+ if (!enabled) {
+ anchor.valid = false;
+ continue;
+ }
+
+ const double fluid_surface_m = kind == SurfaceTraceKind::kWater
+ ? wheel.contact_fluid_depth_m : 0.0;
+ const std::array<double, 3> contact{
+ wheel.contact_x_m, wheel.contact_y_m,
+ wheel.contact_z_m + fluid_surface_m + config_.surface_offset_m};
+ if (!anchor.valid || anchor.kind != kind) {
+ anchor = {true, kind, contact};
+ continue;
+ }
+ const double distance_m = std::hypot(
+ contact[0] - anchor.position_m[0],
+ contact[1] - anchor.position_m[1]);
+ if (distance_m < config_.minimum_spacing_m) continue;
+ if (distance_m > config_.maximum_continuous_gap_m) {
+ anchor.position_m = contact;
+ continue;
+ }
+
+ SurfaceTrace trace;
+ trace.kind = kind;
+ trace.start_m = anchor.position_m;
+ trace.end_m = contact;
+ trace.half_width_m = std::max(
+ 0.002, wheel.half_width_m * config_.width_scale);
+ trace.intensity = std::clamp(
+ activity_mps / config_.reference_activity_mps, 0.18, 1.0);
+ trace.lifetime_s = lifetime_s;
+ trace.active = true;
+ traces_[acquire_slot()] = trace;
+ anchor.position_m = contact;
+ }
+ last_step_ = frame.step;
+ has_step_ = true;
+}
+
 ParticleSystem::ParticleSystem(ParticlePresentationConfig config)
  : config_(config), particles_(config.capacity) {
  if (config.capacity == 0 || !std::isfinite(config.sim_step_s) ||

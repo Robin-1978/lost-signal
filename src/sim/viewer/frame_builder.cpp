@@ -113,7 +113,8 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  w.steer_rad = physical.steer_rad;
  w.spin_rad = physical.spin_rad;
  w.spin_rate_radps = physical.spin_rate_radps;
-      w.radius_m = world.motor_params().wheel_radius_m;
+ w.radius_m = world.motor_params().wheel_radius_m;
+ w.half_width_m = world.motor_params().tire_half_width_m;
  w.slipping = physical.slipping;
  w.driven = physical.driven;
  w.duty = i < static_cast<std::size_t>(nd) ? t.drive_duty[i] : 0.0;

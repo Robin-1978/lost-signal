@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <stdexcept>
@@ -27,6 +28,7 @@ lost_signal::sim::viewer::Frame contact_frame(
  wheel.slipping = slipping;
  wheel.steer_rad = -0.1;
  wheel.radius_m = 0.1;
+ wheel.half_width_m = 0.04;
  wheel.contact_material_id = material;
  wheel.contact_surface_effect = surface_effect;
  wheel.contact_fluid_depth_m = fluid_depth_m;
@@ -193,5 +195,71 @@ int main() {
  assert(a.velocity_mps[axis] == b.velocity_mps[axis]);
  }
  }
+
+ // Persistent surface traces use consecutive physical contact points. Dry
+ // rolling leaves no mark; loose material and confirmed paved slip do.
+ SurfaceTracePresentationConfig trace_config;
+ trace_config.capacity = 8;
+ SurfaceTraceSystem dust_traces(trace_config);
+ Frame dust_start = contact_frame(200, "gravel", false, "dust");
+ dust_start.body.wheels[0].contact_x_m = 1.0;
+ dust_start.body.wheels[0].contact_y_m = 2.0;
+ dust_traces.advance(dust_start);
+ assert(dust_traces.active_count() == 0);
+ Frame dust_end = dust_start;
+ dust_end.step = 201;
+ dust_end.body.wheels[0].contact_x_m = 1.05;
+ dust_traces.advance(dust_end);
+ assert(dust_traces.active_count() == 1);
+ const auto dust_mark = std::find_if(
+ dust_traces.traces().begin(), dust_traces.traces().end(),
+ [](const SurfaceTrace& trace) { return trace.active; });
+ assert(dust_mark != dust_traces.traces().end());
+ assert(dust_mark->kind == SurfaceTraceKind::kDust);
+ assert(std::abs(dust_mark->start_m[0] - 1.0) < 1e-12);
+ assert(std::abs(dust_mark->end_m[0] - 1.05) < 1e-12);
+ assert(std::abs(dust_mark->half_width_m - 0.0352) < 1e-12);
+ dust_traces.advance(dust_end);
+ assert(dust_traces.active_count() == 1);
+
+ SurfaceTraceSystem dry_traces(trace_config);
+ Frame dry_start = contact_frame(210, "paved");
+ Frame dry_end = dry_start;
+ dry_end.step = 211;
+ dry_end.body.wheels[0].contact_x_m += 0.05;
+ dry_traces.advance(dry_start);
+ dry_traces.advance(dry_end);
+ assert(dry_traces.active_count() == 0);
+
+ SurfaceTraceSystem skid_traces(trace_config);
+ Frame skid_start = contact_frame(220, "paved", true);
+ Frame skid_end = skid_start;
+ skid_end.step = 221;
+ skid_end.body.wheels[0].contact_y_m += 0.05;
+ skid_traces.advance(skid_start);
+ skid_traces.advance(skid_end);
+ assert(skid_traces.active_count() == 1);
+ assert(std::any_of(
+ skid_traces.traces().begin(), skid_traces.traces().end(),
+ [](const SurfaceTrace& trace) {
+ return trace.active && trace.kind == SurfaceTraceKind::kRubber;
+ }));
+
+ SurfaceTraceSystem wet_traces(trace_config);
+ Frame wet_start = contact_frame(
+ 230, "standing_water", false, "water", 0.02);
+ Frame wet_end = wet_start;
+ wet_end.step = 231;
+ wet_end.body.wheels[0].contact_x_m += 0.05;
+ wet_traces.advance(wet_start);
+ wet_traces.advance(wet_end);
+ assert(std::any_of(
+ wet_traces.traces().begin(), wet_traces.traces().end(),
+ [](const SurfaceTrace& trace) {
+ return trace.active && trace.kind == SurfaceTraceKind::kWater &&
+ trace.start_m[2] >= 0.042;
+ }));
+ wet_traces.advance(dust_start); // replay seek clears historical marks
+ assert(wet_traces.active_count() == 0);
  return 0;
 }

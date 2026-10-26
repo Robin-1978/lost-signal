@@ -124,7 +124,8 @@ struct FrameWheel {
   double x_m = 0.0, y_m = 0.0;  // module position in the base frame
   double steer_rad = 0.0;       // module yaw (fixed wheels read 0)
   double spin_rad = 0.0;        // live joint angle (turns visibly)
-  double radius_m = 0.1;
+ double radius_m = 0.1;
+ double half_width_m = 0.04;
   bool slipping = false;        // engine traction flag: SIM debug/effects only
   // Mecanum rollers are NOT simulated state (analytic wrench, rollers not
   // meshed): static 45-degree tread stripes, honest decoration only.

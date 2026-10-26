@@ -57,6 +57,8 @@ using lost_signal::sim::viewer::ExperienceManifest;
 using lost_signal::sim::viewer::ExperiencePhase;
 using lost_signal::sim::viewer::ParticleKind;
 using lost_signal::sim::viewer::ParticleSystem;
+using lost_signal::sim::viewer::SurfaceTraceKind;
+using lost_signal::sim::viewer::SurfaceTraceSystem;
 using lost_signal::sim::viewer::ReviewKeyframe;
 using lost_signal::sim::viewer::SceneInstance;
 using lost_signal::sim::viewer::SceneManifest;
@@ -907,6 +909,8 @@ Quaternion asset_frame_rotation(Quaternion world_rotation) {
  QuaternionMultiply(world_rotation, asset_to_world));
 }
 
+inline Vector3 to_raylib(double x_m, double y_m, double z_m);
+
 void draw_motion_particles_3d(const ParticleSystem& particles,
  const Camera3D& camera, const VisualAssets* assets) {
  BeginBlendMode(BLEND_ALPHA);
@@ -948,6 +952,46 @@ void draw_motion_particles_3d(const ParticleSystem& particles,
  } else {
  DrawSphere(position, size * (water ? 0.45f : 0.65f), tint);
  }
+ }
+ EndBlendMode();
+}
+
+void draw_surface_traces_3d(const SurfaceTraceSystem& traces) {
+ BeginBlendMode(BLEND_ALPHA);
+ for (const auto& trace : traces.traces()) {
+ if (!trace.active || !(trace.lifetime_s > 0.0)) continue;
+ const double dx = trace.end_m[0] - trace.start_m[0];
+ const double dy = trace.end_m[1] - trace.start_m[1];
+ const double length_m = std::hypot(dx, dy);
+ if (!(length_m > 1e-9)) continue;
+ const double side_x = -dy / length_m * trace.half_width_m;
+ const double side_y = dx / length_m * trace.half_width_m;
+ const float fade = static_cast<float>(std::clamp(
+ 1.0 - trace.age_s / trace.lifetime_s, 0.0, 1.0));
+ const unsigned char alpha = static_cast<unsigned char>(std::clamp(
+ 190.0 * trace.intensity * fade, 0.0, 190.0));
+ Color color{82, 78, 72, alpha};
+ if (trace.kind == SurfaceTraceKind::kDust) {
+ color = {156, 128, 82, static_cast<unsigned char>(alpha * 0.72)};
+ } else if (trace.kind == SurfaceTraceKind::kMud) {
+ color = {91, 60, 38, alpha};
+ } else if (trace.kind == SurfaceTraceKind::kWater) {
+ color = {78, 166, 188, static_cast<unsigned char>(alpha * 0.54)};
+ }
+ const Vector3 a = to_raylib(
+ trace.start_m[0] + side_x, trace.start_m[1] + side_y,
+ trace.start_m[2]);
+ const Vector3 b = to_raylib(
+ trace.start_m[0] - side_x, trace.start_m[1] - side_y,
+ trace.start_m[2]);
+ const Vector3 c = to_raylib(
+ trace.end_m[0] - side_x, trace.end_m[1] - side_y,
+ trace.end_m[2]);
+ const Vector3 d = to_raylib(
+ trace.end_m[0] + side_x, trace.end_m[1] + side_y,
+ trace.end_m[2]);
+ DrawTriangle3D(a, b, c, color);
+ DrawTriangle3D(a, c, d, color);
  }
  EndBlendMode();
 }
@@ -1785,6 +1829,7 @@ inline bool screen_to_ground_3d(const Camera3D& cam, Vector2 mouse,
 void draw_frame_3d(const Frame& f,
                    const lost_signal::sim::world::World& world,
  const Camera3D& camera, const ParticleSystem& particles,
+ const SurfaceTraceSystem& surface_traces,
  bool show_lidar, bool show_estimate,
  bool show_actor_routes, bool show_places,
  const VisualAssets* assets = nullptr,
@@ -2466,8 +2511,10 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
   // Particle positions are already in world coordinates. Draw only after
   // leaving the robot transform so moving/turning cannot transform them
   // twice.
- if (presentation_effects)
+ if (presentation_effects) {
+ draw_surface_traces_3d(surface_traces);
  draw_motion_particles_3d(particles, camera, assets);
+ }
 }
 
 bool render_shadow_map(const Frame& frame,
@@ -2508,8 +2555,10 @@ bool render_shadow_map(const Frame& frame,
  const Matrix light_projection = rlGetMatrixProjection();
  BeginShaderMode(assets.lighting);
  ParticleSystem no_particles;
+ SurfaceTraceSystem no_surface_traces;
  draw_frame_3d(frame, world, light_camera, no_particles,
- false, false, false, false, &assets, scene, lidar_mount, false);
+ no_surface_traces, false, false, false, false, &assets, scene,
+ lidar_mount, false);
  EndShaderMode();
  EndMode3D();
  EndTextureMode();
@@ -2522,7 +2571,8 @@ bool render_shadow_map(const Frame& frame,
 
 bool draw_frame_3d_postprocessed(const Frame& frame,
  const lost_signal::sim::world::World& world, const Camera3D& camera,
- const ParticleSystem& particles, bool show_lidar, bool show_estimate,
+ const ParticleSystem& particles, const SurfaceTraceSystem& surface_traces,
+ bool show_lidar, bool show_estimate,
  bool show_actor_routes, bool show_places, VisualAssets& assets,
  const SceneManifest* scene,
  const lost_signal::sim::viewer::LidarMount* lidar_mount) {
@@ -2550,8 +2600,9 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
  ClearBackground(scene_background(scene));
  BeginMode3D(camera);
  BeginShaderMode(assets.lighting);
- draw_frame_3d(frame, world, camera, particles, show_lidar, show_estimate,
- show_actor_routes, show_places, &assets, scene, lidar_mount);
+ draw_frame_3d(frame, world, camera, particles, surface_traces, show_lidar,
+ show_estimate, show_actor_routes, show_places, &assets, scene,
+ lidar_mount);
  EndShaderMode();
  EndMode3D();
  EndTextureMode();
@@ -2631,7 +2682,8 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
 
 void draw_frame_3d_direct(const Frame& frame,
  const lost_signal::sim::world::World& world, const Camera3D& camera,
- const ParticleSystem& particles, bool show_lidar, bool show_estimate,
+ const ParticleSystem& particles, const SurfaceTraceSystem& surface_traces,
+ bool show_lidar, bool show_estimate,
  bool show_actor_routes, bool show_places, VisualAssets& assets,
  const SceneManifest* scene,
  const lost_signal::sim::viewer::LidarMount* lidar_mount) {
@@ -2639,8 +2691,9 @@ void draw_frame_3d_direct(const Frame& frame,
  configure_scene_lighting(assets, scene, frame, camera);
  BeginMode3D(camera);
  if (IsShaderValid(assets.lighting)) BeginShaderMode(assets.lighting);
- draw_frame_3d(frame, world, camera, particles, show_lidar, show_estimate,
- show_actor_routes, show_places, &assets, scene, lidar_mount);
+ draw_frame_3d(frame, world, camera, particles, surface_traces, show_lidar,
+ show_estimate, show_actor_routes, show_places, &assets, scene,
+ lidar_mount);
  if (IsShaderValid(assets.lighting)) EndShaderMode();
  EndMode3D();
 }
@@ -2936,6 +2989,7 @@ int main(int argc, char** argv) {
  }
  float follow_base_distance_m = cam_st.dist_m;
  ParticleSystem motion_particles;
+ SurfaceTraceSystem surface_traces;
  std::string experience_action_error;
  const auto reset_experience_presentation = [&]() {
  experience_flow = std::make_unique<ExperienceFlow>(
@@ -2946,6 +3000,7 @@ int main(int argc, char** argv) {
  experiment_ui = ExperimentUiState{};
  experience_hit_regions.clear();
  motion_particles.clear();
+ surface_traces.clear();
  const double requested_rate = playback.requested_rate();
  const bool turbo = playback.turbo();
  auto reset_playback_config = playback_config;
@@ -3383,16 +3438,16 @@ int main(int argc, char** argv) {
  if (active_quality == RenderQuality::kHigh &&
  !draw_frame_3d_postprocessed(
  preview, session->setup_world(), walkaround.camera,
- motion_particles, false, false, false, false, visual_assets,
+ motion_particles, surface_traces, false, false, false, false, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
  draw_frame_3d_direct(
  preview, session->setup_world(), walkaround.camera,
- motion_particles, false, false, false, false, visual_assets,
+ motion_particles, surface_traces, false, false, false, false, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  } else if (active_quality == RenderQuality::kFast) {
  draw_frame_3d_direct(
  preview, session->setup_world(), walkaround.camera,
- motion_particles, false, false, false, false, visual_assets,
+ motion_particles, surface_traces, false, false, false, false, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
  const Vector2 marker = GetWorldToScreen(
@@ -3451,6 +3506,7 @@ int main(int argc, char** argv) {
  if (!historical_frame.has_value()) continue;
  const sim::viewer::Frame& frame = *historical_frame;
  motion_particles.advance(frame);
+ surface_traces.advance(frame);
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.
@@ -3493,16 +3549,16 @@ int main(int argc, char** argv) {
  ? RenderQuality::kFast : render_quality;
  if (active_quality == RenderQuality::kHigh &&
  !draw_frame_3d_postprocessed(
- frame, session->setup_world(), cam, motion_particles,
+ frame, session->setup_world(), cam, motion_particles, surface_traces,
  show_lidar, show_estimate, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
  draw_frame_3d_direct(
- frame, session->setup_world(), cam, motion_particles,
+ frame, session->setup_world(), cam, motion_particles, surface_traces,
  show_lidar, show_estimate, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  } else if (active_quality == RenderQuality::kFast) {
  draw_frame_3d_direct(
- frame, session->setup_world(), cam, motion_particles,
+ frame, session->setup_world(), cam, motion_particles, surface_traces,
  show_lidar, show_estimate, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
