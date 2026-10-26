@@ -38,6 +38,9 @@ int main() {
  assert(experience.walkaround.front().required);
  assert(!experience.walkaround[1].required);
  assert(experience.walkaround[2].required);
+ const std::size_t english_briefing_count = experience.briefing.size();
+ const std::size_t english_walkaround_count = experience.walkaround.size();
+ const std::size_t english_experiment_count = experience.experiments.size();
  assert(experience.experiments.size() == 1);
  assert(experience.experiments.front().controlled_variable ==
  "lidar.scan_period_s");
@@ -61,6 +64,9 @@ int main() {
  experience, &error));
  assert(experience.title == "初次接触：精确停靠");
  assert(experience.walkaround.front().title == "驱动轮 / 牵引力");
+ assert(experience.briefing.size() == english_briefing_count);
+ assert(experience.walkaround.size() == english_walkaround_count);
+ assert(experience.experiments.size() == english_experiment_count);
  assert(std::filesystem::path(experience.next_experience_path).filename() ==
  "safety_unknown_obstacle.json");
 

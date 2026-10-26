@@ -13,10 +13,9 @@
  "objectives": ["glass_door"],
  "time_limit_steps": 1200,
  "briefing": [
- "Drive wheels create traction; passive casters carry load and swivel in response to motion, friction, trail, and bearing damping.",
- "The LiDAR reports timed ranges from its mounted sensor frame. It does not report world truth.",
- "The robot decides arrival from its own estimate; it never receives the physical truth pose.",
- "Reach the marked stop pose at the glass calibration gate and remain stable while SIM verifies the physical result independently."
+ "MISSION: stop stably at the glass calibration gate with zero collisions.",
+ "INSPECT: click the real 3D drive wheel and LiDAR. The wheel rolls without steering; LiDAR measures timed surface ranges.",
+ "PROVE: ROBOT declares arrival from its estimate; SIM independently verifies the physical stop."
  ],
  "walkaround": [
  {"component_id":"drive_wheel","title":"DRIVE WHEELS / TRACTION","lesson":"Each drive wheel has one rolling joint. Differential steering comes from left-right wheel speed, so these wheels never swivel like steering wheels.","required":true},

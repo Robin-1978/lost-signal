@@ -76,6 +76,7 @@ class ExperienceFlow {
 
  void inspect_previous();
  void inspect_next();
+ void focus(std::size_t index);
  void inspect(std::size_t index);
  bool continue_to_prediction();
  bool select_choice(std::size_t choice_index,

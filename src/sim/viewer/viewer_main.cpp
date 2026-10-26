@@ -49,6 +49,7 @@ namespace {
 using lost_signal::sim::viewer::Frame;
 using lost_signal::sim::viewer::FrameBody;
 using lost_signal::sim::viewer::FrameLinkPose;
+using lost_signal::sim::viewer::FramePlace;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
@@ -1120,6 +1121,7 @@ struct ExperimentUiState {
 };
 
 struct ExperienceHitRegions {
+ Rectangle world_hotspot{};
  Rectangle previous{};
  Rectangle next{};
  Rectangle primary{};
@@ -1129,6 +1131,7 @@ struct ExperienceHitRegions {
  std::vector<Rectangle> choices;
 
  void clear() {
+ world_hotspot = {};
  previous = {};
  next = {};
  primary = {};
@@ -1319,7 +1322,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  if (phase == ExperiencePhase::kRunning) {
  const float width = 370.0f;
  const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
- DrawRectangleRounded({x, 58.0f, width, 410.0f}, 0.04f, 8, kPanelSoft);
+ DrawRectangleRounded({x, 58.0f, width, 450.0f}, 0.04f, 8, kPanelSoft);
  draw_ui_text(tr("LIVE EVIDENCE / AUTHORITY", "实时证据 / 数据权限"),
  static_cast<int>(x + 18), 74, 14, kCyan);
  float y = 101.0f;
@@ -1338,6 +1341,20 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  const auto& observation = frame->observation;
    const auto& estimate = frame->estimate;
    const auto& decision = frame->decision;
+ const double task_time_s = std::max({
+ 0.0, observation.stamp_s, estimate.stamp_s, decision.stamp_s});
+ const FramePlace* active_place = nullptr;
+ for (const auto& place : frame->places) {
+ if (!place.reached) {
+ active_place = &place;
+ break;
+ }
+ }
+ const double goal_distance_m =
+ estimate.valid && active_place != nullptr
+ ? std::hypot(active_place->x_m - estimate.map_x_m,
+ active_place->y_m - estimate.map_y_m)
+ : -1.0;
  const char* stage = tr("OBSERVE", "观察");
    if (observation.accepted && observation.scan_valid) {
  stage = !estimate.valid ? tr("ESTIMATE", "估计")
@@ -1351,6 +1368,17 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  draw_ui_text(stage, static_cast<int>(x + 18), static_cast<int>(y), 20,
     kAmber);
    y += 31.0f;
+ draw_ui_text(tr("GAME / TASK", "游戏 / 当前任务"),
+ static_cast<int>(x + 18), static_cast<int>(y), 13, kAmber);
+ if (goal_distance_m >= 0.0) {
+ std::snprintf(line, sizeof(line), "%s %.2f m t %.1f s",
+ active_place->place_id.c_str(), goal_distance_m, task_time_s);
+ } else {
+ std::snprintf(line, sizeof(line), "target -- t %.1f s", task_time_s);
+ }
+ draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y + 19),
+ 14, kText);
+ y += 48.0f;
  draw_ui_text(tr("ROBOT / OBSERVATION", "机器人 / 传感器观测"),
  static_cast<int>(x + 18),
  static_cast<int>(y), 13, kCyan);
@@ -3698,7 +3726,16 @@ int main(int argc, char** argv) {
  const bool clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
  const Vector2 pointer = GetMousePosition();
  if (experience_flow->phase() == ExperiencePhase::kBriefing) {
- if (IsKeyPressed(KEY_ENTER) ||
+ const bool hotspot_clicked = clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.world_hotspot);
+ if (hotspot_clicked) {
+ experience_flow->inspect(experience_flow->walkaround_index());
+ } else if (IsKeyPressed(KEY_ENTER) &&
+ !experience_flow->walkaround_visited(
+ experience_flow->walkaround_index())) {
+ // Keyboard/gamepad accessibility path for the same explicit inspection.
+ experience_flow->inspect(experience_flow->walkaround_index());
+ } else if (IsKeyPressed(KEY_ENTER) ||
  (clicked && CheckCollisionPointRec(
  pointer, experience_hit_regions.primary))) {
  experience_flow->continue_to_prediction();
@@ -3708,7 +3745,7 @@ int main(int argc, char** argv) {
  index < experience_hit_regions.walkaround.size(); ++index) {
  if (CheckCollisionPointRec(
  pointer, experience_hit_regions.walkaround[index])) {
- experience_flow->inspect(index);
+ experience_flow->focus(index);
  break;
  }
  }
@@ -4019,6 +4056,7 @@ int main(int argc, char** argv) {
  ClearBackground(view3d ? scene_background(
  scene_loaded ? &visual_scene : nullptr)
  : Color{18, 31, 34, 255});
+ Rectangle projected_world_hotspot{};
  if (view3d) {
  std::string component_id = "chassis";
  if (!experience.walkaround.empty()) {
@@ -4051,10 +4089,18 @@ int main(int argc, char** argv) {
  walkaround.focus, walkaround.camera);
  if (marker.x >= 0.0f && marker.x < GetScreenWidth() &&
  marker.y >= 0.0f && marker.y < GetScreenHeight()) {
+ const Rectangle hotspot{marker.x - 28.0f, marker.y - 28.0f,
+ 56.0f, 56.0f};
+ projected_world_hotspot = hotspot;
+ DrawCircle(static_cast<int>(marker.x), static_cast<int>(marker.y),
+ 12.0f, Color{55, 218, 202, 45});
  DrawCircleLines(static_cast<int>(marker.x), static_cast<int>(marker.y),
  19.0f, Color{55, 218, 202, 230});
  DrawCircleLines(static_cast<int>(marker.x), static_cast<int>(marker.y),
  25.0f, Color{55, 218, 202, 110});
+ draw_ui_text(tr("CLICK PART", "点击部件"),
+ static_cast<int>(marker.x + 31.0f),
+ static_cast<int>(marker.y - 8.0f), 12, Color{55, 218, 202, 255});
  }
  } else {
  draw_frame_2d(preview, view, false, false, false);
@@ -4072,6 +4118,13 @@ int main(int argc, char** argv) {
  false, false, experience_action_error,
  true,
  &experience_hit_regions);
+
+ // draw_experience_overlay clears and rebuilds the panel hit regions. Restore
+ // the projected 3D hotspot after it so the next input frame can click the
+ // actual part rather than a text tab.
+ if (projected_world_hotspot.width > 0.0f) {
+ experience_hit_regions.world_hotspot = projected_world_hotspot;
+ }
 
  EndDrawing();
  if (shot_frames > 0 && --shot_frames == 0) {

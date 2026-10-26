@@ -50,7 +50,6 @@ ExperienceFlow::ExperienceFlow(Config config) : config_(config) {
  walkaround_required_ = config_.required_walkaround.empty()
  ? std::vector<bool>(config_.walkaround_count, true)
  : config_.required_walkaround;
- if (!walkaround_visited_.empty()) walkaround_visited_.front() = true;
 }
 
 std::size_t ExperienceFlow::walkaround_visited_count() const {
@@ -87,14 +86,18 @@ void ExperienceFlow::inspect_previous() {
  config_.walkaround_count == 0) return;
  walkaround_index_ = (walkaround_index_ + config_.walkaround_count - 1) %
  config_.walkaround_count;
- walkaround_visited_[walkaround_index_] = true;
 }
 
 void ExperienceFlow::inspect_next() {
  if (phase_ != ExperiencePhase::kBriefing ||
  config_.walkaround_count == 0) return;
  walkaround_index_ = (walkaround_index_ + 1) % config_.walkaround_count;
- walkaround_visited_[walkaround_index_] = true;
+}
+
+void ExperienceFlow::focus(std::size_t index) {
+ if (phase_ != ExperiencePhase::kBriefing ||
+ index >= walkaround_visited_.size()) return;
+ walkaround_index_ = index;
 }
 
 void ExperienceFlow::inspect(std::size_t index) {
@@ -176,7 +179,6 @@ void ExperienceFlow::reset() {
  end_reason_ = ExperienceEndReason::kNone;
  walkaround_index_ = 0;
  std::fill(walkaround_visited_.begin(), walkaround_visited_.end(), false);
- if (!walkaround_visited_.empty()) walkaround_visited_.front() = true;
  selected_choice_ = -1;
  running_start_step_ = 0;
  run_kind_ = ExperienceRunKind::kBaseline;

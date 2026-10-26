@@ -62,18 +62,24 @@ int main() {
  ExperienceFlow flow({4, 3, 10});
  assert(flow.phase() == ExperiencePhase::kBriefing);
  assert(flow.walkaround_index() == 0);
- assert(flow.walkaround_visited_count() == 1);
+ assert(flow.walkaround_visited_count() == 0);
  assert(!flow.walkaround_complete());
  flow.inspect_previous();
  assert(flow.walkaround_index() == 3);
- assert(flow.walkaround_visited_count() == 2);
+ assert(flow.walkaround_visited_count() == 0);
+ flow.inspect(3);
+ assert(flow.walkaround_visited_count() == 1);
  flow.inspect_next();
  flow.inspect_next();
  assert(flow.walkaround_index() == 1);
+ assert(flow.walkaround_visited_count() == 1);
+ flow.inspect(0);
+ flow.inspect(1);
  assert(flow.walkaround_visited_count() == 3);
  assert(!flow.continue_to_prediction());
  flow.inspect_next();
  assert(flow.walkaround_index() == 2);
+ flow.inspect(2);
  assert(flow.walkaround_complete());
  assert(flow.continue_to_prediction());
  assert(!flow.continue_to_prediction());
@@ -108,20 +114,32 @@ int main() {
  assert(flow.phase() == ExperiencePhase::kBriefing);
  assert(flow.selected_choice() == -1);
  assert(!flow.timed_out());
- assert(flow.walkaround_visited_count() == 1);
+ assert(flow.walkaround_visited_count() == 0);
  assert(!flow.continue_to_prediction());
 
  // Optional detail cards stay inspectable without blocking the experiment.
  ExperienceFlow focused({4, 3, 10, {true, false, true, false}});
  assert(focused.required_walkaround_count() == 2);
- assert(focused.required_walkaround_visited_count() == 1);
+ assert(focused.required_walkaround_visited_count() == 0);
  assert(!focused.walkaround_complete());
+ focused.inspect(0);
  focused.inspect(2);
  assert(focused.walkaround_index() == 2);
  assert(focused.walkaround_visited(2));
  assert(focused.required_walkaround_visited_count() == 2);
  assert(focused.walkaround_complete());
  assert(focused.continue_to_prediction());
+
+ // Focusing a card or moving the walkaround camera never counts as a
+ // physical inspection. Only an explicit 3D-hotspot/accessibility action
+ // calls inspect().
+ ExperienceFlow hotspot({2, 2, 10, {true, true}});
+ hotspot.focus(1);
+ assert(hotspot.walkaround_index() == 1);
+ assert(hotspot.walkaround_visited_count() == 0);
+ hotspot.inspect_previous();
+ assert(hotspot.walkaround_index() == 0);
+ assert(hotspot.walkaround_visited_count() == 0);
 
  rejected = false;
  try {
