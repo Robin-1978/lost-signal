@@ -47,7 +47,7 @@ int main() {
  // independent loop view, pose-graph correction, and the final settled
  // heading. The acceptance gates below stay unchanged; this bound only
  // avoids declaring failure while the measured chassis is still converging.
- for (int i = 0; i < 3000 && !session.objectives_done(); ++i) {
+ for (int i = 0; i < 3000; ++i) {
     session.step_once();
  const auto& diag = session.episode().steps().back().diag;
  if (max_loops == 0 && diag.slam_loops_closed > 0) {

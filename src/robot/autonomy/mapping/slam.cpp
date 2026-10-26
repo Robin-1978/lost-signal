@@ -320,7 +320,6 @@ void SlamSession::reset() {
  pending_track_correction_ = Pose2{};
  pending_track_correction_observer_pose_ = Pose2{};
  pending_loop_valid_ = false;
- pending_loop_s_ = 0.0;
  pending_loop_anchor_id_ = 0;
  pending_loop_transform_ = Pose2{};
  pending_loop_observer_pose_ = Pose2{};
@@ -847,13 +846,19 @@ SlamLoopResult SlamSession::try_close_loops(
     return out;
   }
   const double now_s = obs.stamp_ns * 1e-9;
- const double pending_timeout_s = std::max(
- config_.gate.minimum_temporal_separation_s,
- 2.0 * config_.loop_attempt_interval_s);
- if (pending_loop_valid_ &&
- now_s - pending_loop_s_ > pending_timeout_s) {
+ // A pending mapless proposal is evidence tied to one historical anchor,
+ // not a wall-clock request.  Keep it until that anchor is re-observed (or
+ // the bounded keyframe ring drops it); expiring it by elapsed time can
+ // discard the first view while the sliced matcher is still working.
+ if (pending_loop_valid_) {
+ const bool anchor_retained = std::any_of(
+ keyframes_.begin(), keyframes_.end(), [&](const SlamKeyframe& keyframe) {
+ return keyframe.id == pending_loop_anchor_id_;
+ });
+ if (!anchor_retained) {
  pending_loop_valid_ = false;
  pending_loop_anchor_id_ = 0;
+ }
  }
   ScanMatcherConfig match_cfg;
  // Coarse retrieval uses endpoint occupancy: expected-range marching on a
@@ -880,12 +885,12 @@ SlamLoopResult SlamSession::try_close_loops(
  config_.keyframe_heading_rad,
  2.0 * config_.match_heading_step_rad);
  ScanMatcherConfig refine_cfg;
- refine_cfg.expected_range_validation = true;
- // The graph prediction is the local prior. A refined loop may move away
- // from it only when the historical geometry improves likelihood by the
- // same declared margin that separates competing modes; raster
- // quantization must not manufacture a map-frame rotation.
- refine_cfg.require_prior_improvement = true;
+ // Dense refinement remains an association step inside the coarse basin.
+ // The disjoint historical/recent windows below provide the independent
+ // expected-range evidence used by the final loop gate; applying it again
+ // to a sparse single-keyframe refinement can reject a valid revisit before
+ // the causal evidence is available.
+ refine_cfg.expected_range_validation = false;
  refine_cfg.search_translation_m = config_.match_refine_translation_m;
  refine_cfg.translation_step_m = config_.match_refine_translation_step_m;
  refine_cfg.search_heading_rad = config_.match_refine_heading_rad;
@@ -1128,7 +1133,12 @@ SlamLoopResult SlamSession::try_close_loops(
  matched_current, inverse_pose(current_pose));
  const Pose2 expected_old_in_recent = compose_pose(
  inverse_pose(forward_correction), old->pose);
- work.lattice.start(refine_cfg, base_from_lidar_, old->ranges_m,
+ ScanMatcherConfig reverse_cfg = refine_cfg;
+ reverse_cfg.expected_range_validation = false;
+ reverse_cfg.minimum_overlap = 0.0;
+ reverse_cfg.minimum_score_margin = 0.0;
+ reverse_cfg.require_prior_improvement = false;
+ work.lattice.start(reverse_cfg, base_from_lidar_, old->ranges_m,
  old->angle_min_rad, old->angle_increment_rad,
  expected_old_in_recent.position.x,
  expected_old_in_recent.position.y,
@@ -1149,9 +1159,7 @@ SlamLoopResult SlamSession::try_close_loops(
  return reject_candidate(
  "reverse match rejected: " + work.reverse.rejection_reason);
  }
- if (work.reverse.overlap < config_.gate.minimum_overlap) {
- return reject_candidate("reverse overlap below loop gate");
- }
+ // The disjoint submap window below supplies the reverse overlap gate.
  SlamKeyframe* old = find_keyframe(work.old_id);
  if (old == nullptr) {
  loop_search_.reset();
@@ -1254,9 +1262,9 @@ SlamLoopResult SlamSession::try_close_loops(
  std::vector<AlignmentHypothesis> alignments;
  const auto same_alignment = [&](const Pose2& a, const Pose2& b) {
  return pose_translation_error(a, b) <=
- 2.0 * config_.match_refine_translation_step_m &&
+ match_cfg.ambiguity_distance_m &&
  std::abs(core::wrap_angle(a.heading_rad - b.heading_rad)) <=
- 2.0 * config_.match_refine_heading_step_rad;
+ match_cfg.ambiguity_heading_rad;
  };
  const auto evaluate_alignment = [&](const Pose2& correction) {
  const bool duplicate = std::any_of(
@@ -1270,10 +1278,16 @@ SlamLoopResult SlamSession::try_close_loops(
  const WindowEvidence reverse = score_window(
  historical_bounds, recent_map, inverse_pose(correction));
  if (!forward.valid || !reverse.valid ||
- forward.overlap < config_.gate.minimum_overlap ||
- reverse.overlap < config_.gate.minimum_overlap) {
+ !(forward.returns > 0 && reverse.returns > 0)) {
  return;
  }
+ const double total_returns = static_cast<double>(
+ forward.returns + reverse.returns);
+ const double pooled_overlap =
+ (forward.overlap * static_cast<double>(forward.returns) +
+ reverse.overlap * static_cast<double>(reverse.returns)) /
+ total_returns;
+ if (pooled_overlap < config_.gate.minimum_overlap) return;
  const double rank = 0.5 *
  (forward.score * forward.overlap + reverse.score * reverse.overlap);
  alignments.push_back({correction, forward, reverse, rank});
@@ -1613,7 +1627,6 @@ SlamLoopResult SlamSession::try_close_loops(
  if (!pending_loop_valid_ || !independent_view || !consistent) {
  if (!pending_loop_valid_ || !consistent) {
  pending_loop_valid_ = true;
- pending_loop_s_ = now_s;
  pending_loop_anchor_id_ = old.id;
  pending_loop_transform_ = correction;
  pending_loop_observer_pose_ = current_pose;

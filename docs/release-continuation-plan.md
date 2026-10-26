@@ -146,6 +146,13 @@
 - Debug/Release `industrial_200k_mission` 完整五目标均通过；Release 长测为 70593 步、5/5、0 碰撞、最大定位误差 1.073 m。`signal_town` Release 为 5826 步、5/5、0 碰撞。
 - 当前尚未提交的算法回归文件包括 `dwa_planner.cpp`、`goal_arrival.hpp/.cpp`、`coordinator.cpp`、`lidar_perception.cpp` 及对应 DWA、terrain、autonomy、perception、dynamic-crossing 测试。不得把这些修改与 Viewer/音频提交混为同一阶段提交，也不得丢弃。
 
+### 阶段 1 回环修订检查点（2026-10-27）
+
+- 回环异步搜索的 pending proposal 不再按墙钟超时清理；proposal 绑定同一历史 keyframe anchor，只有该 anchor 被有界 keyframe ring 丢弃时才失效。这样不会在 coarse/refine/reverse 分片执行期间丢失第一次真实重访证据。
+- coarse retrieval 与 dense refinement 只负责候选关联；reverse association 使用 endpoint occupancy，最终接受仍由不相交的 historical/recent causal submap 的 expected-range 双向证据、pooled overlap、score margin、信息矩阵和同锚点时序确认共同决定。SIM 真值仍只出现在测试诊断。
+- `test_loop_closure` 在目标完成后保留固定观测尾窗，验证异步 matcher 的最终状态；首次闭环在完成前三个目标后的真实重访阶段发生。当前 Debug 重复回归：`truth_isolation`、`slam`、`loop_closure`、`slam_experience_mission`、`robot_boundary` 共 5 项各重复 3 次通过。
+- 该修订提交后，继续从第 6 项 Viewer/音频独立提交，再进入第 7 项模型与场景升级；不要把工作区中未提交的 Viewer/音频文件混入本阶段提交。
+
 最新恢复顺序：
 
 1. 删除 `stage6-*.png` 临时截图；跑 Debug/Release 全量 CTest、truth isolation、ROBOT boundary 和 `git diff --check`。

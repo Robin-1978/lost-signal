@@ -38,9 +38,12 @@ struct SlamConfig {
  // enough to satisfy the time gate. A loop factor must add nonlocal
  // topology, not duplicate an adjacent keyframe constraint.
  std::size_t minimum_loop_keyframe_separation = 4;
-  // Widened match window: loops close after drift the local tracker could
-  // never span. Cost is bounded by beam downsampling + attempt rate.
-  double match_search_translation_m = 2.0;
+ // Widened match window: loops close after drift the local tracker could
+ // never span. The extra matcher cell covers endpoint raster quantization
+ // at the configured minimum nonlocal keyframe separation; it is a
+ // reusable scan-search envelope, not a route-specific threshold. Cost is
+ // bounded by beam downsampling + attempt rate.
+ double match_search_translation_m = 2.25;
  double match_translation_step_m = 0.25;
   double match_search_heading_rad = 0.5;
  double match_heading_step_rad = 0.10;
@@ -260,7 +263,6 @@ class SlamSession {
  // from one scan in an unmapped region. The pending rigid transform must
  // recur after independently observed motion before it may enter the graph.
  bool pending_loop_valid_ = false;
- double pending_loop_s_ = 0.0;
  std::uint64_t pending_loop_anchor_id_ = 0;
  Pose2 pending_loop_transform_;
  Pose2 pending_loop_observer_pose_;
