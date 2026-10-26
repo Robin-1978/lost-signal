@@ -678,15 +678,22 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  std::vector<LocalCandidate> proposals;
  const auto commands_resolvable_motion = [&](double forward,
  double angular, double lateral) {
- // A command is motion when the chassis can execute a non-zero twist. Map
- // resolution controls collision sampling; it is not an actuator deadband.
- // Conflating the two labelled a slow Ackermann launch (for example
- // 0.04 m/s on a 0.10 m grid) as stationary, so every first command caused
- // another global replan before the base could accelerate. The platform
- // layer owns any real actuator deadband and the controller/validator still
- // check every selected command independently.
- return std::abs(forward) > 1e-9 || std::abs(angular) > 1e-9 ||
- std::abs(lateral) > 1e-9;
+ // Ackermann may need several acceleration-limited windows before its
+ // translation crosses one grid cell. Treat any executable car-like twist
+ // as progress or every slow launch requests another global plan. For other
+ // bases, translation must move far enough to be represented by the local
+ // map. Rotation remains independently resolvable: differential bases use
+ // small in-place yaw commands to converge smoothly inside the terminal
+ // position region, where forcing a one-cell rim sweep creates oscillation.
+ if (car_like) {
+ return std::abs(forward) > 1e-9 || std::abs(angular) > 1e-9;
+ }
+ const double horizon_s = std::max(0.0, predict_T);
+ const double spatial_resolution_m = std::max(1e-6, map.resolution_m);
+ const double translation_m =
+ std::hypot(forward, lateral) * horizon_s;
+ return translation_m >= spatial_resolution_m ||
+ std::abs(angular) > 1e-9;
  };
 
   for (double velocity : velocity_samples) {
