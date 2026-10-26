@@ -116,23 +116,36 @@
 
 ### 阶段 6 当前检查点（2026-10-27）
 
-- 已完成现有实现审查，但阶段 6 尚未改码或提交。已有能力不得重复造一套视觉近似：
-  - LiDAR 已保存每束真实 acquisition offset，使用 ROBOT measured twist deskew；2D/3D 按真实扫描相位着色，truth fan 只在显式 SIM debug/debrief 中显示。
-  - Viewer 直接消费 ROBOT `LocalCostmapDiagnostic`（free/soft/lethal/unknown），不重建 inflation；planner swept volume 来自 Validator 实际接受候选的 centerline 与 envelope radius。
-  - Safety swept envelope 来自独立 Safety Monitor 对 raw scan 的真实 reaction/braking sweep；当前算法合同是圆形 footprint，不得为视觉效果虚构 polygon。
-  - 定位修正 ghost 由相邻帧 `map_T_odom` 对同一 `odom_T_base` 的变化生成，表达 REP-105 修正；动态预测只读匿名 ROBOT tracks 和共享 predictor。
-  - 粒子与地表痕迹已由真实 contact position、normal force、slip/motion vector、material、fluid depth 和 impact impulse 驱动，并按 sim step 确定性复现；金属火花只来自真实 metal-metal impact。
-- 最大剩余缺口是物理音频。当前 `ViewerAudio` 仅消费 collision、Safety STOPPED 状态变化和 mission complete，尚未直接消费 wheel angular velocity、contact load/slip、service brake、impact impulse/relative speed。
-- 下一步实现独立、无音频设备依赖、可单测的 `PhysicalAudioEvidence` 状态机，再由 raylib 播放层消费。它使用 sim step 和物理证据生成 motor/rolling/slip/brake/impact 强度；Turbo 只抑制或聚合播放，仍同步状态，恢复普通倍率时不得补播历史。
-- 阶段 6 验收必须覆盖 wheel speed、单轮打滑、normal load、service brake、impact、暂停、回放回退和 Turbo；并分别截图核对 2D/3D 的 LiDAR、costmap、Validator sweep、Safety sweep、correction ghost 与真实粒子来源。
+- 阶段 6 功能实现已完成，尚未提交：
+ - `PhysicalAudioEvidence` 按 sim step 消费真实 wheel speed、逐轮 normal load/contact motion/slip、service brake、impact impulse/relative speed。
+ - Viewer 播放 motor、rolling、slip、brake 四层循环声及由物理碰撞证据控制增益的 impact；暂停、Turbo、静音、重复帧和回放回退不会补播历史事件。
+ - 2D/3D Validator 与 Safety sweep 使用连续 capsule/tube；Viewer 直接消费 ROBOT costmap、Validator 和 Safety Monitor 证据，不在绘制时重建算法结果。
+ - `--lidar`、`--robot-evidence`、`--shot` 支持可复现视觉验收；HUD 明确区分 `ROBOT OBS/AI`、`ROBOT ESTIMATE` 与 `SIM PHYSICS/AUDIO`。
+ - 新增无音频设备依赖的 `test_physical_audio`、`test_viewer_audio`，以及 `motor_drive.wav`、`wheel_roll.wav`、`tire_slip.wav`、`service_brake.wav`。
+- Release/Debug 构建和阶段 6 的 17/17 定向测试已通过；`stage6-*.png` 是临时验收截图，提交前必须删除。
+- Debug 全量回归当前为 75/77，暴露两个算法鲁棒性问题，不能用 Viewer 改动、关卡特化或改变场景掩盖：
+ - `terrain_mission` 在冰面坡道完成第一个目标后，于第二目标附近因差速底盘终端重捕获选择正向 gear 而绕圈。工作区的通用修复根据前进/倒退所需的最小车体转角选择短距离重捕获，复用已有终端容差、置信包络和底盘能力，没有新增阈值；尚需完成输出 gear、单元测试和 Debug/Release 验证。
+ - `industrial_200k_mission` 的 Debug 轨迹在前往 `south_yard` 时与 `east_shuttle` 相遇并锁死，100000 步只完成 4/5 且发生 691 个碰撞 step；Release 同任务 62169 步完成 5/5、零碰撞。需要建立短小、确定性的动态横穿相位测试，再修复 predictor/behavior/DWA/Validator/Safety 的通用链路。SIM actor truth 只允许用于失败诊断。
+- `tests/test_terrain_mission.cpp` 当前含临时诊断：第一段预算临时为 3000，2200 步后每 25 步输出状态。提交前必须恢复为 `drive_until_done(session, 2500)` 并删除 trace。
+
+### 阶段 7 预审检查点（2026-10-27）
+
+- 现有机器人 drive wheel 与 caster 已读取真实 MuJoCo link pose；后续必须保留这条 body/joint 到 GLB link 的数据链。
+- `load_visual_assets()` 当前只按 `robot_id` 选择模型，而 Ackermann、Mecanum、Swerve 配置共用 `ro1`，会错误加载 RO-1 外观。模型选择必须绑定底盘/资产 manifest，不能靠绘制端猜测。
+- manifest 已声明但尚未完整绑定 RO-2 front knuckle、RO-4 swerve module、RO-5 左右 Mecanum roller、RO-6 turret/upper_arm/forearm/tool；后端还未导出 steer body pose。
+- forklift 与 pedestrian 仍是 SIM kinematic actor，不是 MuJoCo body/joint；forklift/worker GLB 虽含命名部件或骨架，目前仍整体绘制。机械臂也必须逐关节读取物理状态。
+- 阶段 7 依次完成：按底盘能力加载模型和左右部件；建立统一 `link_binding`；加入显式 SIM debug 的 joint axis/collision geom/COM/contact force；把 forklift、pedestrian、机械臂根和关节迁入 MuJoCo；最后扩展 Blender 环境资产并保持碰撞代理诚实。
+- Blender 路径为 `/disk/blender-5.2.2-linux-x64/blender`。旧代码分支实际为 `main`，仓库没有 `master` 分支。
 
 恢复后按以下顺序继续：
 
 1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认 HEAD 至少包含阶段 5 提交 `f22acc9`。
-2. 直接从“阶段 6 当前检查点”的物理音频缺口继续；不得回退 immutable Episode、四类 verdict、ROBOT/SIM 边界或已有物理证据可视化。
+2. 直接从“阶段 6 当前检查点”的两个回归继续；不得回退 immutable Episode、四类 verdict、ROBOT/SIM 边界、物理音频或已有物理证据可视化。
 3. 所有新增表现只读取已记录的 observation、decision、MuJoCo contact/joint state、actuator feedback 和 sim time；不得把视觉/音频层状态反向输入 ROBOT 或 physics。
-4. 完成阶段 6 的单元测试、确定性检查和 2D/3D 截图验收，更新本表并单独提交。
-5. 提交阶段 6 后立即进入第 7 阶段：先验证 MuJoCo body/joint 到 GLB link binding，再增加 joint axis、collision geometry、COM/contact overlay，最后扩展 Blender 环境资产；禁止 draw-time 落地偏移、猜轴或墙钟动画。
+4. 先补完 DWA 终端倒车重捕获和单元测试，恢复 terrain 临时诊断，验证 Debug/Release `terrain_mission`。
+5. 再建立动态横穿相位测试并修复通用预测/避让链，验证 Debug/Release `industrial_200k_mission`；不得移动 actor、改变关卡或放宽碰撞判断。
+6. 回归修复单独提交；随后跑 Debug 全量 77/77，更新阶段 6 验收记录，删除临时截图，通过 `git diff --check`、truth isolation 和 ROBOT boundary 后单独提交阶段 6。
+7. 提交阶段 6 后立即进入第 7 阶段：先验证 MuJoCo body/joint 到 GLB link binding，再增加 joint axis、collision geometry、COM/contact overlay，最后扩展 Blender 环境资产；禁止 draw-time 落地偏移、猜轴或墙钟动画。
 
 ## 阶段完成记录
 
@@ -145,5 +158,5 @@
 | 3. 算法与系统回归 | 已完成 | `2c13308` | 完整构建；定向 14/14；全量 75/75；20 万平方米、signal_town、四底盘、SLAM/回环、truth isolation 均通过 |
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
-| 6. 物理证据可视化与效果 | 进行中 | - | 现有证据链已审查；下一步补物理音频状态机、确定性测试与 2D/3D 截图验收 |
+| 6. 物理证据可视化与效果 | 进行中 | - | 功能与 17/17 定向测试完成；Debug 全量 75/77，先修复 terrain 终端重捕获和 20 万平方米动态横穿鲁棒性 |
 | 7. 模型与场景升级 | 待开始 | - | 待完成 |
