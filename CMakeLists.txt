@@ -122,6 +122,7 @@ target_link_libraries(lost_signal_robot_executive PUBLIC
 
 add_library(lost_signal_robot_app STATIC
   src/robot/app/robot_application.cpp
+ src/robot/app/native_runtime.cpp
 )
 target_include_directories(lost_signal_robot_app PUBLIC src)
 target_link_libraries(lost_signal_robot_app PUBLIC
@@ -336,6 +337,12 @@ add_executable(test_robot_cycle
 )
 target_link_libraries(test_robot_cycle PRIVATE lost_signal_robot_stack)
 add_test(NAME robot_cycle COMMAND test_robot_cycle)
+
+add_executable(test_native_runtime
+ tests/test_native_runtime.cpp
+)
+target_link_libraries(test_native_runtime PRIVATE lost_signal_robot_stack)
+add_test(NAME native_runtime COMMAND test_native_runtime)
 
 add_executable(test_transport
   tests/test_transport.cpp
