@@ -79,6 +79,9 @@ class ObjectiveDriver {
  std::uint64_t step_budget_ = 0;
  std::uint64_t dispatched_step_ = 0; // world step at dispatch
  robot::iface::GoalHandle live_handle_{}; // canceled on abandon
+ bool robot_done_seen_ = false;
+ robot::core::MonotonicNs terminal_deadline_ns_ =
+ robot::core::kInvalidTime;
 };
 
 } // namespace lost_signal::sim::scenario

@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -13,7 +15,8 @@
 int main() {
   using namespace lost_signal;
 
-  // Actor crosses the robot's path: drive -> hold while near -> resume.
+ // Actor crosses the robot's path: continue, slow or hold according to the
+ // predicted encounter, but keep physical envelopes separate and resume.
   sim::robot::SimRobot sim;
   assert(sim.configure().ok && sim.activate().ok);
   sim::world::Actor crosser;
@@ -32,18 +35,35 @@ int main() {
   assert(sim.request_goal(req).valid());
   sim.set_goal({6.0, 0.0, 0.0});
 
-  std::vector<double> xs;
+ std::vector<double> xs;
+ double minimum_dynamic_clearance_m = 999.0;
   for (int i = 0; i < 280; ++i) {
  sim.tick(static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL);
     xs.push_back(sim.world().truth().body_x_m);
+ const auto& actor = sim.world().actors().front();
+ const auto& truth = sim.world().truth();
+ minimum_dynamic_clearance_m = std::min(
+ minimum_dynamic_clearance_m,
+ std::hypot(truth.body_x_m - actor.x, truth.body_y_m - actor.y) -
+ (0.4 + actor.radius_m));
   }
   // Rigid-coupling plant accelerates at ΣF/M (4.5 m/s^2 full duty), so
-  // Engine line is lazier off the line; still strictly toward the goal,
-  // holds for the actor, resumes after it passes.
+ // Engine line is lazier off the line; the exact stop/slow choice depends on
+ // relative timing, while collision clearance and forward progress do not.
+ if (!(xs[8] > 0.005 && minimum_dynamic_clearance_m > 0.0 &&
+ xs[279] > 2.0)) {
+ std::fprintf(stderr,
+ "sim_actor trajectory: x8=%.3f x60=%.3f x120=%.3f "
+ "x200=%.3f x279=%.3f clearance=%.3f safety=%s reason=%s\n",
+ xs[8], xs[60], xs[120], xs[200], xs[279],
+ minimum_dynamic_clearance_m,
+ sim.diagnostics().safety_reason.c_str(),
+ sim.last_evidence().reason_code.c_str());
+ }
   assert(xs[8] > 0.005);              // drove toward the goal initially
-  assert(xs[60] < 0.5);               // held while the actor was near
+ assert(minimum_dynamic_clearance_m > 0.0); // physical envelopes stayed separate
   assert(xs[279] > 2.0);              // resumed after the actor passed
-  assert(sim.current_goal().state == robot::iface::GoalState::kActive);
+ assert(sim.current_goal().state == robot::iface::GoalState::kActive);
 
  // Headless sidecar: the same loader used by lost_signal_sim.
  {

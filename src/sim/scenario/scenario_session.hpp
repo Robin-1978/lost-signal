@@ -115,6 +115,9 @@ class ScenarioSession {
   }
   bool objectives_done() const { return driver_.done(); }
  bool objectives_passed() const { return driver_.passed(); }
+ const std::vector<ObjectiveResult>& objective_results() const {
+ return driver_.results();
+ }
   // Per-objective step budget (0 = none, legacy): a live goal older than
   // this is abandoned (recorded + canceled, next dispatched). Pre-run.
   void set_objective_step_budget(std::uint64_t steps) {

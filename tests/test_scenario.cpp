@@ -147,9 +147,10 @@ int main() {
   // completion, judged every step, scored at the end.
   {
     sim::scenario::ScenarioSession session;
- // This mission deliberately has no globally localizable survey; its single
- // off-path box is live obstacle context, not an initial-pose source.
- session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
+ // This orchestration mission has an operator/dock initial pose. Mapless
+ // observability is covered by localization tests and must not be hidden here
+ // behind a metre-wide SIM acceptance radius.
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
     session.setup_world().add_place({"dockA", 3.0, 0.0, 0.0});
     session.setup_world().add_place({"dockB", 6.0, 0.0, 0.0});
     // Off-path box: finite clearance, never a collision.
@@ -159,7 +160,20 @@ int main() {
     box.x1 = 2.0;
     box.y1 = 2.0;
     box.height_m = 1.0;  // true prism: the scan must see it off-path
-    session.setup_world().set_static_boxes({box});
+ sim::world::StaticBox landmark_left;
+ landmark_left.x0 = 3.4;
+ landmark_left.y0 = 1.2;
+ landmark_left.x1 = 3.9;
+ landmark_left.y1 = 1.7;
+ landmark_left.height_m = 1.0;
+ sim::world::StaticBox landmark_right;
+ landmark_right.x0 = 5.0;
+ landmark_right.y0 = -1.7;
+ landmark_right.x1 = 5.5;
+ landmark_right.y1 = -1.2;
+ landmark_right.height_m = 1.0;
+ session.setup_world().set_static_boxes(
+ {box, landmark_left, landmark_right});
     // Crosser cuts the corridor early, then leaves (S4 behavior).
     sim::world::Actor crosser;
     crosser.x = 2.0;
@@ -171,9 +185,7 @@ int main() {
     crosser.behavior.speed_mps = 1.0;
     crosser.behavior.loop = false;
     session.setup_world().add_actor(crosser);
-    // Driver tolerance 1.0 m: the ROBOT arrives per its estimate (0.5 m
-    // radius); truth-side counting budgets the honest mapless drift on top.
-    session.set_objectives({"dockA", "dockB"}, 1.0);
+ session.set_objectives({"dockA", "dockB"});
 
     std::vector<double> dyn_clear;
  // Precise arrival now brakes, settles, and confirms each pose instead of
@@ -197,6 +209,38 @@ int main() {
  stalled.diag.evidence.reason_code.c_str());
  }
  assert(session.objectives_done());
+ if (!session.objectives_passed()) {
+ const auto rejected_score = sim::eval::score_episode(session.episode());
+ const auto& failed = session.episode().steps().back();
+ std::fprintf(stderr,
+ "scenario rejected: truth=(%.3f,%.3f,%.3f) "
+ "estimate=(%.3f,%.3f,%.3f) sigma=(%.3f,%.3f) "
+ "collisions=%llu min_clear=%.3f goal=%d/%s "
+ "localization=%s track=%s keyframes=%zu tracks=%zu\n",
+ failed.truth_after.body_x_m, failed.truth_after.body_y_m,
+ failed.truth_after.body_yaw_rad, failed.diag.estimate.x_m,
+ failed.diag.estimate.y_m, failed.diag.estimate.yaw_rad,
+ failed.diag.estimate.position_sigma_m,
+ failed.diag.estimate.heading_sigma_rad,
+ static_cast<unsigned long long>(rejected_score.collision_steps),
+ rejected_score.min_clearance_m, static_cast<int>(failed.diag.goal.state),
+ failed.diag.goal.detail.c_str(), failed.diag.localization_action.c_str(),
+ failed.diag.track_diagnostic.c_str(), failed.diag.slam_keyframes,
+ failed.diag.slam_tracks);
+ for (const auto& objective : session.objective_results()) {
+ std::fprintf(stderr,
+ " objective %s: robot=%d truth=%d miss=%.3f yaw=%.3f "
+ "speed=%.3f yaw_rate=%.3f stable=%u reasons=",
+ objective.place_id.c_str(), objective.robot_done,
+ objective.truth_arrived, objective.truth_miss_m,
+ objective.truth_yaw_error_rad, objective.truth_linear_speed_mps,
+ objective.truth_yaw_rate_radps, objective.truth_stable_steps);
+ for (const auto& reason : objective.failure_reasons) {
+ std::fprintf(stderr, "%s,", reason.c_str());
+ }
+ std::fprintf(stderr, "\n");
+ }
+ }
  assert(session.objectives_passed());
     // Score: completion with a score, zero collision steps.
  const auto score = sim::eval::score_episode(session.episode());
@@ -215,15 +259,14 @@ int main() {
  scenario_last.diag.goal.detail.c_str());
  }
     // Estimator health over the mission (offline truth-vs-estimate): the
-    // stack drifts decimeters on a 6 m mapless run; the driver tolerance
-    // below budgets exactly this.
+ // stack remains bounded over the 6 m seeded-map run.
     assert(score.max_pos_err_m < 0.5);
     const auto& results = session.objectives().results();
     assert(results.size() == 2);
     assert(results[0].place_id == "dockA" && results[1].place_id == "dockB");
     assert(results[0].robot_done && results[1].robot_done);
     assert(results[0].truth_arrived && results[1].truth_arrived);
-    assert(results[0].truth_miss_m <= 1.0 && results[1].truth_miss_m <= 1.0);
+ assert(results[0].truth_miss_m <= 0.25 && results[1].truth_miss_m <= 0.25);
 
     // Judge fired every step, never a collision; the crosser dipped the
     // dynamic clearance mid-run, the box gave finite static clearance.
@@ -387,8 +430,14 @@ int main() {
  {1.0, 1.0, 2.0, 2.0, 1.0}});
  session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
  session.set_objectives({"dock"}, 0.01);
+ std::uint64_t first_robot_done_step = 0;
  for (int i = 0; i < 800 && !session.objectives_done(); ++i) {
  session.step_once();
+ if (first_robot_done_step == 0 &&
+ session.current_goal().state == robot::iface::GoalState::kDone) {
+ first_robot_done_step =
+ session.episode().steps().back().truth_after.step;
+ }
  }
  assert(session.objectives_done());
  assert(!session.objectives_passed());
@@ -396,6 +445,8 @@ int main() {
  assert(result.robot_done);
  assert(!result.truth_arrived);
  assert(!result.successful());
+ assert(first_robot_done_step > 0);
+ assert(result.completed_step > first_robot_done_step);
  assert(has_reason(result, "truth_position_outside_tolerance"));
  assert(session.objectives().completion_ratio() == 0.0);
  }

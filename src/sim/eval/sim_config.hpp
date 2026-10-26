@@ -18,7 +18,7 @@ namespace lost_signal::sim::eval {
 inline constexpr char kSimConfigFormat[] = "lost-signal-sim/1";
 
 struct ObjectiveAcceptanceConfig {
- int version = 1;
+ int version = 2;
  double position_tolerance_m = 0.25;
  double heading_tolerance_rad = 0.2;
  double maximum_linear_speed_mps = 0.08;
@@ -27,6 +27,11 @@ struct ObjectiveAcceptanceConfig {
  // fitting the ROBOT arrival policy's final braking/settling transition.
  // This is SIM evidence only; it never changes ROBOT completion.
  std::uint32_t stable_steps = 2;
+ // After ROBOT reports Done, SIM continues observing the stopped plant for
+ // this bounded interval. This lets actuator/brake lag complete before the
+ // independent truth verdict; it never reopens the ROBOT goal or feeds truth
+ // into control. Expiry records the live failure reasons.
+ double terminal_observation_s = 0.5;
 };
 
 struct SimConfig {

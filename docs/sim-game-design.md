@@ -329,7 +329,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 ### G1：可读、可控、可复现
 
 - 已完成固定步 1×/倍率/Turbo、实际 RTF、step/s、tick p99 和限流显示；headless `--profile` 也输出并可写入 JSON 的 wall time、simulated time、实际 RTF 与吞吐，性能测量明确要求 Release 构建。
-- 已完成版本化 SIM-only 目标验收：ROBOT 仍只凭自身估计、协方差和测量运动报告完成；SIM 在目标终态独立检查真值位置、航向、线速度、角速度与连续稳定样本，并输出结构化失败码。两套结论只在任务评分汇合，SIM 验收结果没有返回 ROBOT 的数据路径。
+- 已完成版本化 SIM-only 目标验收：ROBOT 仍只凭自身估计、协方差和测量运动报告完成；SIM 在目标终态独立检查真值位置、航向、线速度、角速度与连续稳定样本，并输出结构化失败码。ROBOT Done 后 SIM 在版本化的 bounded observation window 内继续观察制动后的物理状态；它不重开目标、不发送新动作，也不把真值返回 ROBOT。两套结论只在任务评分汇合。
 - 加速验收使用同一 seed 和配置分别运行 1×、8×、64×、Turbo 与 headless；现有门禁逐 step 比较 scan/motion/IMU acquisition stamp、观测接受状态、完整 ROBOT command、碰撞、最终 truth 和 score。性能报告同时给出 physics、sensor、ROBOT、actuation、record 分项，视觉 LOD 可以降低，但 1 ms 物理子步、传感器采集时刻和算法 cadence 不得改变。
 - MuJoCo 模型同步已使用独立的 typed model revision：1 kHz 固定步快路只比较 revision 与 actuator layout，完整 motor/几何/材质/地形签名只在模型输入变化时序列化，等价内容不会编译第二次。actor、任务、环境时间线和 place 编辑不进入模型 revision；测试直接检查 sync、fast-path、signature 和 rebuild 计数，避免用不稳定墙钟阈值掩盖回退。
 - 已完成 3D 近景跟随默认构图、自由轨道/平移/缩放、稀疏 LiDAR 诊断和默认隐藏的 SIM actor 路线。默认画面不再展示未来脚本或全量红色射线。

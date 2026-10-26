@@ -9,7 +9,7 @@ namespace lost_signal::sim::scenario {
 namespace {
 
 bool valid_acceptance(const eval::ObjectiveAcceptanceConfig& config) {
- return config.version == 1 &&
+ return config.version == 2 &&
   std::isfinite(config.position_tolerance_m) &&
   config.position_tolerance_m > 0.0 &&
   std::isfinite(config.heading_tolerance_rad) &&
@@ -18,7 +18,9 @@ bool valid_acceptance(const eval::ObjectiveAcceptanceConfig& config) {
   config.maximum_linear_speed_mps > 0.0 &&
   std::isfinite(config.maximum_yaw_rate_radps) &&
   config.maximum_yaw_rate_radps > 0.0 &&
-  config.stable_steps > 0;
+ config.stable_steps > 0 &&
+ std::isfinite(config.terminal_observation_s) &&
+ config.terminal_observation_s > 0.0;
 }
 
 double wrapped_abs_angle(double angle_rad) {
@@ -88,6 +90,8 @@ void ObjectiveDriver::set_objectives(std::vector<std::string> place_ids,
  results_.clear();
  requesting_ = false;
  truth_stable_steps_ = 0;
+ robot_done_seen_ = false;
+ terminal_deadline_ns_ = robot::core::kInvalidTime;
 }
 
 void ObjectiveDriver::clear() {
@@ -98,6 +102,8 @@ void ObjectiveDriver::clear() {
  truth_stable_steps_ = 0;
  live_handle_ = robot::iface::GoalHandle{};
  dispatched_step_ = 0;
+ robot_done_seen_ = false;
+ terminal_deadline_ns_ = robot::core::kInvalidTime;
 }
 
 std::size_t ObjectiveDriver::truth_arrivals() const {
@@ -166,6 +172,8 @@ void ObjectiveDriver::update(robot::app::RobotApplication& app,
   live_handle_ = handle;
   dispatched_step_ = world.truth().step;
   truth_stable_steps_ = 0;
+ robot_done_seen_ = false;
+ terminal_deadline_ns_ = robot::core::kInvalidTime;
   return;
  }
 
@@ -202,6 +210,23 @@ void ObjectiveDriver::update(robot::app::RobotApplication& app,
   append_truth_failures(sampled, place, acceptance_);
  } else {
   sampled.robot_done = state == robot::iface::GoalState::kDone;
+ if (sampled.robot_done) {
+ if (!robot_done_seen_) {
+ robot_done_seen_ = true;
+ const double duration_ns =
+ acceptance_.terminal_observation_s * 1e9;
+ const auto bounded_duration_ns = static_cast<robot::core::MonotonicNs>(
+ std::min(
+ duration_ns,
+ static_cast<double>(std::numeric_limits<robot::core::MonotonicNs>::max() -
+ world.sim_time_ns())));
+ terminal_deadline_ns_ = world.sim_time_ns() + bounded_duration_ns;
+ }
+ if (!sampled.truth_arrived &&
+ world.sim_time_ns() < terminal_deadline_ns_) {
+ return;
+ }
+ }
   if (state == robot::iface::GoalState::kFailed) {
    sampled.failure_reasons.push_back("robot_goal_failed");
   } else if (state == robot::iface::GoalState::kCanceled) {
@@ -217,6 +242,8 @@ void ObjectiveDriver::update(robot::app::RobotApplication& app,
  requesting_ = false;
  truth_stable_steps_ = 0;
  live_handle_ = robot::iface::GoalHandle{};
+ robot_done_seen_ = false;
+ terminal_deadline_ns_ = robot::core::kInvalidTime;
 }
 
 } // namespace lost_signal::sim::scenario

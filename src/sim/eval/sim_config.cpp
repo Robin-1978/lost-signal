@@ -120,8 +120,8 @@ bool load_sim_config(const std::string& path, SimConfig& config,
  }
  const Json* version = acceptance->find("version");
  if (version == nullptr || !version->is_num() ||
- version->as_num() != 1.0) {
- err = "objective_acceptance.'version' must be 1";
+ version->as_num() != 2.0) {
+ err = "objective_acceptance.'version' must be 2";
  return false;
  }
  struct AcceptanceSlot {
@@ -136,7 +136,9 @@ bool load_sim_config(const std::string& path, SimConfig& config,
  {"maximum_linear_speed_mps",
  &out.objective_acceptance.maximum_linear_speed_mps},
  {"maximum_yaw_rate_radps",
- &out.objective_acceptance.maximum_yaw_rate_radps}};
+ &out.objective_acceptance.maximum_yaw_rate_radps},
+ {"terminal_observation_s",
+ &out.objective_acceptance.terminal_observation_s}};
  for (const auto& slot : slots) {
  if (!take_num(*acceptance, slot.key, v, present, err) || !present ||
  !std::isfinite(v) || !(v > 0.0)) {
