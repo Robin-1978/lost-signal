@@ -192,8 +192,10 @@ completion ratio, and a duty/speed energy proxy.
 - The SIM viewer is presentation-only. It loads optional GLB assets from
  `assets/models` automatically (or `--assets DIR`) through the versioned
  `assets/models/manifest.json` contract. Every model declares its units,
- axes, pivot, link transform, reference dimensions, expected bounds, and
- source. Missing metadata or changed bounds fail visibly and use deterministic
+ axes, semantic pivot, full asset-to-link transform, link binding, grounding
+ points, optical center, material roles, LOD inventory, render budgets,
+ content fingerprint, license, source artifact, reference dimensions, and
+ expected bounds. Missing metadata, changed bytes, or changed bounds fail visibly and use deterministic
  procedural geometry instead of guessed rotations or sizes. Blender headless
  validation covers the complete model inventory. Chassis parts use live MuJoCo joint angles/velocities;
   wheel effects use MuJoCo contact-point slip, normal force, and the SIM-only
@@ -219,6 +221,10 @@ glass safety gate plus a surface-only charging pad. Regenerate those assets
 with Blender 5.2 using `tools/modeling/build_research_base_kit.py`, then run
 `tools/modeling/inspect_assets.py` to verify the complete inventory and exact
 bounds before committing generated GLBs.
+After an intentional asset rebuild, run
+`tools/modeling/refresh_asset_hashes.py` and then the Blender audit. Hash
+refresh never changes authored frames, grounding, budgets, bindings, or
+provenance.
 The viewer advances 20 ms scenario transitions composed of deterministic
 1 ms physics quanta at 1x by default.
 Use `--rate N` or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -11,18 +12,41 @@ struct AssetBounds {
  std::array<double, 3> maximum_m{};
 };
 
+struct AssetLod {
+ int level = 0;
+ std::string relative_path;
+ double maximum_distance_m = 0.0; // 0 for LOD0; increasing thereafter
+};
+
 struct AssetDefinition {
  std::string asset_id;
  int version = 0;
  std::string kind;
  std::string relative_path;
  std::string source;
+ std::string source_artifact;
+ std::string license;
+ std::string content_hash;
  double meters_per_unit = 1.0;
  std::string up_axis;
  std::string forward_axis;
  std::string axle_axis;
  std::array<double, 3> pivot_m{};
+ std::string pivot_semantic;
+ // Position of the declared pivot in the link frame. Together with RPY it
+ // is the complete asset-to-link rigid transform.
+ std::array<double, 3> asset_to_link_translation_m{};
  std::array<double, 3> asset_to_link_rpy_rad{};
+ std::string link_binding;
+ std::vector<std::array<double, 3>> grounding_points_m;
+ bool has_sensor_optical_center = false;
+ std::array<double, 3> sensor_optical_center_m{};
+ std::vector<std::string> material_roles;
+ std::vector<AssetLod> lods;
+ std::size_t triangle_budget = 0;
+ std::size_t material_budget = 0;
+ std::string skeleton_root;
+ std::vector<std::string> animation_clips;
  AssetBounds expected_bounds_m;
  double reference_radius_m = 0.0;
  double reference_half_width_m = 0.0;
@@ -30,8 +54,8 @@ struct AssetDefinition {
 
 // Rigid transform from the asset's authored coordinates to the component
 // link frame. Rotation is row-major and translation is expressed in metres.
-// Axis declarations establish the coarse frame; asset_to_link_rpy_rad is the
-// explicit residual correction and pivot_m becomes the link origin.
+// Axis declarations establish the coarse frame; asset_to_link RPY is the
+// explicit residual correction and translation places pivot_m in the link.
 struct AssetFrameTransform {
  std::array<double, 9> rotation{};
  std::array<double, 3> translation_m{};
@@ -61,9 +85,9 @@ class AssetManifest {
 };
 
 // Strict SIM presentation manifest loader. Paths are relative to the models
-// directory containing the manifest. Invalid axes, units, bounds, duplicate
-// ids/paths, missing source metadata, and files outside that directory fail
-// closed. The manifest is never visible to ROBOT.
+// directory containing the manifest. It verifies content hashes, provenance,
+// rigid frames, semantic pivots, LOD order, budgets, axes, bounds, duplicate
+// ids/paths, and containment. The manifest is never visible to ROBOT.
 bool load_asset_manifest(const std::string& path, AssetManifest& manifest,
  std::string* error = nullptr);
 

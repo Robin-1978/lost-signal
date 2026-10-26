@@ -39,10 +39,16 @@ def model_bounds(path):
  lower = [float("inf")] * 3
  upper = [float("-inf")] * 3
  mesh_count = 0
+ triangle_count = 0
+ material_names = set()
  for obj in bpy.context.scene.objects:
   if obj.type != "MESH":
    continue
   mesh_count += 1
+  obj.data.calc_loop_triangles()
+  triangle_count += len(obj.data.loop_triangles)
+  material_names.update(
+   slot.material.name for slot in obj.material_slots if slot.material)
   for corner in obj.bound_box:
    # Blender's glTF importer converts the file's Y-up convention into
    # Blender coordinates. The runtime manifest describes the coordinates
@@ -58,6 +64,11 @@ def model_bounds(path):
  return {
   "path": path.relative_to(MODELS).as_posix(),
   "mesh_count": mesh_count,
+  "triangle_count": triangle_count,
+  "material_count": len(material_names),
+  "armature_count": sum(
+   obj.type == "ARMATURE" for obj in bpy.context.scene.objects),
+  "animation_clips": sorted(action.name for action in bpy.data.actions),
   "min": [round(value, 6) for value in lower],
   "max": [round(value, 6) for value in upper],
  }
@@ -67,9 +78,23 @@ def close_vec(actual, expected):
     return all(abs(a - b) <= TOLERANCE_M for a, b in zip(actual, expected))
 
 
+def content_hash(path):
+ value = 14695981039346656037
+ for byte in path.read_bytes():
+  value ^= byte
+  value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+ return f"fnv1a64:{value:016x}"
+
+
 def validate(entry, measured):
  if not entry.get("source"):
   raise RuntimeError(f"missing source metadata: {entry['path']}")
+ for field in ("source_artifact", "license", "content_hash",
+   "pivot_semantic", "link_binding"):
+  if not entry.get(field):
+   raise RuntimeError(f"missing {field}: {entry['path']}")
+ if entry["content_hash"] != content_hash(MODELS / entry["path"]):
+  raise RuntimeError(f"content hash changed for {entry['path']}")
  if entry.get("meters_per_unit") != 1:
   raise RuntimeError(f"asset is not authored in meters: {entry['path']}")
  expected = entry["expected_bounds_m"]
@@ -87,6 +112,49 @@ def validate(entry, measured):
    raise RuntimeError(f"pivot below bounds for {entry['path']}")
   if pivot[axis] > measured["max"][axis] + TOLERANCE_M:
    raise RuntimeError(f"pivot above bounds for {entry['path']}")
+ translation = entry.get("asset_to_link_translation_m")
+ if not isinstance(translation, list) or len(translation) != 3:
+  raise RuntimeError(f"asset-to-link translation missing for {entry['path']}")
+ lods = entry.get("lods")
+ if (not isinstance(lods, list) or not lods or lods[0].get("level") != 0 or
+   lods[0].get("path") != entry["path"] or
+   lods[0].get("maximum_distance_m") != 0):
+  raise RuntimeError(f"LOD0 contract invalid for {entry['path']}")
+ for level, lod in enumerate(lods):
+  if lod.get("level") != level or not (MODELS / lod["path"]).is_file():
+   raise RuntimeError(f"LOD inventory invalid for {entry['path']}")
+  if level and lod["maximum_distance_m"] <= lods[level - 1]["maximum_distance_m"]:
+   raise RuntimeError(f"LOD distance is not increasing for {entry['path']}")
+ roles = entry.get("material_roles")
+ if not isinstance(roles, list) or not roles or len(set(roles)) != len(roles):
+  raise RuntimeError(f"material roles invalid for {entry['path']}")
+ if measured["triangle_count"] > entry.get("triangle_budget", 0):
+  raise RuntimeError(f"triangle budget exceeded for {entry['path']}")
+ if measured["material_count"] > entry.get("material_budget", 0):
+  raise RuntimeError(f"material budget exceeded for {entry['path']}")
+ clips = entry.get("animation_clips")
+ if clips != measured["animation_clips"]:
+  raise RuntimeError(f"animation inventory changed for {entry['path']}")
+ if measured["armature_count"] and not entry.get("skeleton_root"):
+  raise RuntimeError(f"skeleton root missing for {entry['path']}")
+ if entry.get("kind") == "sensor":
+  optical = entry.get("sensor_optical_center_m")
+  if not isinstance(optical, list) or len(optical) != 3:
+   raise RuntimeError(f"sensor optical center missing for {entry['path']}")
+ grounding = entry.get("grounding_points_m")
+ if not isinstance(grounding, list):
+  raise RuntimeError(f"grounding point list missing for {entry['path']}")
+ up_axis = {"X": 0, "Y": 1, "Z": 2}[entry["up_axis"][-1]]
+ support_plane = (measured["min"][up_axis]
+  if entry["up_axis"][0] == "+" else measured["max"][up_axis])
+ for point in grounding:
+  if len(point) != 3 or not close_vec(
+    [point[up_axis]], [support_plane]):
+   raise RuntimeError(f"grounding point misses support plane: {entry['path']}")
+  for axis in range(3):
+   if not (measured["min"][axis] - TOLERANCE_M <= point[axis] <=
+     measured["max"][axis] + TOLERANCE_M):
+    raise RuntimeError(f"grounding point outside bounds: {entry['path']}")
  if (entry.get("kind") == "wheel_module" or
  not entry.get("reference_radius_m") or
  not entry.get("reference_half_width_m") or
@@ -110,7 +178,7 @@ def validate(entry, measured):
 
 def main():
  manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
- if manifest.get("format") != "lost-signal-assets/1":
+ if manifest.get("format") != "lost-signal-assets/2":
   raise RuntimeError("unsupported asset manifest format")
  entries = {entry["path"]: entry for entry in manifest["assets"]}
  paths = sorted([*MODELS.rglob("*.glb"), *MODELS.rglob("*.gltf")])

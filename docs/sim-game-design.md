@@ -235,9 +235,9 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 每个部件 manifest 至少声明：
 
-- `format`、`asset_id`、`version`、`units`、`up_axis`、`forward_axis`。
-- `link_frame`、`asset_to_link`、pivot、期望 bounds 和接地点。
-- 适用 chassis/component、材质槽、LOD0/1/2 与可选碰撞 proxy。
+- `format`、`asset_id`、`version`、单位、`up_axis`、`forward_axis` 和内容指纹。
+- `link_binding`、完整 `asset_to_link` SE(3)、pivot 语义、期望 bounds、接地点与传感器光心。
+- 材质角色、按距离排序的 LOD 清单、三角形/材质预算、可选 skeleton 与动画 clip。
 - 轮胎的 outer radius、half width、tread 类型；caster 的 fork/roll pivot。
 - 许可证、作者、源 `.blend`/generator 和内容 hash。
 
@@ -337,7 +337,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 
 ### G2：资产契约和物理可视化
 
-- 已建立版本化 manifest 和 Blender 全量导入门禁，覆盖当前 41 个 GLB/GLTF；Viewer 按资产 ID、单位、轴向、装配变换、参考尺寸和 bounds 加载，拒绝重复、缺失、越界或发生尺寸漂移的资产。
+- 已升级到 `lost-signal-assets/2`，Blender 全量导入门禁覆盖当前 44 个 GLB/GLTF；Viewer 校验内容指纹、来源/许可证、单位、轴向、完整装配 SE(3)、pivot/link 语义、接地点、传感器光心、材质角色、LOD 清单、渲染预算、动画清单、参考尺寸和 bounds，拒绝重复、缺失、越界或发生字节/尺寸漂移的资产。旧分支缺失的许可证被诚实标为 `NOASSERTION`，发布资产包前必须清零这项来源债务。
 - 已建立 SIM-only scene manifest；实体环境模型必须绑定 world 中稳定且唯一的 `box_id`，地表标线必须明确声明 `surface_only`。`research_base` 已接入墙板、瓦砾、植被、服务灯、控制台、线缆盘、维护箱和叉车通道标线，Viewer 自动用 GLB 替换对应碰撞 proxy 的方块表现；缺失碰撞体、中心不一致、重复绑定或非环境资产会拒绝加载。
 - 已用可重复的 Blender 5.2 生成器重做画面主体：两条 11 m 货架带真实层板、立柱、端部护栏、货物和识别灯带，并严格覆盖原 collision proxy；玻璃门具有与 0.5 m × 1.0 m 碰撞体一致的地槛和门框；维护起点加入明确为 `surface_only` 的充电/检修垫。三类资产均进入 manifest 全库存与精确 bounds 门禁。
 - 已移除 Viewer 中叉车、行人、驱动轮和 caster 的匿名参考半径，统一读取 manifest；所有轮模型通过同一个资产边界映射到 `X 前/Y 左/Z 上` link frame，再叠加 MuJoCo link pose。

@@ -1,8 +1,10 @@
 #include "sim/viewer/asset_manifest.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <set>
 #include <sstream>
 
@@ -55,6 +57,104 @@ bool take_vec3(const Json& object, const char* key,
  value[i] = component.as_num();
  }
  return true;
+}
+
+bool take_string_array(const Json& object, const char* key,
+ std::vector<std::string>& values, std::string& error,
+ bool allow_empty = false) {
+ const Json* node = object.find(key);
+ if (node == nullptr || !node->is_array() ||
+ (!allow_empty && node->as_array().empty())) {
+ error = std::string("asset '") + key + "' must be an array";
+ return false;
+ }
+ std::set<std::string> unique;
+ for (const Json& entry : node->as_array()) {
+ if (!entry.is_str() || entry.as_str().empty() ||
+ !unique.insert(entry.as_str()).second) {
+ error = std::string("asset '") + key +
+ "' must contain unique non-empty strings";
+ return false;
+ }
+ values.push_back(entry.as_str());
+ }
+ return true;
+}
+
+bool take_vec3_array(const Json& object, const char* key,
+ std::vector<std::array<double, 3>>& values, std::string& error) {
+ const Json* node = object.find(key);
+ if (node == nullptr || !node->is_array()) {
+ error = std::string("asset '") + key + "' must be an array";
+ return false;
+ }
+ for (const Json& entry : node->as_array()) {
+ if (!entry.is_array() || entry.as_array().size() != 3) {
+ error = std::string("asset '") + key +
+ "' entries must contain three numbers";
+ return false;
+ }
+ std::array<double, 3> point{};
+ for (std::size_t axis = 0; axis < point.size(); ++axis) {
+ if (!entry.as_array()[axis].is_num() ||
+ !std::isfinite(entry.as_array()[axis].as_num())) {
+ error = std::string("asset '") + key +
+ "' contains a non-finite point";
+ return false;
+ }
+ point[axis] = entry.as_array()[axis].as_num();
+ }
+ values.push_back(point);
+ }
+ return true;
+}
+
+bool take_positive_integer(const Json& object, const char* key,
+ std::size_t& value, std::string& error) {
+ const Json* node = object.find(key);
+ if (node == nullptr || !node->is_num() || node->as_num() < 1.0 ||
+ node->as_num() != std::floor(node->as_num())) {
+ error = std::string("asset '") + key + "' must be a positive integer";
+ return false;
+ }
+ value = static_cast<std::size_t>(node->as_num());
+ return true;
+}
+
+bool valid_content_hash(const std::string& hash) {
+ if (hash.size() != 24 || hash.rfind("fnv1a64:", 0) != 0) return false;
+ for (std::size_t i = 8; i < hash.size(); ++i) {
+ const char c = hash[i];
+ if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+ }
+ return true;
+}
+
+std::string content_hash(const std::filesystem::path& path,
+ std::string& error) {
+ std::ifstream input(path, std::ios::binary);
+ if (!input.is_open()) {
+ error = "cannot read asset for hashing: " + path.string();
+ return {};
+ }
+ std::uint64_t hash = 14695981039346656037ULL;
+ char buffer[8192];
+ while (input.good()) {
+ input.read(buffer, sizeof(buffer));
+ const std::streamsize count = input.gcount();
+ for (std::streamsize i = 0; i < count; ++i) {
+ hash ^= static_cast<unsigned char>(buffer[i]);
+ hash *= 1099511628211ULL;
+ }
+ }
+ if (!input.eof()) {
+ error = "failed while hashing asset: " + path.string();
+ return {};
+ }
+ std::ostringstream encoded;
+ encoded << "fnv1a64:" << std::hex << std::setfill('0')
+ << std::setw(16) << hash;
+ return encoded.str();
 }
 
 bool valid_axis(const std::string& axis) {
@@ -120,12 +220,83 @@ bool parse_asset(const Json& node, AssetDefinition& asset,
  !take_string(node, "kind", asset.kind, error) ||
  !take_string(node, "path", asset.relative_path, error) ||
  !take_string(node, "source", asset.source, error) ||
+ !take_string(node, "source_artifact", asset.source_artifact, error) ||
+ !take_string(node, "license", asset.license, error) ||
+ !take_string(node, "content_hash", asset.content_hash, error) ||
  !take_string(node, "up_axis", asset.up_axis, error) ||
  !take_string(node, "forward_axis", asset.forward_axis, error) ||
  !take_string(node, "axle_axis", asset.axle_axis, error, true) ||
  !take_vec3(node, "pivot_m", asset.pivot_m, error) ||
+ !take_string(node, "pivot_semantic", asset.pivot_semantic, error) ||
+ !take_vec3(node, "asset_to_link_translation_m",
+ asset.asset_to_link_translation_m, error) ||
  !take_vec3(node, "asset_to_link_rpy_rad",
- asset.asset_to_link_rpy_rad, error)) {
+ asset.asset_to_link_rpy_rad, error) ||
+ !take_string(node, "link_binding", asset.link_binding, error) ||
+ !take_vec3_array(node, "grounding_points_m", asset.grounding_points_m,
+ error) ||
+ !take_string_array(node, "material_roles", asset.material_roles, error) ||
+ !take_positive_integer(node, "triangle_budget", asset.triangle_budget,
+ error) ||
+ !take_positive_integer(node, "material_budget", asset.material_budget,
+ error)) {
+ return false;
+ }
+ if (!valid_content_hash(asset.content_hash)) {
+ error = "asset content_hash must be fnv1a64 plus 16 lowercase hex digits";
+ return false;
+ }
+ const Json* optical = node.find("sensor_optical_center_m");
+ if (optical != nullptr) {
+ if (!take_vec3(node, "sensor_optical_center_m",
+ asset.sensor_optical_center_m, error)) return false;
+ asset.has_sensor_optical_center = true;
+ }
+ const Json* skeleton = node.find("skeleton_root");
+ if (skeleton != nullptr &&
+ !take_string(node, "skeleton_root", asset.skeleton_root, error)) {
+ return false;
+ }
+ if (!take_string_array(node, "animation_clips", asset.animation_clips,
+ error, true)) {
+ return false;
+ }
+ const Json* lods = node.find("lods");
+ if (lods == nullptr || !lods->is_array() || lods->as_array().empty()) {
+ error = "asset lods must be a non-empty array";
+ return false;
+ }
+ int expected_level = 0;
+ double previous_distance = -1.0;
+ for (const Json& lod_node : lods->as_array()) {
+ if (!lod_node.is_object()) {
+ error = "asset lod entry must be an object";
+ return false;
+ }
+ const Json* level = lod_node.find("level");
+ const Json* distance = lod_node.find("maximum_distance_m");
+ AssetLod lod;
+ if (level == nullptr || !level->is_num() ||
+ level->as_num() != expected_level ||
+ !take_string(lod_node, "path", lod.relative_path, error) ||
+ distance == nullptr || !distance->is_num() ||
+ !std::isfinite(distance->as_num()) || distance->as_num() < 0.0 ||
+ (expected_level == 0 && distance->as_num() != 0.0) ||
+ (expected_level > 0 && distance->as_num() <= previous_distance)) {
+ error = "asset lod levels/distances must be ordered from LOD0";
+ return false;
+ }
+ lod.level = expected_level++;
+ lod.maximum_distance_m = distance->as_num();
+ previous_distance = lod.maximum_distance_m;
+ if (!safe_relative_model_path(lod.relative_path)) {
+ error = "asset lod path must be a safe relative GLB/GLTF path";
+ return false;
+ }
+ asset.lods.push_back(std::move(lod));
+ }
+ if (asset.lods.front().relative_path != asset.relative_path) {
+ error = "asset LOD0 path must match path";
  return false;
  }
  const Json* version = node.find("version");
@@ -239,6 +410,7 @@ AssetFrameTransform asset_frame_transform(const AssetDefinition& asset) {
  }
  }
  for (std::size_t row = 0; row < 3; ++row) {
+ transform.translation_m[row] = asset.asset_to_link_translation_m[row];
  for (std::size_t column = 0; column < 3; ++column) {
  transform.translation_m[row] -=
  transform.rotation[row * 3 + column] * asset.pivot_m[column];
@@ -303,8 +475,8 @@ bool load_asset_manifest(const std::string& path, AssetManifest& manifest,
  const Json* format = root->find("format");
  const Json* assets = root->find("assets");
  if (format == nullptr || !format->is_str() ||
- format->as_str() != "lost-signal-assets/1") {
- out_error = "asset manifest format must be lost-signal-assets/1";
+ format->as_str() != "lost-signal-assets/2") {
+ out_error = "asset manifest format must be lost-signal-assets/2";
  return false;
  }
  if (assets == nullptr || !assets->is_array() ||
@@ -342,10 +514,24 @@ bool load_asset_manifest(const std::string& path, AssetManifest& manifest,
  out_error = "asset file does not exist: " + asset.relative_path;
  return false;
  }
+ const std::string measured_hash = content_hash(asset_path, out_error);
+ if (measured_hash.empty()) return false;
+ if (measured_hash != asset.content_hash) {
+ out_error = "asset content hash differs: " + asset.relative_path;
+ return false;
+ }
+ for (const auto& lod : asset.lods) {
+ const auto lod_path = std::filesystem::canonical(
+ models_root / lod.relative_path, filesystem_error);
+ if (filesystem_error || !path_is_within(models_root, lod_path) ||
+ !std::filesystem::is_regular_file(lod_path)) {
+ out_error = "asset LOD file does not exist: " + lod.relative_path;
+ return false;
+ }
+ }
  parsed.assets_.push_back(std::move(asset));
  }
  manifest = std::move(parsed);
  return true;
 }
-
 } // namespace lost_signal::sim::viewer

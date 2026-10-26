@@ -1,49 +1,2776 @@
 {
- "format": "lost-signal-assets/1",
- "assets": [
- {"asset_id":"actors.forklift","version":1,"kind":"actor","path":"actors/forklift.glb","source":"legacy main asset; refined by tools/modeling/refine_assets.py","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.56,-0.35,0],"max":[1.175,0.35,1.18]},"reference_radius_m":0.45},
- {"asset_id":"actors.worker","version":1,"kind":"actor","path":"actors/worker.glb","source":"legacy main asset; refined by tools/modeling/refine_assets.py","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.16,-0.215,0],"max":[0.16,0.215,1.285]},"reference_radius_m":0.25},
- {"asset_id":"environment.research_base.cable_reel","version":1,"kind":"environment","path":"environment/research_base/cable_reel.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.34,-0.29,0],"max":[0.62,0.29,0.72]}},
- {"asset_id":"environment.research_base.control_console","version":1,"kind":"environment","path":"environment/research_base/control_console.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.41,-0.2825,0],"max":[0.478181,0.23,1.103209]}},
- {"asset_id":"environment.research_base.maintenance_crates","version":1,"kind":"environment","path":"environment/research_base/maintenance_crates.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.71,-0.32,0],"max":[0.46,0.32,0.905]}},
- {"asset_id":"environment.research_base.plant_cluster","version":1,"kind":"environment","path":"environment/research_base/plant_cluster.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.14,-0.14,0],"max":[0.26,0.22,0.685]}},
- {"asset_id":"environment.research_base.rubble_cluster","version":1,"kind":"environment","path":"environment/research_base/rubble_cluster.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.47,-0.325,0],"max":[0.37,0.38,0.26]}},
- {"asset_id":"environment.research_base.service_light","version":1,"kind":"environment","path":"environment/research_base/service_light.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.12,-0.12,0],"max":[0.12,0.12,0.7]}},
- {"asset_id":"environment.research_base.wall_panel","version":1,"kind":"environment","path":"environment/research_base/wall_panel.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1.725,-0.1825,0],"max":[1.725,0.17,1.16]}},
- {"asset_id":"environment.research_base.warning_strip","version":1,"kind":"environment","path":"environment/research_base/warning_strip.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1.35,-0.19,0],"max":[1.35,0.19,0.027]}},
- {"asset_id":"environment.research_base.storage_rack_11m","version":1,"kind":"environment","path":"environment/research_base/storage_rack_11m.glb","source":"tools/modeling/build_research_base_kit.py","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.5,-5.4975,0],"max":[0.5,5.4975,1.2]}},
- {"asset_id":"environment.research_base.glass_safety_gate","version":1,"kind":"environment","path":"environment/research_base/glass_safety_gate.glb","source":"tools/modeling/build_research_base_kit.py","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.25,-0.5,0],"max":[0.25,0.5,1.2]}},
- {"asset_id":"environment.research_base.robot_charging_pad","version":1,"kind":"environment","path":"environment/research_base/robot_charging_pad.glb","source":"tools/modeling/build_research_base_kit.py","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.6,-0.45,0],"max":[0.6,0.45,0.0275]}},
- {"asset_id":"robots.ro1.caster_fork","version":1,"kind":"link","path":"robots/ro1/caster_fork.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.0525,-0.056,-0.059],"max":[0.052,0.056,0.138]}},
- {"asset_id":"robots.ro1.caster_wheel","version":1,"kind":"wheel","path":"robots/ro1/caster_wheel.glb","source":"legacy main asset; refined by tools/modeling/refine_assets.py","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.055,-0.055,-0.048],"max":[0.055,0.055,0.048]},"reference_radius_m":0.055,"reference_half_width_m":0.048},
- {"asset_id":"robots.ro1.chassis","version":1,"kind":"chassis","path":"robots/ro1/chassis.glb","source":"legacy main asset; refined by tools/modeling/refine_assets.py","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.371,-0.291,-0.092],"max":[0.412,0.291,0.2075]}},
- {"asset_id":"robots.ro1.compute_light","version":1,"kind":"link","path":"robots/ro1/compute_light.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.11,-0.1,-0.05],"max":[0.1245,0.1,0.05]}},
- {"asset_id":"robots.ro1.compute_performance","version":1,"kind":"link","path":"robots/ro1/compute_performance.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.125,-0.11,-0.06],"max":[0.14,0.11,0.0925]}},
- {"asset_id":"robots.ro1.lidar_fast","version":1,"kind":"sensor","path":"robots/ro1/lidar_fast.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.105,-0.105,-0.0175],"max":[0.105,0.105,0.114]}},
- {"asset_id":"robots.ro1.lidar_long","version":1,"kind":"sensor","path":"robots/ro1/lidar_long.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.115,-0.115,-0.0225],"max":[0.115,0.115,0.195]}},
- {"asset_id":"robots.ro1.lidar_standard","version":1,"kind":"sensor","path":"robots/ro1/lidar_standard.glb","source":"legacy main asset; refined by tools/modeling/refine_assets.py","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.11,-0.11,-0.02],"max":[0.11,0.11,0.105]}},
- {"asset_id":"robots.ro1.wheel_eco","version":1,"kind":"wheel","path":"robots/ro1/wheel_eco.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.1,-0.1,-0.051],"max":[0.1,0.1,0.051]},"reference_radius_m":0.1,"reference_half_width_m":0.051},
- {"asset_id":"robots.ro1.wheel_grip","version":1,"kind":"wheel","path":"robots/ro1/wheel_grip.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.1,-0.1,-0.073],"max":[0.1,0.1,0.073]},"reference_radius_m":0.1,"reference_half_width_m":0.073},
- {"asset_id":"robots.ro1.wheel_standard","version":1,"kind":"wheel","path":"robots/ro1/wheel_standard.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.1,-0.1,-0.061],"max":[0.1,0.1,0.061]},"reference_radius_m":0.1,"reference_half_width_m":0.061},
- {"asset_id":"robots.ro2.chassis","version":1,"kind":"chassis","path":"robots/ro2/chassis.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.367,-0.256,-0.085],"max":[0.391,0.256,0.1975]}},
- {"asset_id":"robots.ro2.front_left_knuckle","version":1,"kind":"link","path":"robots/ro2/front_left_knuckle.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.085,-0.048,-0.0775],"max":[0.049,0.045,0.0775]}},
- {"asset_id":"robots.ro2.front_right_knuckle","version":1,"kind":"link","path":"robots/ro2/front_right_knuckle.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.085,-0.045,-0.0775],"max":[0.049,0.048,0.0775]}},
- {"asset_id":"robots.ro3.hull","version":1,"kind":"chassis","path":"robots/ro3/hull.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.335,-0.26,-0.075],"max":[0.3795,0.26,0.2875]}},
- {"asset_id":"robots.ro3.hull_source","version":1,"kind":"source_model","path":"robots/ro3/hull.gltf","source":"legacy main source model","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.31,-0.25,-0.08],"max":[0.31,0.25,0.08]}},
- {"asset_id":"robots.ro3.track","version":1,"kind":"track","path":"robots/ro3/track.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.395,-0.087,-0.137],"max":[0.395,0.087,0.137]}},
- {"asset_id":"robots.ro3.track_pad_source","version":1,"kind":"source_model","path":"robots/ro3/track_pad.gltf","source":"legacy main source model","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.373,-0.084,-0.117],"max":[0.373,0.084,0.07]}},
- {"asset_id":"robots.ro3.track_road_grip","version":1,"kind":"track_component","path":"robots/ro3/track_road_grip.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.084,-0.084,-0.033],"max":[0.084,0.084,0.04]}},
- {"asset_id":"robots.ro3.track_road_low_resistance","version":1,"kind":"track_component","path":"robots/ro3/track_road_low_resistance.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.084,-0.084,-0.033],"max":[0.084,0.084,0.04]}},
- {"asset_id":"robots.ro3.track_road_sand","version":1,"kind":"track_component","path":"robots/ro3/track_road_sand.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.084,-0.084,-0.033],"max":[0.084,0.084,0.04]}},
- {"asset_id":"robots.ro3.track_road_standard","version":1,"kind":"track_component","path":"robots/ro3/track_road_standard.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.084,-0.084,-0.033],"max":[0.084,0.084,0.04]}},
- {"asset_id":"robots.ro4.chassis","version":1,"kind":"chassis","path":"robots/ro4/chassis.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.26,-0.26,-0.09],"max":[0.279,0.26,0.1475]}},
- {"asset_id":"robots.ro4.swerve_module","version":1,"kind":"wheel_module","path":"robots/ro4/swerve_module.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.05,-0.05,-0.056],"max":[0.08,0.05,0.064]},"reference_radius_m":0.05,"reference_half_width_m":0.06},
- {"asset_id":"robots.ro5.chassis","version":1,"kind":"chassis","path":"robots/ro5/chassis.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.26,-0.26,-0.09],"max":[0.279,0.26,0.175]}},
- {"asset_id":"robots.ro5.roller_left","version":1,"kind":"wheel_component","path":"robots/ro5/roller_left.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.072,-0.072,-0.036],"max":[0.072,0.072,0.045]},"reference_radius_m":0.072,"reference_half_width_m":0.0405},
- {"asset_id":"robots.ro5.roller_right","version":1,"kind":"wheel_component","path":"robots/ro5/roller_right.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.072,-0.072,-0.036],"max":[0.072,0.072,0.045]},"reference_radius_m":0.072,"reference_half_width_m":0.0405},
- {"asset_id":"robots.ro6.forearm","version":1,"kind":"arm_link","path":"robots/ro6/forearm.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.048,-0.05,-0.168],"max":[0.048,0.05,0.12]}},
- {"asset_id":"robots.ro6.tool","version":1,"kind":"arm_link","path":"robots/ro6/tool.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.05,-0.0605,-0.072],"max":[0.05,0.0605,0.1575]}},
- {"asset_id":"robots.ro6.turret","version":1,"kind":"arm_link","path":"robots/ro6/turret.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.105,-0.105,-0.05],"max":[0.105,0.105,0.1]}},
- {"asset_id":"robots.ro6.upper_arm","version":1,"kind":"arm_link","path":"robots/ro6/upper_arm.glb","source":"legacy main asset","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-0.055,-0.055,-0.195],"max":[0.055,0.055,0.14]}}
- ]
+  "format": "lost-signal-assets/2",
+  "assets": [
+    {
+      "asset_id": "actors.forklift",
+      "version": 1,
+      "kind": "actor",
+      "path": "actors/forklift.glb",
+      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.56,
+          -0.35,
+          0
+        ],
+        "max": [
+          1.175,
+          0.35,
+          1.18
+        ]
+      },
+      "reference_radius_m": 0.45,
+      "content_hash": "fnv1a64:3caf40cf8d29fe4e",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:actors/forklift.glb;tools/modeling/refine_assets.py",
+      "pivot_semantic": "actor_root",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "actor_root",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "rubber",
+        "glass",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "actors/forklift.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 600,
+      "material_budget": 14,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "actors.worker",
+      "version": 1,
+      "kind": "actor",
+      "path": "actors/worker.glb",
+      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.16,
+          -0.215,
+          0
+        ],
+        "max": [
+          0.16,
+          0.215,
+          1.285
+        ]
+      },
+      "reference_radius_m": 0.25,
+      "content_hash": "fnv1a64:ac6b2a4d8bd97b3d",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:actors/worker.glb;tools/modeling/refine_assets.py",
+      "pivot_semantic": "actor_root",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "actor_root",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "fabric",
+        "skin",
+        "polymer"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "actors/worker.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 9,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.cable_reel",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/cable_reel.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.34,
+          -0.29,
+          0
+        ],
+        "max": [
+          0.62,
+          0.29,
+          0.72
+        ]
+      },
+      "content_hash": "fnv1a64:acb8cec0cb29e2f3",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:environment/research_base/cable_reel.glb",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/cable_reel.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 500,
+      "material_budget": 10,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.control_console",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/control_console.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.41,
+          -0.2825,
+          0
+        ],
+        "max": [
+          0.478181,
+          0.23,
+          1.103209
+        ]
+      },
+      "content_hash": "fnv1a64:1e712ba3c7831aad",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:environment/research_base/control_console.glb",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/control_console.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 400,
+      "material_budget": 10,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.maintenance_crates",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/maintenance_crates.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.71,
+          -0.32,
+          0
+        ],
+        "max": [
+          0.46,
+          0.32,
+          0.905
+        ]
+      },
+      "content_hash": "fnv1a64:692ad34899def474",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:environment/research_base/maintenance_crates.glb",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "wood",
+        "painted_metal",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/maintenance_crates.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 9,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.plant_cluster",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/plant_cluster.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.14,
+          -0.14,
+          0
+        ],
+        "max": [
+          0.26,
+          0.22,
+          0.685
+        ]
+      },
+      "content_hash": "fnv1a64:f086f7cd20bce447",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:environment/research_base/plant_cluster.glb",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "polymer",
+        "foliage",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/plant_cluster.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 6,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.rubble_cluster",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/rubble_cluster.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.47,
+          -0.325,
+          0
+        ],
+        "max": [
+          0.37,
+          0.38,
+          0.26
+        ]
+      },
+      "content_hash": "fnv1a64:22726e7a2b97dd9a",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:environment/research_base/rubble_cluster.glb",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "concrete",
+        "metal"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/rubble_cluster.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 5,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.service_light",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/service_light.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.12,
+          -0.12,
+          0
+        ],
+        "max": [
+          0.12,
+          0.12,
+          0.7
+        ]
+      },
+      "content_hash": "fnv1a64:a6664cc3343f17d2",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:environment/research_base/service_light.glb",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/service_light.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 500,
+      "material_budget": 5,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.wall_panel",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/wall_panel.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -1.725,
+          -0.1825,
+          0
+        ],
+        "max": [
+          1.725,
+          0.17,
+          1.16
+        ]
+      },
+      "content_hash": "fnv1a64:e3e492f1bb7aaab5",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:environment/research_base/wall_panel.glb",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/wall_panel.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 14,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.warning_strip",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/warning_strip.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -1.35,
+          -0.19,
+          0
+        ],
+        "max": [
+          1.35,
+          0.19,
+          0.027
+        ]
+      },
+      "content_hash": "fnv1a64:97b3082d3db3eb50",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:environment/research_base/warning_strip.glb",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "paint",
+        "wear"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/warning_strip.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 14,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.storage_rack_11m",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/storage_rack_11m.glb",
+      "source": "tools/modeling/build_research_base_kit.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.5,
+          -5.4975,
+          0
+        ],
+        "max": [
+          0.5,
+          5.4975,
+          1.2
+        ]
+      },
+      "content_hash": "fnv1a64:6c74527f886279be",
+      "license": "LicenseRef-LostSignal-Project",
+      "source_artifact": "tools/modeling/build_research_base_kit.py",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/storage_rack_11m.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 6800,
+      "material_budget": 7,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.glass_safety_gate",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/glass_safety_gate.glb",
+      "source": "tools/modeling/build_research_base_kit.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.25,
+          -0.5,
+          0
+        ],
+        "max": [
+          0.25,
+          0.5,
+          1.2
+        ]
+      },
+      "content_hash": "fnv1a64:63bd48d6abe1f954",
+      "license": "LicenseRef-LostSignal-Project",
+      "source_artifact": "tools/modeling/build_research_base_kit.py",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "glass",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/glass_safety_gate.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 1200,
+      "material_budget": 5,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "environment.research_base.robot_charging_pad",
+      "version": 1,
+      "kind": "environment",
+      "path": "environment/research_base/robot_charging_pad.glb",
+      "source": "tools/modeling/build_research_base_kit.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.6,
+          -0.45,
+          0
+        ],
+        "max": [
+          0.6,
+          0.45,
+          0.0275
+        ]
+      },
+      "content_hash": "fnv1a64:9f915b393436ae75",
+      "license": "LicenseRef-LostSignal-Project",
+      "source_artifact": "tools/modeling/build_research_base_kit.py",
+      "pivot_semantic": "world_fixture",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "world",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "environment/research_base/robot_charging_pad.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 1100,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.caster_fork",
+      "version": 1,
+      "kind": "link",
+      "path": "robots/ro1/caster_fork.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.0525,
+          -0.056,
+          -0.059
+        ],
+        "max": [
+          0.052,
+          0.056,
+          0.138
+        ]
+      },
+      "content_hash": "fnv1a64:ea22714e0a7613c5",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/caster_fork.glb",
+      "pivot_semantic": "caster_swivel_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "caster_fork_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/caster_fork.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 6,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.caster_wheel",
+      "version": 1,
+      "kind": "wheel",
+      "path": "robots/ro1/caster_wheel.glb",
+      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.055,
+          -0.055,
+          -0.048
+        ],
+        "max": [
+          0.055,
+          0.055,
+          0.048
+        ]
+      },
+      "reference_radius_m": 0.055,
+      "reference_half_width_m": 0.048,
+      "content_hash": "fnv1a64:acb46af493b8ca13",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/caster_wheel.glb;tools/modeling/refine_assets.py",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.055,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/caster_wheel.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 400,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.chassis",
+      "version": 1,
+      "kind": "chassis",
+      "path": "robots/ro1/chassis.glb",
+      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.371,
+          -0.291,
+          -0.092
+        ],
+        "max": [
+          0.412,
+          0.291,
+          0.2075
+        ]
+      },
+      "content_hash": "fnv1a64:56272edb34f57131",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/chassis.glb;tools/modeling/refine_assets.py",
+      "pivot_semantic": "base_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "base_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/chassis.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 600,
+      "material_budget": 21,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.compute_light",
+      "version": 1,
+      "kind": "link",
+      "path": "robots/ro1/compute_light.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.11,
+          -0.1,
+          -0.05
+        ],
+        "max": [
+          0.1245,
+          0.1,
+          0.05
+        ]
+      },
+      "content_hash": "fnv1a64:b7a515cb30134141",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/compute_light.glb",
+      "pivot_semantic": "base_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "compute_module_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/compute_light.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 100,
+      "material_budget": 3,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.compute_performance",
+      "version": 1,
+      "kind": "link",
+      "path": "robots/ro1/compute_performance.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.125,
+          -0.11,
+          -0.06
+        ],
+        "max": [
+          0.14,
+          0.11,
+          0.0925
+        ]
+      },
+      "content_hash": "fnv1a64:db9f26f32c28d1d7",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/compute_performance.glb",
+      "pivot_semantic": "base_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "compute_module_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/compute_performance.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 100,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.lidar_fast",
+      "version": 1,
+      "kind": "sensor",
+      "path": "robots/ro1/lidar_fast.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.105,
+          -0.105,
+          -0.0175
+        ],
+        "max": [
+          0.105,
+          0.105,
+          0.114
+        ]
+      },
+      "content_hash": "fnv1a64:435a65484a0618d3",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/lidar_fast.glb",
+      "pivot_semantic": "sensor_frame",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "lidar_link",
+      "grounding_points_m": [],
+      "sensor_optical_center_m": [
+        0,
+        0,
+        0
+      ],
+      "material_roles": [
+        "painted_metal",
+        "glass",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/lidar_fast.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 400,
+      "material_budget": 5,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.lidar_long",
+      "version": 1,
+      "kind": "sensor",
+      "path": "robots/ro1/lidar_long.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.115,
+          -0.115,
+          -0.0225
+        ],
+        "max": [
+          0.115,
+          0.115,
+          0.195
+        ]
+      },
+      "content_hash": "fnv1a64:640fbd0723915617",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/lidar_long.glb",
+      "pivot_semantic": "sensor_frame",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "lidar_link",
+      "grounding_points_m": [],
+      "sensor_optical_center_m": [
+        0,
+        0,
+        0
+      ],
+      "material_roles": [
+        "painted_metal",
+        "glass",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/lidar_long.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 5,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.lidar_standard",
+      "version": 1,
+      "kind": "sensor",
+      "path": "robots/ro1/lidar_standard.glb",
+      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.11,
+          -0.11,
+          -0.02
+        ],
+        "max": [
+          0.11,
+          0.11,
+          0.105
+        ]
+      },
+      "content_hash": "fnv1a64:6becd05253201c54",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/lidar_standard.glb;tools/modeling/refine_assets.py",
+      "pivot_semantic": "sensor_frame",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "lidar_link",
+      "grounding_points_m": [],
+      "sensor_optical_center_m": [
+        0,
+        0,
+        0
+      ],
+      "material_roles": [
+        "painted_metal",
+        "glass",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/lidar_standard.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.wheel_eco",
+      "version": 1,
+      "kind": "wheel",
+      "path": "robots/ro1/wheel_eco.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.1,
+          -0.1,
+          -0.051
+        ],
+        "max": [
+          0.1,
+          0.1,
+          0.051
+        ]
+      },
+      "reference_radius_m": 0.1,
+      "reference_half_width_m": 0.051,
+      "content_hash": "fnv1a64:c718a9eccff9494a",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/wheel_eco.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.1,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/wheel_eco.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 400,
+      "material_budget": 6,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.wheel_grip",
+      "version": 1,
+      "kind": "wheel",
+      "path": "robots/ro1/wheel_grip.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.1,
+          -0.1,
+          -0.073
+        ],
+        "max": [
+          0.1,
+          0.1,
+          0.073
+        ]
+      },
+      "reference_radius_m": 0.1,
+      "reference_half_width_m": 0.073,
+      "content_hash": "fnv1a64:b9b608270572968b",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/wheel_grip.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.1,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/wheel_grip.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 600,
+      "material_budget": 18,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro1.wheel_standard",
+      "version": 1,
+      "kind": "wheel",
+      "path": "robots/ro1/wheel_standard.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.1,
+          -0.1,
+          -0.061
+        ],
+        "max": [
+          0.1,
+          0.1,
+          0.061
+        ]
+      },
+      "reference_radius_m": 0.1,
+      "reference_half_width_m": 0.061,
+      "content_hash": "fnv1a64:3a9589c63a909499",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro1/wheel_standard.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.1,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro1/wheel_standard.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 400,
+      "material_budget": 6,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro2.chassis",
+      "version": 1,
+      "kind": "chassis",
+      "path": "robots/ro2/chassis.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.367,
+          -0.256,
+          -0.085
+        ],
+        "max": [
+          0.391,
+          0.256,
+          0.1975
+        ]
+      },
+      "content_hash": "fnv1a64:6abbbd5416e59b36",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro2/chassis.glb",
+      "pivot_semantic": "base_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "base_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro2/chassis.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 20,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro2.front_left_knuckle",
+      "version": 1,
+      "kind": "link",
+      "path": "robots/ro2/front_left_knuckle.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.085,
+          -0.048,
+          -0.0775
+        ],
+        "max": [
+          0.049,
+          0.045,
+          0.0775
+        ]
+      },
+      "content_hash": "fnv1a64:f1cd8d5ae4c2d37f",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro2/front_left_knuckle.glb",
+      "pivot_semantic": "steer_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "steering_knuckle_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro2/front_left_knuckle.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 6,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro2.front_right_knuckle",
+      "version": 1,
+      "kind": "link",
+      "path": "robots/ro2/front_right_knuckle.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.085,
+          -0.045,
+          -0.0775
+        ],
+        "max": [
+          0.049,
+          0.048,
+          0.0775
+        ]
+      },
+      "content_hash": "fnv1a64:4ac99f3fe5bac69b",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro2/front_right_knuckle.glb",
+      "pivot_semantic": "steer_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "steering_knuckle_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro2/front_right_knuckle.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 6,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro3.hull",
+      "version": 1,
+      "kind": "chassis",
+      "path": "robots/ro3/hull.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.335,
+          -0.26,
+          -0.075
+        ],
+        "max": [
+          0.3795,
+          0.26,
+          0.2875
+        ]
+      },
+      "content_hash": "fnv1a64:e71f1eb8c5afcdbe",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro3/hull.glb",
+      "pivot_semantic": "base_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "base_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro3/hull.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 14,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro3.hull_source",
+      "version": 1,
+      "kind": "source_model",
+      "path": "robots/ro3/hull.gltf",
+      "source": "legacy main source model",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.31,
+          -0.25,
+          -0.08
+        ],
+        "max": [
+          0.31,
+          0.25,
+          0.08
+        ]
+      },
+      "content_hash": "fnv1a64:2c71745fe57ce2ae",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro3/hull.gltf",
+      "pivot_semantic": "source_reference",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "unbound_source",
+      "grounding_points_m": [],
+      "material_roles": [
+        "source_material"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro3/hull.gltf",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 100,
+      "material_budget": 2,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro3.track",
+      "version": 1,
+      "kind": "track",
+      "path": "robots/ro3/track.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "+Y",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.395,
+          -0.087,
+          -0.137
+        ],
+        "max": [
+          0.395,
+          0.087,
+          0.137
+        ]
+      },
+      "content_hash": "fnv1a64:4973cb852733ce59",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro3/track.glb",
+      "pivot_semantic": "track_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "track_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          -0.137
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro3/track.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 500,
+      "material_budget": 19,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro3.track_pad_source",
+      "version": 1,
+      "kind": "source_model",
+      "path": "robots/ro3/track_pad.gltf",
+      "source": "legacy main source model",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "+Y",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.373,
+          -0.084,
+          -0.117
+        ],
+        "max": [
+          0.373,
+          0.084,
+          0.07
+        ]
+      },
+      "content_hash": "fnv1a64:a3c3815bf2a45717",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro3/track_pad.gltf",
+      "pivot_semantic": "source_reference",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "unbound_source",
+      "grounding_points_m": [],
+      "material_roles": [
+        "source_material"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro3/track_pad.gltf",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 600,
+      "material_budget": 7,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro3.track_road_grip",
+      "version": 1,
+      "kind": "track_component",
+      "path": "robots/ro3/track_road_grip.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.084,
+          -0.084,
+          -0.033
+        ],
+        "max": [
+          0.084,
+          0.084,
+          0.04
+        ]
+      },
+      "content_hash": "fnv1a64:aee8a8d91bafa4db",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro3/track_road_grip.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.084,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro3/track_road_grip.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro3.track_road_low_resistance",
+      "version": 1,
+      "kind": "track_component",
+      "path": "robots/ro3/track_road_low_resistance.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.084,
+          -0.084,
+          -0.033
+        ],
+        "max": [
+          0.084,
+          0.084,
+          0.04
+        ]
+      },
+      "content_hash": "fnv1a64:4ca3b73ad0f8d7c1",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro3/track_road_low_resistance.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.084,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro3/track_road_low_resistance.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro3.track_road_sand",
+      "version": 1,
+      "kind": "track_component",
+      "path": "robots/ro3/track_road_sand.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.084,
+          -0.084,
+          -0.033
+        ],
+        "max": [
+          0.084,
+          0.084,
+          0.04
+        ]
+      },
+      "content_hash": "fnv1a64:fbd1fdb1441faa28",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro3/track_road_sand.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.084,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro3/track_road_sand.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro3.track_road_standard",
+      "version": 1,
+      "kind": "track_component",
+      "path": "robots/ro3/track_road_standard.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.084,
+          -0.084,
+          -0.033
+        ],
+        "max": [
+          0.084,
+          0.084,
+          0.04
+        ]
+      },
+      "content_hash": "fnv1a64:2423dac037da6b10",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro3/track_road_standard.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.084,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro3/track_road_standard.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro4.chassis",
+      "version": 1,
+      "kind": "chassis",
+      "path": "robots/ro4/chassis.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.26,
+          -0.26,
+          -0.09
+        ],
+        "max": [
+          0.279,
+          0.26,
+          0.1475
+        ]
+      },
+      "content_hash": "fnv1a64:336c1edb2c07657d",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro4/chassis.glb",
+      "pivot_semantic": "base_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "base_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro4/chassis.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 100,
+      "material_budget": 5,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro4.swerve_module",
+      "version": 1,
+      "kind": "wheel_module",
+      "path": "robots/ro4/swerve_module.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "+Y",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.05,
+          -0.05,
+          -0.056
+        ],
+        "max": [
+          0.08,
+          0.05,
+          0.064
+        ]
+      },
+      "reference_radius_m": 0.05,
+      "reference_half_width_m": 0.06,
+      "content_hash": "fnv1a64:ef2070ae3086e70e",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro4/swerve_module.glb",
+      "pivot_semantic": "steer_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "swerve_module_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          0.0,
+          -0.056
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro4/swerve_module.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro5.chassis",
+      "version": 1,
+      "kind": "chassis",
+      "path": "robots/ro5/chassis.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.26,
+          -0.26,
+          -0.09
+        ],
+        "max": [
+          0.279,
+          0.26,
+          0.175
+        ]
+      },
+      "content_hash": "fnv1a64:d94b784a1cd0808d",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro5/chassis.glb",
+      "pivot_semantic": "base_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "base_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro5/chassis.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 100,
+      "material_budget": 5,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro5.roller_left",
+      "version": 1,
+      "kind": "wheel_component",
+      "path": "robots/ro5/roller_left.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.072,
+          -0.072,
+          -0.036
+        ],
+        "max": [
+          0.072,
+          0.072,
+          0.045
+        ]
+      },
+      "reference_radius_m": 0.072,
+      "reference_half_width_m": 0.0405,
+      "content_hash": "fnv1a64:6b2dee1ae230452d",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro5/roller_left.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.072,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro5/roller_left.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro5.roller_right",
+      "version": 1,
+      "kind": "wheel_component",
+      "path": "robots/ro5/roller_right.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Y",
+      "forward_axis": "+X",
+      "axle_axis": "-Z",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.072,
+          -0.072,
+          -0.036
+        ],
+        "max": [
+          0.072,
+          0.072,
+          0.045
+        ]
+      },
+      "reference_radius_m": 0.072,
+      "reference_half_width_m": 0.0405,
+      "content_hash": "fnv1a64:4fa488ec775a64cb",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro5/roller_right.glb",
+      "pivot_semantic": "wheel_roll_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "wheel_roll_link",
+      "grounding_points_m": [
+        [
+          0.0,
+          -0.072,
+          0.0
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal",
+        "rotation_witness"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro5/roller_right.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro6.forearm",
+      "version": 1,
+      "kind": "arm_link",
+      "path": "robots/ro6/forearm.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.048,
+          -0.05,
+          -0.168
+        ],
+        "max": [
+          0.048,
+          0.05,
+          0.12
+        ]
+      },
+      "content_hash": "fnv1a64:6f9ad2f2ffa2598e",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro6/forearm.glb",
+      "pivot_semantic": "arm_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "forearm_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro6/forearm.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 3,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro6.tool",
+      "version": 1,
+      "kind": "arm_link",
+      "path": "robots/ro6/tool.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.05,
+          -0.0605,
+          -0.072
+        ],
+        "max": [
+          0.05,
+          0.0605,
+          0.1575
+        ]
+      },
+      "content_hash": "fnv1a64:1d278850d36da9c0",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro6/tool.glb",
+      "pivot_semantic": "arm_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "tool_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro6/tool.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 5,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro6.turret",
+      "version": 1,
+      "kind": "arm_link",
+      "path": "robots/ro6/turret.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.105,
+          -0.105,
+          -0.05
+        ],
+        "max": [
+          0.105,
+          0.105,
+          0.1
+        ]
+      },
+      "content_hash": "fnv1a64:fd173275c446f2cd",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro6/turret.glb",
+      "pivot_semantic": "arm_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "arm_base_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro6/turret.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 3,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "robots.ro6.upper_arm",
+      "version": 1,
+      "kind": "arm_link",
+      "path": "robots/ro6/upper_arm.glb",
+      "source": "legacy main asset",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.055,
+          -0.055,
+          -0.195
+        ],
+        "max": [
+          0.055,
+          0.055,
+          0.14
+        ]
+      },
+      "content_hash": "fnv1a64:28a550801db73cd2",
+      "license": "NOASSERTION",
+      "source_artifact": "legacy-main:robots/ro6/upper_arm.glb",
+      "pivot_semantic": "arm_joint",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "upper_arm_link",
+      "grounding_points_m": [],
+      "material_roles": [
+        "painted_metal",
+        "polymer",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "robots/ro6/upper_arm.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 200,
+      "material_budget": 4,
+      "animation_clips": []
+    }
+  ]
 }
