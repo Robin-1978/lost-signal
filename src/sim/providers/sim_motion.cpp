@@ -96,7 +96,7 @@ bool SimMotionEndpoint::poll_feedback(
     const double base =
         std::max(0.1, world_->motor_params().wheel_base_m);
     const double* w = out.drive_radps.data();
-    double fwd = 0.0, yaw = 0.0;
+ double fwd = 0.0, lat = 0.0, yaw = 0.0;
     if (out.drive_count == 2 && out.steer_count == 0) {
       // Differential: idx0 left (+y), idx1 right.
       fwd = 0.5 * (w[0] + w[1]) * r;
@@ -120,6 +120,7 @@ bool SimMotionEndpoint::poll_feedback(
       vx /= 4.0;
       vy /= 4.0;
       fwd = vx;
+ lat = vy;
       double num = 0.0, den = 0.0;
       for (int i = 0; i < 4; ++i) {
         const double mvx =
@@ -133,13 +134,15 @@ bool SimMotionEndpoint::poll_feedback(
     } else if (out.drive_count == 4 && out.steer_count == 0) {
       // Mecanum: roller-map rows dual to the engine wrench (same
       // coefficients as the plant's virtual-work map, power-consistent).
-      const double arm = (track + base) / 4.0;
+ const double arm = (track + base) / 2.0;
       fwd = 0.25 * (w[0] + w[1] + w[2] + w[3]) * r;
+ lat = 0.25 * (-w[0] + w[1] + w[2] - w[3]) * r;
       yaw = arm > 1e-9
                 ? 0.25 * (-w[0] + w[1] - w[2] + w[3]) * r / arm
                 : 0.0;
     }
     out.forward_mps = (have_prev_ && dt_s > 0.0) ? fwd : 0.0;
+ out.lateral_mps = (have_prev_ && dt_s > 0.0) ? lat : 0.0;
     out.yaw_rate_radps = (have_prev_ && dt_s > 0.0) ? yaw : 0.0;
   }
   have_prev_ = true;

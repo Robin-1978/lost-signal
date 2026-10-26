@@ -11,6 +11,12 @@ bool valid_observation_frame(const ObservationFrame& frame) {
   if (frame.stamp_ns == core::kInvalidTime) return false;
   if (frame.sequence == 0) return false;
   if (frame.empty()) return false;
+ if (frame.odometry_valid &&
+ (!std::isfinite(frame.forward_mps) ||
+ !std::isfinite(frame.lateral_mps) ||
+ !std::isfinite(frame.yaw_rate_radps))) {
+ return false;
+ }
  const bool explicit_sections = !frame.scan_header.empty() ||
  !frame.motion_header.empty() || !frame.imu_header.empty();
  if (frame.scan_valid &&

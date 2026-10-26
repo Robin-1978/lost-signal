@@ -118,7 +118,7 @@ bool measurement_header_from_json(const Json& obj, const char* key,
 
 std::string step_to_json_line(const RecordedStep& step) {
   Json::Object o;
- o.emplace_back("v", Json::Num(3));
+ o.emplace_back("v", Json::Num(4));
   o.emplace_back("seq", Json::Num(static_cast<double>(step.sequence)));
   o.emplace_back("t", Json::Num(static_cast<double>(step.stamp_ns)));
   o.emplace_back("src", Json::Str(step.source));
@@ -148,6 +148,7 @@ std::string step_to_json_line(const RecordedStep& step) {
   Json::Object odom;
   odom.emplace_back("valid", Json::Bool(step.odom_valid));
   odom.emplace_back("fwd", Json::Num(step.forward_mps));
+ odom.emplace_back("lat", Json::Num(step.lateral_mps));
   odom.emplace_back("yaw", Json::Num(step.yaw_rate_radps));
   o.emplace_back("odom", Json::Obj(std::move(odom)));
   Json::Object imu;
@@ -188,7 +189,8 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   }
   const Json& obj = *root;
   double v = 0, seq = 0, stamp = 0;
- if (!req_num(obj, "v", v, err) || (v != 2.0 && v != 3.0)) {
+ if (!req_num(obj, "v", v, err) ||
+ (v != 2.0 && v != 3.0 && v != 4.0)) {
     if (err.empty()) err = "unsupported schema version";
     return false;
   }
@@ -247,6 +249,11 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   }
   if (!req_bool(*odom, "valid", step.odom_valid, err)) return false;
   if (!req_num(*odom, "fwd", step.forward_mps, err)) return false;
+ if (v >= 4.0) {
+ if (!req_num(*odom, "lat", step.lateral_mps, err)) return false;
+ } else {
+ step.lateral_mps = 0.0;
+ }
   if (!req_num(*odom, "yaw", step.yaw_rate_radps, err)) return false;
   const Json* imu = req(obj, "imu", err);
   if (imu == nullptr || !imu->is_object()) {
@@ -318,16 +325,16 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   if (!num_array(svel, "vel", step.steers_vel_radps)) return false;
  if (v >= 3.0) {
  if (step.scan_valid && !step.scan_header.valid()) {
- err = "v3 scan is missing a valid section header";
+ err = "recording scan is missing a valid section header";
  return false;
  }
  if ((step.odom_valid || !step.drives_radps.empty()) &&
  !step.motion_header.valid()) {
- err = "v3 motion is missing a valid section header";
+ err = "recording motion is missing a valid section header";
  return false;
  }
  if (step.imu_valid && !step.imu_header.valid()) {
- err = "v3 imu is missing a valid section header";
+ err = "recording imu is missing a valid section header";
  return false;
  }
  }
@@ -354,6 +361,7 @@ RecordedStep record_step(const robot::iface::ObservationFrame& obs) {
   s.angle_increment_rad = obs.scan_angle_increment_rad;
   s.odom_valid = obs.odometry_valid;
   s.forward_mps = obs.forward_mps;
+ s.lateral_mps = obs.lateral_mps;
   s.yaw_rate_radps = obs.yaw_rate_radps;
   s.imu_valid = obs.imu_valid;
   s.gyro_x = obs.imu_gyro_x_radps;
@@ -392,6 +400,7 @@ robot::iface::ObservationFrame step_to_observation(const RecordedStep& step) {
   o.scan_angle_increment_rad = step.angle_increment_rad;
   o.odometry_valid = step.odom_valid;
   o.forward_mps = step.forward_mps;
+ o.lateral_mps = step.lateral_mps;
   o.yaw_rate_radps = step.yaw_rate_radps;
   o.imu_valid = step.imu_valid;
   o.imu_gyro_x_radps = step.gyro_x;

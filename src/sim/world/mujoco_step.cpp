@@ -219,8 +219,8 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
         const double tsign =
             (d == 0 || d == 2) ? -1.0 : 1.0;
         roller_fy += sign * motor_N * kRollerCos;
-        roller_t += tsign * motor_N * kRollerCos * (track_m_ / 2 + base_len_m_ / 2) *
-                    0.5;
+ roller_t += tsign * motor_N * kRollerCos *
+ (track_m_ / 2 + base_len_m_ / 2);
       }
     }
     for (int t = 0; t < steer_count_; ++t) {

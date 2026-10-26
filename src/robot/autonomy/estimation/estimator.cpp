@@ -28,11 +28,13 @@ double position_sigma(const PlanarCovariance& covariance) {
 }
 
 void propagate_planar_covariance(PlanarCovariance& covariance,
- double distance_m, double yaw_mid_rad,
+ double delta_x_m, double delta_y_m,
  double position_process_variance) {
- // F for x += ds*cos(yaw), y += ds*sin(yaw), yaw += d_yaw.
- const double fx_yaw = -distance_m * std::sin(yaw_mid_rad);
- const double fy_yaw = distance_m * std::cos(yaw_mid_rad);
+ // F for a body-frame SE(2) displacement expressed in the world frame.
+ // The yaw Jacobian is the displacement rotated by +90 degrees, including
+ // lateral odometry from holonomic chassis.
+ const double fx_yaw = -delta_y_m;
+ const double fy_yaw = delta_x_m;
  const PlanarCovariance f{
  1.0, 0.0, fx_yaw,
  0.0, 1.0, fy_yaw,
@@ -168,8 +170,6 @@ void FusedOdometryEstimator::reset() {
   has_prior_ = false;
   prior_ = iface::ObservationFrame{};
   last_slip_ = SlipObservation{};
-  slip_heading_extra_rad_ = 0.0;
- odom_slip_heading_extra_rad_ = 0.0;
  motion_scale_ = 1.0;
 }
 
@@ -197,8 +197,10 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
     prior_ = obs;
     if (obs.odometry_valid) {
       estimate_.forward_mps = obs.forward_mps;
+ estimate_.lateral_mps = obs.lateral_mps;
       estimate_.yaw_rate_radps = obs.yaw_rate_radps;
  odom_estimate_.forward_mps = obs.forward_mps;
+ odom_estimate_.lateral_mps = obs.lateral_mps;
  odom_estimate_.yaw_rate_radps = obs.yaw_rate_radps;
     }
     if (obs.imu_valid) {
@@ -236,7 +238,9 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
     // Fast path: sensor-level disagreement inside this frame (odom vs gyro)
     // reacts within one cycle to a step change. Estimate-level path: the
     // observer residual catches drift the sensors agree on but the filter
-    // has not absorbed. Either trusts the gyro and inflates heading.
+ // has not absorbed. Either path trusts the gyro. The disagreement remains
+ // available as slip evidence for GripAdapter; it must not be accumulated
+ // as absolute-heading error while a valid gyro directly observes yaw rate.
     const double inline_residual =
         std::abs(obs.yaw_rate_radps - obs.imu_gyro_z_radps);
     const bool observer_slip =
@@ -258,22 +262,37 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
  // observer above still consumes the raw twist; only translation is scaled.
  const double forward =
  obs.odometry_valid ? obs.forward_mps * motion_scale_ : estimate_.forward_mps;
-  const double step_m = forward * dt_s;
+ const double lateral = obs.odometry_valid
+ ? obs.lateral_mps * motion_scale_ : estimate_.lateral_mps;
+ const double half_yaw_step = 0.5 * yaw_rate * dt_s;
+ const double sinc = std::abs(half_yaw_step) > 1e-9
+ ? std::sin(half_yaw_step) / half_yaw_step : 1.0;
+ const double forward_step_m = forward * dt_s * sinc;
+ const double lateral_step_m = lateral * dt_s * sinc;
+ struct IntegratedStep {
+ double delta_x_m = 0.0;
+ double delta_y_m = 0.0;
+ };
  auto integrate = [&](EstimatedState& state) {
  const double yaw_mid = state.yaw_rad + 0.5 * yaw_rate * dt_s;
- state.x_m += step_m * std::cos(yaw_mid);
- state.y_m += step_m * std::sin(yaw_mid);
+ const double c = std::cos(yaw_mid);
+ const double s = std::sin(yaw_mid);
+ const double delta_x = forward_step_m * c - lateral_step_m * s;
+ const double delta_y = forward_step_m * s + lateral_step_m * c;
+ state.x_m += delta_x;
+ state.y_m += delta_y;
  // Slope z is continuous odometry in both frames. A 2D map correction
  // changes map_T_odom in SE(2) and never resets height or tilt.
- state.z_m += step_m * std::sin(state.pitch_rad);
+ state.z_m += forward_step_m * std::sin(state.pitch_rad);
  state.yaw_rad = core::wrap_angle(state.yaw_rad + yaw_rate * dt_s);
  state.forward_mps = forward;
+ state.lateral_mps = lateral;
  state.yaw_rate_radps = yaw_rate;
  state.stamp_ns = obs.stamp_ns;
- return yaw_mid;
+ return IntegratedStep{delta_x, delta_y};
  };
- const double estimate_yaw_mid = integrate(estimate_);
- const double odom_yaw_mid = integrate(odom_estimate_);
+ const IntegratedStep estimate_step = integrate(estimate_);
+ const IntegratedStep odom_step = integrate(odom_estimate_);
 
   // Attitude: integrate gyro rotation, correct roll/pitch toward the
   // gravity tilt implied by specific force. Mount assumed aligned in v1;
@@ -348,39 +367,24 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
  // Jacobian carries yaw uncertainty into cross-track position and preserves
  // x/y/yaw correlations; process-noise variances add once per increment.
  const double position_process_variance =
- config_.position_process_variance_per_m * std::abs(step_m) +
+ config_.position_process_variance_per_m *
+ std::hypot(forward, lateral) * dt_s +
  config_.position_process_variance_per_s * dt_s;
  const double heading_process_variance =
  config_.heading_process_variance_per_s * dt_s;
- auto grow_uncertainty = [&](EstimatedState& state,
- PlanarCovariance& covariance, double yaw_mid,
- double& slip_extra) {
+auto grow_uncertainty = [&](EstimatedState& state,
+ PlanarCovariance& covariance, const IntegratedStep& step) {
  propagate_planar_covariance(
- covariance, step_m, yaw_mid,
+ covariance, step.delta_x_m, step.delta_y_m,
  std::max(0.0, position_process_variance));
- const double old_heading_sigma =
- std::sqrt(std::max(0.0, covariance[8]));
- const double heading_base = std::sqrt(
- std::max(0.0, old_heading_sigma - slip_extra) *
- std::max(0.0, old_heading_sigma - slip_extra) +
- std::max(0.0, heading_process_variance));
- if (slipped) {
- slip_extra = std::min(
- slip_extra + config_.slip_heading_inflation_rad,
- std::max(0.0, config_.slip_heading_inflation_cap_rad));
- } else if (config_.slip_heading_relax_s > 0.0) {
- slip_extra *= std::exp(-dt_s / config_.slip_heading_relax_s);
- if (!(slip_extra > 1e-12)) slip_extra = 0.0;
- }
+ covariance[8] += std::max(0.0, heading_process_variance);
  set_heading_sigma(covariance, std::clamp(
- heading_base + slip_extra, config_.yaw_sigma_min_rad,
+ std::sqrt(std::max(0.0, covariance[8])), config_.yaw_sigma_min_rad,
  config_.yaw_sigma_max_rad));
  publish_covariance(covariance, config_, state);
  };
- grow_uncertainty(estimate_, estimate_covariance_, estimate_yaw_mid,
- slip_heading_extra_rad_);
- grow_uncertainty(odom_estimate_, odom_covariance_, odom_yaw_mid,
- odom_slip_heading_extra_rad_);
+grow_uncertainty(estimate_, estimate_covariance_, estimate_step);
+grow_uncertainty(odom_estimate_, odom_covariance_, odom_step);
   prior_ = obs;
 }
 
@@ -446,9 +450,6 @@ void FusedOdometryEstimator::correct_pose(double x_m, double y_m,
  1.0 / correction_heading_variance))};
   estimate_.stamp_ns = stamp_ns;
  publish_covariance(estimate_covariance_, config_, estimate_);
-  // A validated correction resolves slip doubt: clear the extra so the
-  // next ticks grow from the motion baseline instead of re-adding doubt.
-  slip_heading_extra_rad_ = 0.0;
 }
 
 void FusedOdometryEstimator::correct_pose_information(
@@ -535,7 +536,6 @@ void FusedOdometryEstimator::correct_pose_information(
  estimate_covariance_ = posterior_covariance;
  estimate_.stamp_ns = stamp_ns;
  publish_covariance(estimate_covariance_, config_, estimate_);
- if (information[8] > 1e-12) slip_heading_extra_rad_ = 0.0;
 }
 
 void FusedOdometryEstimator::correct_relative_pose(
@@ -590,6 +590,7 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
   estimate_.z_m = odom_estimate_.z_m;
   estimate_.yaw_rad = core::wrap_angle(yaw_rad);
   estimate_.forward_mps = odom_estimate_.forward_mps;
+ estimate_.lateral_mps = odom_estimate_.lateral_mps;
   estimate_.yaw_rate_radps = odom_estimate_.yaw_rate_radps;
   estimate_.roll_rad = odom_estimate_.roll_rad;
   estimate_.pitch_rad = odom_estimate_.pitch_rad;
@@ -609,7 +610,6 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
  prior_.stamp_ns = stamp_ns;
   attitude_ = quaternion_from_euler(
   estimate_.roll_rad, estimate_.pitch_rad, estimate_.yaw_rad);
-  slip_heading_extra_rad_ = 0.0;
 }
 
 }  // namespace lost_signal::robot::autonomy

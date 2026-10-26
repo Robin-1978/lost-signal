@@ -44,6 +44,7 @@ lost_signal::robot::iface::ObservationFrame make_obs() {
   o.scan_angle_increment_rad = 0.5;
   o.odometry_valid = true;
   o.forward_mps = 1.25;
+ o.lateral_mps = -0.75;
   o.yaw_rate_radps = -0.5;
   o.imu_valid = true;
   o.imu_gyro_x_radps = 0.01;
@@ -120,6 +121,7 @@ int main() {
  assert(obs2.time_offsets_s == obs.time_offsets_s);
     assert(obs2.static_ranges_m == obs.static_ranges_m);
     assert(obs2.forward_mps == obs.forward_mps);
+ assert(obs2.lateral_mps == obs.lateral_mps);
     assert(obs2.imu_gyro_z_radps == obs.imu_gyro_z_radps);
     assert(obs2.drive_count == 2);
     assert(obs2.drive_radps[0] == obs.drive_radps[0]);

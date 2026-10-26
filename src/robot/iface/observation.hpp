@@ -70,6 +70,7 @@ struct ObservationFrame {
     MeasurementHeader motion_header;
   bool odometry_valid = false;
   double forward_mps = 0.0;
+ double lateral_mps = 0.0;
   double yaw_rate_radps = 0.0;
 
     // IMU (measured, SI, full 6-axis in imu_link).

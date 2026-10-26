@@ -45,6 +45,7 @@ int main() {
  header(2, 100'000'000, "lidar", Frame::kLidarLink);
  observation.odometry_valid = true;
  observation.forward_mps = 0.4;
+ observation.lateral_mps = -0.3;
  observation.motion_header =
  header(5, 120'000'000, "encoder", Frame::kBaseLink);
  observation.imu_valid = true;
@@ -71,6 +72,7 @@ int main() {
  assert(localization.scan_valid);
  assert(localization.source == "lidar");
  assert(localization.odometry_valid);
+ assert(localization.lateral_mps == -0.3);
  const ObservationFrame no_repeat =
  synchronizer.take_localization_observation();
  assert(!no_repeat.scan_valid);

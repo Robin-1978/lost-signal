@@ -49,6 +49,7 @@ void copy_motion_section(const iface::ObservationFrame& source,
   target.motion_header = source.motion_header;
   target.odometry_valid = source.odometry_valid;
   target.forward_mps = source.forward_mps;
+ target.lateral_mps = source.lateral_mps;
   target.yaw_rate_radps = source.yaw_rate_radps;
   target.drive_count = source.drive_count;
   target.steer_count = source.steer_count;

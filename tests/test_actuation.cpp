@@ -269,8 +269,13 @@ int main() {
     mc.drive = {-0.5, 0.5, 0.5, -0.5};
     m.apply(mc);
     for (int i = 0; i < 200; ++i) m.step(0.02);
-    assert(std::abs(m.truth().forward_mps) < 0.15);
     assert(m.truth().lateral_mps > 0.5);
+ // The resolved four-wheel contact may create small cross-axis leakage;
+ // require a lateral-dominant response instead of an absolute speed tied
+ // to one motor/contact calibration.
+ assert(std::abs(m.truth().forward_mps) <
+ 0.1 * std::abs(m.truth().lateral_mps));
+ assert(std::abs(m.truth().yaw_rate_radps) < 0.01);
     assert(m.truth().body_y_m > 0.3);
   }
 

@@ -32,6 +32,7 @@ struct RecordedStep {
   double angle_increment_rad = 0.0;
   bool odom_valid = false;
   double forward_mps = 0.0;
+ double lateral_mps = 0.0;
   double yaw_rate_radps = 0.0;
   bool imu_valid = false;
   double gyro_x = 0.0, gyro_y = 0.0, gyro_z = 0.0;
@@ -41,10 +42,10 @@ struct RecordedStep {
   std::vector<double> steers_vel_radps;
 };
 
-// JSONL v3: one header line then one step object per line. v2 remains
-// readable; it has no per-section headers and is treated as a legacy
-// single-source envelope.
-// schema: {"v":3,"kind":"episode","map":"<id>","rev":<n>}
+// JSONL v4: one header line then one step object per line. v2/v3 remain
+// readable; v2 has no per-section headers, and both older versions default
+// the body-lateral odometry channel to zero.
+// schema: {"v":4,"kind":"episode","map":"<id>","rev":<n>}
 // steps carry measurement headers, "drives":[...], and
 // "steers":{"pos":[...],"vel":[...]}.
 struct RecordedEpisode {

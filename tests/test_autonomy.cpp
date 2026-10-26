@@ -89,6 +89,24 @@ int main() {
     assert(est.estimate().confidence < 1.0);
   }
 
+ // Holonomic encoder odometry carries the complete body twist. A pure
+ // body-left measurement must move the REP-105 odom and map estimates along
+ // +Y without inventing forward travel or depending on simulator truth.
+ {
+ FusedOdometryEstimator est;
+ est.reset();
+ auto first = make_odom(1, 0, 0.0);
+ first.lateral_mps = 1.0;
+ est.predict(first);
+ auto second = make_odom(2, 20'000'000, 0.0);
+ second.lateral_mps = 1.0;
+ est.predict(second);
+ assert(std::abs(est.estimate().x_m) < 1e-12);
+ assert(std::abs(est.estimate().y_m - 0.02) < 1e-9);
+ assert(est.estimate().lateral_mps == 1.0);
+ assert(std::abs(est.odometry_estimate().y_m - 0.02) < 1e-9);
+ }
+
  // A delayed sample from another asynchronous endpoint cannot rewind the
  // integration clock or be integrated again on the next in-order sample.
  {
@@ -105,7 +123,7 @@ int main() {
  assert(std::abs(est.estimate().x_m - 0.04) < 1e-9);
  }
 
- // Slip gate: wheels and gyro disagree -> trust gyro, inflate yaw sigma.
+ // Slip gate: wheels and gyro disagree -> trust gyro and publish evidence.
   {
     FusedOdometryEstimator est;
     est.reset();
@@ -122,14 +140,14 @@ int main() {
     est.predict(o2);
     // Gyro-led yaw: estimate follows the IMU, not the slipping wheels.
     assert(std::abs(est.estimate().yaw_rate_radps - 2.0) < 1e-9);
-    assert(est.estimate().heading_sigma_rad >
-           sigma_before + 0.19);  // slip inflation applied
+    // A valid gyro directly observes yaw rate. Wheel/gyro disagreement is
+    // exposed as slip evidence, not manufactured into absolute yaw error.
+    assert(est.estimate().heading_sigma_rad < sigma_before + 0.01);
+    assert(est.last_slip().quality == SlipQuality::kObservable);
   }
 
-  // Slip inflation is bounded and forgets: sustained slip holds the extra
-  // (capped, never pi), clean rolling relaxes it, and a validated
-  // correction clears it outright. A latched heading sigma would wedge
-  // the supervisor in global-only retries.
+  // Sustained wheel/gyro disagreement must not manufacture a lost heading
+  // while the gyro remains valid. Slip is still observable for GripAdapter.
   {
     FusedOdometryEstimator est;
     est.reset();
@@ -144,14 +162,15 @@ int main() {
     est.predict(mk(1, 0.0));
     for (int k = 2; k <= 61; ++k) est.predict(mk(k, 2.0));  // 1.2 s of slip
     const double slipped = est.estimate().heading_sigma_rad;
-    assert(slipped > 0.99 && slipped <= 1.03);  // capped, not pi
+    assert(slipped < 0.05);
+    assert(est.last_slip().quality == SlipQuality::kObservable);
     for (int k = 62; k <= 311; ++k) est.predict(mk(k, 0.0));  // 5 s clean
-    const double relaxed = est.estimate().heading_sigma_rad;
-    assert(relaxed < 0.3 * slipped);  // decayed toward the motion baseline
-    assert(relaxed < 0.45);           // below the lost-pose tripwire again
+    const double clean_sigma = est.estimate().heading_sigma_rad;
+    assert(clean_sigma > slipped); // process variance grows monotonically
+    assert(clean_sigma < 0.06);
   }
 
-  // A validated correction resolves slip doubt immediately.
+  // A validated map correction reduces accumulated process uncertainty.
   {
     FusedOdometryEstimator est;
     est.reset();
@@ -165,7 +184,7 @@ int main() {
     };
     est.predict(mk(1, 0.0));
     for (int k = 2; k <= 6; ++k) est.predict(mk(k, 2.0));
-    assert(est.estimate().heading_sigma_rad > 0.5);
+    assert(est.estimate().heading_sigma_rad < 0.05);
     est.correct_pose(est.estimate().x_m, est.estimate().y_m,
                      est.estimate().yaw_rad, 0.05, 0.05,
                      6 * 20'000'000LL);

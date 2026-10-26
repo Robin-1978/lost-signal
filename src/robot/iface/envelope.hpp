@@ -22,6 +22,7 @@ inline ObservationFrame make_envelope(const MotionFeedback& fb) {
  o.motion_header = {fb.sequence, fb.stamp_ns, fb.source, fb.frame};
   o.odometry_valid = fb.odometry_valid;
   o.forward_mps = fb.forward_mps;
+ o.lateral_mps = fb.lateral_mps;
   o.yaw_rate_radps = fb.yaw_rate_radps;
   o.drive_count = fb.drive_count;
   o.steer_count = fb.steer_count;

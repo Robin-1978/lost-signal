@@ -20,6 +20,7 @@ struct EstimatedState {
   double z_m = 0.0;
   double yaw_rad = 0.0;
   double forward_mps = 0.0;
+ double lateral_mps = 0.0;
   double yaw_rate_radps = 0.0;
   // Gravity-referenced attitude from the gyro/accel complementary filter.
   double roll_rad = 0.0;
@@ -90,17 +91,10 @@ class FusedOdometryEstimator : public IEstimator {
   struct Config {
     // Yaw fusion weight toward the gyro (0 = odom only, 1 = gyro only).
     double gyro_weight = 0.7;
-    // Slip gate: |odom yaw rate - gyro yaw rate| above this trusts the gyro
-    // and inflates heading covariance.
+ // Slip gate: |odom yaw rate - gyro yaw rate| above this trusts the gyro
+ // and publishes wheel-slip evidence to the control layer. With a valid
+ // gyro, wheel disagreement is not absolute-heading uncertainty.
     double slip_yaw_residual_radps = 0.5;
-    double slip_heading_inflation_rad = 0.2;
-    // Slip inflation is bounded and forgets: sustained slip holds the extra
-    // uncertainty (the heading really is untrusted), but clean rolling
-    // relaxes it toward the motion-grown baseline instead of latching at pi
-    // forever — a latched heading sigma wedges the supervisor in
-    // global-only retries with no local correction ever scheduled.
-    double slip_heading_inflation_cap_rad = 1.0;
-    double slip_heading_relax_s = 2.0;
     // Attitude complementary time constant: gyro integration trusted below
     // this horizon, gravity tilt above it.
     double attitude_time_constant_s = 0.5;
@@ -178,11 +172,6 @@ class FusedOdometryEstimator : public IEstimator {
   bool has_prior_ = false;
   SlipObservation last_slip_{};
   iface::ObservationFrame prior_{};
-  // Slip-inflation contribution currently baked into heading_sigma_rad.
-  // Tracked separately so clean rolling can relax exactly what slip added
-  // (a validated correction or reset clears it outright).
-  double slip_heading_extra_rad_ = 0.0;
- double odom_slip_heading_extra_rad_ = 0.0;
  double motion_scale_ = 1.0;
  // Row-major covariance of [x, y, yaw] in each REP-105 frame. Public API
  // remains compact; EstimatedState derives radial position sigma from the

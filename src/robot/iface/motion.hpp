@@ -28,6 +28,7 @@ struct MotionFeedback {
 
   bool odometry_valid = false;
   double forward_mps = 0.0;
+ double lateral_mps = 0.0;
   double yaw_rate_radps = 0.0;
 
   std::uint8_t drive_count = 0;  // driven joints present (0, 2, or 4)

@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "robot/iface/task.hpp"
+#include "robot/platform/holonomic_kinematics.hpp"
+#include "sim/providers/sim_motion.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/world/world.hpp"
 
@@ -391,16 +393,38 @@ int main() {
     assert(w.truth().body_yaw_rad > 0.0);
     // Mecanum strafes left with ~zero forward.
     sim::world::World m;
+ sim::providers::SimMotionEndpoint motion(&m);
+ robot::iface::MotionFeedback feedback;
+ assert(motion.poll_feedback(feedback));
     robot::iface::ActuatorCommand mc;
     mc.mode = robot::iface::ActuatorMode::kMecanumDuty;
     mc.stamp_ns = 0;
     mc.expiry_ns = 1'000'000'000;
     mc.drive = {-0.5, 0.5, 0.5, -0.5};
     m.apply(mc);
-    for (int i = 0; i < 200; ++i) m.step(0.02);
+ for (int i = 0; i < 200; ++i) {
+ m.step(0.02);
+ assert(motion.poll_feedback(feedback));
+ }
     assert(std::abs(m.truth().forward_mps) < 0.3);
     assert(m.truth().lateral_mps > 0.3);
     assert(m.truth().body_y_m > 0.1);
+ std::array<double, 4> wheel_mps{};
+ for (std::size_t i = 0; i < wheel_mps.size(); ++i) {
+ wheel_mps[i] = feedback.drive_radps[i] *
+ m.motor_params().wheel_radius_m;
+ }
+ double encoder_forward = 0.0;
+ double encoder_lateral = 0.0;
+ double encoder_yaw = 0.0;
+ robot::platform::mecanum_forward(
+ wheel_mps, m.motor_params().wheel_base_m,
+ m.motor_params().track_width_m, encoder_forward,
+ encoder_lateral, encoder_yaw);
+ assert(feedback.forward_mps == encoder_forward);
+ assert(feedback.lateral_mps == encoder_lateral);
+ assert(feedback.yaw_rate_radps == encoder_yaw);
+ assert(feedback.lateral_mps > 0.3);
     // Swerve drives straight with centered modules.
     sim::world::World s;
     robot::iface::ActuatorCommand sc;
