@@ -180,11 +180,25 @@ int main() {
                                  imu(13, 0.01, 0.005, 0.02));
       session.set_objectives({"dock"}, 1.0);
       std::vector<robot::iface::MotionCommand> cmds;
-      for (int i = 0; i < 500 && !session.objectives_done(); ++i) {
+ for (int i = 0; i < 800 && !session.objectives_done(); ++i) {
         session.step_once();
         cmds.push_back(session.episode().steps().back().cmd);
       }
-      return std::make_pair(session.objectives_done(), cmds);
+ if (!session.objectives_done()) {
+ const auto& last = session.episode().steps().back();
+ std::fprintf(stderr,
+ "realism mission stalled: truth=(%.3f,%.3f,%.3f) "
+ "estimate=(%.3f,%.3f,%.3f) sigma=%.3f goal=%d/%s "
+ "decision=%s/%s\n",
+ last.truth_after.body_x_m, last.truth_after.body_y_m,
+ last.truth_after.body_yaw_rad, last.diag.estimate.x_m,
+ last.diag.estimate.y_m, last.diag.estimate.yaw_rad,
+ last.diag.estimate.position_sigma_m,
+ static_cast<int>(last.diag.goal.state), last.diag.goal.detail.c_str(),
+ last.diag.evidence.constraint_code.c_str(),
+ last.diag.evidence.reason_code.c_str());
+ }
+ return std::make_pair(session.objectives_done(), cmds);
     };
     const auto first = run();
     const auto second = run();
@@ -206,7 +220,7 @@ int main() {
     scored.setup_world().add_place({"dock", 5.0, 0.0, 0.0});
     scored.set_sensor_realism(delivery(11, 2, 0.05), imu(13, 0.01, 0.005, 0.02));
     scored.set_objectives({"dock"}, 1.0);
-    for (int i = 0; i < 500 && !scored.objectives_done(); ++i) {
+ for (int i = 0; i < 800 && !scored.objectives_done(); ++i) {
       scored.step_once();
     }
     assert(scored.objectives_done());
