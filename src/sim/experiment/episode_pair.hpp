@@ -45,6 +45,20 @@ struct EpisodePair {
  }
 };
 
+struct SynchronizedEpisodeStep {
+ std::size_t baseline_index = 0;
+ std::size_t variant_index = 0;
+ robot::core::MonotonicNs baseline_stamp_ns = robot::core::kInvalidTime;
+ robot::core::MonotonicNs variant_stamp_ns = robot::core::kInvalidTime;
+};
+
+// Aligns the two immutable recordings by simulation/acquisition time. The
+// selected reference index remains exact; the other run chooses its nearest
+// recorded step. Wall time, render rate, and playback rate never participate.
+std::optional<SynchronizedEpisodeStep> synchronize_episode_pair_by_time(
+ const EpisodePair& pair, bool reference_is_variant,
+ std::size_t reference_index);
+
 struct ExperienceGateVerdict {
  bool simulation_valid = false;
  bool safety_passed = false;

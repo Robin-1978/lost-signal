@@ -1,8 +1,38 @@
 #include "sim/experiment/episode_pair.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace lost_signal::sim::experiment {
+namespace {
+
+robot::core::MonotonicNs step_stamp(const eval::EvalStep& step) {
+ if (step.obs.stamp_ns != robot::core::kInvalidTime) return step.obs.stamp_ns;
+ if (step.diag.estimate.stamp_ns != robot::core::kInvalidTime) {
+ return step.diag.estimate.stamp_ns;
+ }
+ return step.cmd.stamp_ns;
+}
+
+std::size_t nearest_step(const eval::EpisodeRecorder& episode,
+ robot::core::MonotonicNs stamp_ns) {
+ const auto& steps = episode.steps();
+ if (steps.empty()) return 0;
+ const auto found = std::lower_bound(
+ steps.begin(), steps.end(), stamp_ns,
+ [](const eval::EvalStep& step, robot::core::MonotonicNs stamp) {
+ return step_stamp(step) < stamp;
+ });
+ if (found == steps.begin()) return 0;
+ if (found == steps.end()) return steps.size() - 1;
+ const auto previous = std::prev(found);
+ const auto before = stamp_ns - step_stamp(*previous);
+ const auto after = step_stamp(*found) - stamp_ns;
+ return static_cast<std::size_t>(
+ (before <= after ? previous : found) - steps.begin());
+}
+
+} // namespace
 
 bool EpisodeArtifact::safety_passed() const {
  return simulation_valid && score.collision_steps == 0 &&
@@ -70,6 +100,33 @@ ExperienceGateVerdict evaluate_experience_gate(
  verdict.experiment_passed &&
  (!policy.require_mission || verdict.mission_passed);
  return verdict;
+}
+
+std::optional<SynchronizedEpisodeStep> synchronize_episode_pair_by_time(
+ const EpisodePair& pair, bool reference_is_variant,
+ std::size_t reference_index) {
+ if (!pair.complete()) return std::nullopt;
+ const auto& baseline = pair.baseline->episode;
+ const auto& variant = pair.variant->episode;
+ if (baseline.steps().empty() || variant.steps().empty()) return std::nullopt;
+ const auto& reference = reference_is_variant ? variant : baseline;
+ if (reference_index >= reference.steps().size()) return std::nullopt;
+ const robot::core::MonotonicNs stamp_ns =
+ step_stamp(reference.steps()[reference_index]);
+ if (stamp_ns == robot::core::kInvalidTime) return std::nullopt;
+ SynchronizedEpisodeStep synchronized;
+ if (reference_is_variant) {
+ synchronized.variant_index = reference_index;
+ synchronized.baseline_index = nearest_step(baseline, stamp_ns);
+ } else {
+ synchronized.baseline_index = reference_index;
+ synchronized.variant_index = nearest_step(variant, stamp_ns);
+ }
+ synchronized.baseline_stamp_ns =
+ step_stamp(baseline.steps()[synchronized.baseline_index]);
+ synchronized.variant_stamp_ns =
+ step_stamp(variant.steps()[synchronized.variant_index]);
+ return synchronized;
 }
 
 } // namespace lost_signal::sim::experiment

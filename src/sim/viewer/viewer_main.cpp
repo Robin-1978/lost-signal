@@ -2176,6 +2176,43 @@ inline Camera3D camera_from_state(const CameraState& st) {
           .projection = CAMERA_PERSPECTIVE};
 }
 
+void draw_baseline_comparison_ghost_2d(
+ const Frame& baseline, const ViewTransform& view) {
+ const auto center = view.world_to_screen(
+ baseline.body.x_m, baseline.body.y_m);
+ const float radius = static_cast<float>(
+ std::hypot(baseline.body.half_length_m, baseline.body.half_width_m) *
+ view.scale());
+ const Color amber{246, 169, 61, 220};
+ DrawCircleLinesV({center.x_px, center.y_px}, radius, amber);
+ const Vector2 heading{
+ center.x_px + radius * std::cos(static_cast<float>(baseline.body.yaw_rad)),
+ center.y_px - radius * std::sin(static_cast<float>(baseline.body.yaw_rad))};
+ DrawLineEx({center.x_px, center.y_px}, heading, 2.0f, amber);
+ DrawText("BASELINE SIM", static_cast<int>(center.x_px + radius + 6.0f),
+ static_cast<int>(center.y_px - 8.0f), 12, amber);
+}
+
+void draw_baseline_comparison_ghost_3d(
+ const Frame& baseline, const Camera3D& camera) {
+ const float radius = static_cast<float>(std::hypot(
+ baseline.body.half_length_m, baseline.body.half_width_m));
+ const Vector3 center = to_raylib(
+ baseline.body.x_m, baseline.body.y_m, 0.025);
+ const Vector3 heading = to_raylib(
+ baseline.body.x_m + radius * std::cos(baseline.body.yaw_rad),
+ baseline.body.y_m + radius * std::sin(baseline.body.yaw_rad), 0.025);
+ const Color amber{246, 169, 61, 220};
+ BeginMode3D(camera);
+ DrawCircle3D(center, radius, {1.0f, 0.0f, 0.0f}, 90.0f, amber);
+ DrawLine3D(center, heading, amber);
+ DrawSphereWires(center, 0.045f, 8, 8, amber);
+ EndMode3D();
+ const Vector2 label = GetWorldToScreen(center, camera);
+ DrawText("BASELINE SIM", static_cast<int>(label.x + 8.0f),
+ static_cast<int>(label.y - 10.0f), 12, amber);
+}
+
 struct WalkaroundView {
  Camera3D camera;
  Vector3 focus;
@@ -4351,6 +4388,20 @@ int main(int argc, char** argv) {
         session_lidar_mount);
  if (!historical_frame.has_value()) continue;
  const sim::viewer::Frame& frame = *historical_frame;
+ std::optional<sim::viewer::Frame> baseline_comparison_frame;
+ if (experience_loaded &&
+ experience_flow->phase() == ExperiencePhase::kDebrief &&
+ experiment_ui.episodes.complete()) {
+ const auto synchronized =
+ sim::experiment::synchronize_episode_pair_by_time(
+ experiment_ui.episodes, /*reference_is_variant=*/true,
+ presented_index);
+ if (synchronized.has_value()) {
+ baseline_comparison_frame = sim::viewer::build_episode_frame(
+ session->setup_world(), experiment_ui.episodes.baseline->episode,
+ synchronized->baseline_index, {}, {}, session_lidar_mount);
+ }
+ }
  // Presentation consumes every completed physics frame even when Turbo
  // executes several scenario transitions between two draws. Rendering may
  // sample sparsely; physical events (contact traces, spray, dust and impact
@@ -4444,10 +4495,16 @@ int main(int argc, char** argv) {
  show_lidar, show_estimate, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
+ if (baseline_comparison_frame.has_value()) {
+ draw_baseline_comparison_ghost_3d(*baseline_comparison_frame, cam);
+ }
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
  draw_frame_2d(frame, view, show_lidar, show_estimate,
  show_actor_routes);
+ if (baseline_comparison_frame.has_value()) {
+ draw_baseline_comparison_ghost_2d(*baseline_comparison_frame, view);
+ }
     }
  const auto playback_stats = playback.statistics();
  const RenderQuality active_quality = playback_stats.turbo

@@ -170,6 +170,46 @@ int main() {
  assert(complete.mission_passed);
  assert(complete.experiment_passed);
  assert(complete.can_advance);
+ const auto synchronized =
+ sim::experiment::synchronize_episode_pair_by_time(
+ pair, /*reference_is_variant=*/true,
+ pair.variant->episode.size() / 2);
+ assert(synchronized.has_value());
+ assert(synchronized->variant_index == pair.variant->episode.size() / 2);
+ assert(synchronized->baseline_stamp_ns == synchronized->variant_stamp_ns);
+
+ // Pair synchronization follows acquisition time rather than record index.
+ // This matters when a controlled variable changes a sensor cadence or one
+ // run contains additional recorded controller transitions.
+ sim::experiment::EpisodePair uneven_pair;
+ uneven_pair.baseline = baseline_artifact;
+ uneven_pair.variant = *pair.variant;
+ uneven_pair.baseline->episode.clear();
+ uneven_pair.variant->episode.clear();
+ for (const robot::core::MonotonicNs stamp_ns : {100, 200, 300}) {
+ sim::eval::EvalStep step;
+ step.obs.stamp_ns = stamp_ns;
+ uneven_pair.baseline->episode.record(std::move(step));
+ }
+ for (const robot::core::MonotonicNs stamp_ns : {90, 170, 290, 410}) {
+ sim::eval::EvalStep step;
+ step.obs.stamp_ns = stamp_ns;
+ uneven_pair.variant->episode.record(std::move(step));
+ }
+ const auto nearest_baseline =
+ sim::experiment::synchronize_episode_pair_by_time(
+ uneven_pair, /*reference_is_variant=*/true, 1);
+ assert(nearest_baseline.has_value());
+ assert(nearest_baseline->variant_index == 1);
+ assert(nearest_baseline->baseline_index == 1);
+ assert(nearest_baseline->variant_stamp_ns == 170);
+ assert(nearest_baseline->baseline_stamp_ns == 200);
+ const auto nearest_variant =
+ sim::experiment::synchronize_episode_pair_by_time(
+ uneven_pair, /*reference_is_variant=*/false, 2);
+ assert(nearest_variant.has_value());
+ assert(nearest_variant->baseline_index == 2);
+ assert(nearest_variant->variant_index == 2);
 
  auto mismatched_pair = pair;
  ++mismatched_pair.variant->invariant_digest;
