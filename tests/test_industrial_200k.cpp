@@ -339,6 +339,31 @@ int main() {
   assert_route_clear(progress.route, costmap.lethal);
  }
 
+ // Dynamic avoidance can leave the vehicle farther behind the terminal
+ // while retaining a large heading error.  The incremental planner must
+ // still return a trackable pose-to-pose manoeuvre instead of repeatedly
+ // consuming the local planner's replan requests.
+ {
+ auto replanning_pose = at(249.160, -4.970);
+ replanning_pose.yaw_rad = 1.220;
+ const auto& central_gate = place(map, "central_gate");
+ robot::autonomy::AckermannPlanner replanner(recovery_config);
+ replanner.begin_plan(
+ replanning_pose,
+ {central_gate.x_m, central_gate.y_m, central_gate.yaw_rad}, map);
+ robot::autonomy::GlobalPlanProgress progress;
+ std::size_t slices = 0;
+ constexpr std::size_t kMaximumAvoidanceReplanDecisionCycles = 64;
+ do {
+ progress = replanner.continue_plan(replanner.incremental_plan_budget());
+ ++slices;
+ } while (progress.status == robot::autonomy::GlobalPlanStatus::kPending &&
+ slices <= kMaximumAvoidanceReplanDecisionCycles);
+ assert(slices <= kMaximumAvoidanceReplanDecisionCycles);
+ assert(progress.status == robot::autonomy::GlobalPlanStatus::kSucceeded);
+ assert_route_clear(progress.route, costmap.lethal);
+ }
+
  std::printf(
  "industrial_200k ok: extent=%.0fx%.0f cells=%ux%u actors=%zu "
  "route_points=%zu ackermann_route_points=%zu "

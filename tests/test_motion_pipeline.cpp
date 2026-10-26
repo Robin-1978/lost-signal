@@ -147,6 +147,24 @@ class SpeedValidator final : public IValidator {
  }
 };
 
+class DynamicClearanceValidator final : public IValidator {
+ public:
+ ValidationResult validate(const LocalCandidate& candidate,
+ const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const iface::ObservationFrame&) override {
+ ValidationResult result;
+ if (!candidate.feasible) return result;
+ result.accepted = true;
+ result.verdict = TrajectoryVerdict::kAccepted;
+ result.min_clearance_m = 1.0;
+ result.min_dynamic_clearance_m = candidate.forward_mps < -1e-9
+ ? 0.8
+ : candidate.forward_mps > 1e-9 ? 0.1 : 0.3;
+ result.reason = "clear";
+ return result;
+ }
+};
+
 } // namespace
 
 int main() {
@@ -234,6 +252,26 @@ int main() {
  survey, estimate.stamp_ns, behavior, empty, validator, controller);
  assert(!uncertain_recovery.command.is_safe_stop());
  assert(uncertain_recovery.reason.find("recovery:") == 0);
+
+ // If a tracked object collision-filters every moving local-plan rollout,
+ // accepted recovery commands are ordered by increasing predicted dynamic
+ // separation. Replanning the unchanged survey or creeping back toward the
+ // route would create a reciprocal stop/replan loop.
+ PerceptionResult blocked_perception = perception;
+ DynamicTrack blocking_track;
+ blocking_track.id = 7;
+ blocking_track.x_m = 0.8;
+ blocking_track.radius_m = 0.3;
+ blocking_track.last_observed_ns = estimate.stamp_ns;
+ blocked_perception.tracks.push_back(blocking_track);
+ DynamicClearanceValidator dynamic_clearance;
+ pipeline.reset();
+ const MotionDecisionResult clearance_recovery = pipeline.run(
+ estimate, blocked_perception, map, route, limits, limits, observation,
+ survey, estimate.stamp_ns, behavior, stalled_hold, dynamic_clearance,
+ controller);
+ assert(clearance_recovery.constraint == "dynamic_clearance");
+ assert(clearance_recovery.command.forward_mps < 0.0);
 
  // A supervised localization search requests observation motion only when
  // the normal planner has no accepted moving candidate. The fallback crawl

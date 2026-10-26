@@ -377,6 +377,17 @@ int main() {
  const LocalPlan approach = planner.plan(est, perc, m, route, ack);
  assert(!approach.route_replan_requested);
  }
+ // The last route gear cannot recover once the complete confidence disk of
+ // the goal lies behind the Ackermann travel direction. Replan immediately
+ // from the overshoot instead of creeping farther away until a distance
+ // threshold happens to fire.
+ est.x_m = 2.4;
+ est.y_m = 0.0;
+ est.yaw_rad = 0.0;
+ est.position_sigma_m = 0.02;
+ const LocalPlan overshot = planner.plan(est, perc, m, route, ack);
+ assert(overshot.route_replan_requested);
+
  est.x_m = 2.0;
  est.yaw_rad = 0.5;
  const LocalPlan exhausted = planner.plan(est, perc, m, route, ack);
@@ -559,6 +570,55 @@ int main() {
  assert(replan.has_plan && replan.best.feasible);
  assert(replan.best.forward_mps == 0.0);
  assert(replan.best.yaw_rate_radps == 0.0);
+ }
+
+ // Cross-track distance alone is insufficient for Ackermann recovery. If
+ // the minimum-radius arc needed to align the travel heading would first
+ // move farther outside the route tube, the stale route is physically
+ // unrecoverable even though moving commands still exist.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.y_m = 0.60;
+ est.yaw_rad = 0.80;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {2.0, 0.0, 0.0, 1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ const LocalPlan unreachable = planner.plan(est, perc, m, route, ack);
+ assert(unreachable.has_plan && unreachable.moving_candidate_count > 0);
+ assert(unreachable.route_replan_requested);
+ }
+
+ // A live local obstacle can collision-filter every moving rollout while a
+ // stationary rollout remains valid. Re-running Hybrid A* over the unchanged
+ // survey cannot remove that obstacle; retain the route so the decision
+ // layer can execute its independently validated local recovery.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.05, -4.05, 0);
+ fill_box(m, 0.55, -4.05, 0.75, 4.05);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {2.0, 0.0, 0.0, 1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ const LocalPlan blocked = planner.plan(est, perc, m, route, ack);
+ assert(blocked.has_plan && blocked.best.feasible);
+ assert(blocked.moving_candidate_count == 0);
+ assert(std::abs(blocked.best.forward_mps) < 1e-9);
+ assert(!blocked.route_replan_requested);
  }
 
  // Differential reachability is enforced in tread space. A simultaneous

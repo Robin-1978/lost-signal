@@ -32,6 +32,12 @@ struct LocalCandidate {
   double yaw_rate_radps = 0.0;
   double lateral_mps = 0.0;
   double cost = 0.0;
+ // Planner evidence for route-aware ranking. Progress is measured forward
+ // from the current route cursor and stops at the next gear change; tracking
+ // error is the rollout endpoint's distance to that same route interval.
+ double route_progress_m = 0.0;
+ double route_tracking_error_m = 0.0;
+ double route_heading_error_rad = 0.0;
   bool feasible = false;
 };
 

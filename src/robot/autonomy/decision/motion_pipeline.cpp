@@ -187,6 +187,32 @@ MotionDecisionResult MotionDecisionPipeline::run(
  !planner_motion_available && !plan.gear_change_pending;
  const bool observation_recovery_required =
  observation_motion_requested && !planner_motion_available;
+ const double maximum_planar_speed_mps = std::max(
+ std::max(0.0, effective.max_forward_mps),
+ std::max(0.0, effective.max_lateral_mps));
+ const double brake_deceleration_mps2 =
+ std::max(0.0, config_.motion.brake_deceleration_mps2);
+ const double response_time_s =
+ std::max(0.0, config_.motion.actuator_response_delay_s) +
+ std::max(0.0, config_.motion.safety_reaction_time_s);
+ const double stopping_distance_m = brake_deceleration_mps2 > 0.0
+ ? maximum_planar_speed_mps * response_time_s +
+ maximum_planar_speed_mps * maximum_planar_speed_mps /
+ (2.0 * brake_deceleration_mps2)
+ : std::numeric_limits<double>::infinity();
+ // When a predicted object leaves only hold in the local planner, a fresh
+ // global route over the unchanged survey cannot resolve the encounter.
+ // Keep the recovery direction that increases dynamic separation until the
+ // object lies outside the chassis reaction-and-braking envelope. Every
+ // candidate still passes the live validator; this only orders accepted
+ // recoveries and uses ROBOT tracks rather than SIM actor state.
+ const bool dynamic_recovery_relevant = stalled_before_terminal &&
+ !prediction.hypotheses.empty() &&
+ std::isfinite(hold_verdict.min_dynamic_clearance_m) &&
+ hold_verdict.min_dynamic_clearance_m <=
+ std::max(0.0, limits.footprint_radius_m) + stopping_distance_m;
+ const bool prefer_dynamic_clearance =
+ dynamic_escape_required || dynamic_recovery_relevant;
  bool recovery_required =
  (planner_requested && (planner_valid.empty() || stalled_before_terminal)) ||
  forward_blocked ||
@@ -378,17 +404,17 @@ MotionDecisionResult MotionDecisionPipeline::run(
  return a.nominally_safe;
  if (a.clears_forward_block != b.clears_forward_block)
  return a.clears_forward_block;
- if (dynamic_escape_required &&
+ if (prefer_dynamic_clearance &&
  (greater(a.dynamic_clearance_m, b.dynamic_clearance_m) ||
  greater(b.dynamic_clearance_m, a.dynamic_clearance_m))) {
  return greater(a.dynamic_clearance_m, b.dynamic_clearance_m);
  }
+ if (a.continuity_axes != b.continuity_axes)
+ return a.continuity_axes > b.continuity_axes;
  if (greater(a.escape_gain_m, b.escape_gain_m) ||
  greater(b.escape_gain_m, a.escape_gain_m)) {
  return greater(a.escape_gain_m, b.escape_gain_m);
  }
- if (a.continuity_axes != b.continuity_axes)
- return a.continuity_axes > b.continuity_axes;
  if (less(a.route_distance_m, b.route_distance_m) ||
  less(b.route_distance_m, a.route_distance_m)) {
  return less(a.route_distance_m, b.route_distance_m);
@@ -460,6 +486,8 @@ MotionDecisionResult MotionDecisionPipeline::run(
  if (starting_escape) escape_release_count_ = 0;
  escape_command_ = best_recovery.candidate;
  out.constraint = "dynamic_escape";
+ } else if (dynamic_recovery_relevant) {
+ out.constraint = "dynamic_clearance";
  } else if (observation_recovery_required) {
  out.constraint = "localization_observe";
  }

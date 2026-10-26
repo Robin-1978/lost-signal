@@ -515,10 +515,12 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  terminal.x_m - est.x_m, terminal.y_m - est.y_m);
  const double terminal_heading_error_rad = std::abs(core::wrap_angle(
  terminal.yaw_rad - est.yaw_rad));
+ const double terminal_position_confidence_radius_m =
+ position_confidence_radius(est.position_sigma_m,
+ config_.terminal_confidence_probability);
  const double terminal_position_tolerance_m = confidence_bounded_tolerance(
  config_.terminal_position_tolerance_m,
- position_confidence_radius(est.position_sigma_m,
- config_.terminal_confidence_probability));
+ terminal_position_confidence_radius_m);
  const double terminal_heading_tolerance_rad = confidence_bounded_tolerance(
  config_.terminal_heading_tolerance_rad,
  heading_confidence_radius(est.heading_sigma_rad,
@@ -561,6 +563,17 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  out.route_replan_requested = stopped_terminal_mismatch &&
  (route_terminal_consumed || terminal_mismatch_settle_count_ >=
  std::max(1, config_.terminal_replan_settle_cycles));
+ const double terminal_travel_heading_rad = core::wrap_angle(
+ est.yaw_rad + (target.gear < 0 ? core::kPi : 0.0));
+ const double terminal_along_travel_m =
+ (terminal.x_m - est.x_m) * std::cos(terminal_travel_heading_rad) +
+ (terminal.y_m - est.y_m) * std::sin(terminal_travel_heading_rad);
+ const bool terminal_behind_active_gear = car_like &&
+ route_segment_ + 2 >= route.points.size() &&
+ terminal_distance_m > terminal_position_tolerance_m &&
+ terminal_along_travel_m + terminal_position_confidence_radius_m < 0.0;
+ out.route_replan_requested =
+ out.route_replan_requested || terminal_behind_active_gear;
  double car_like_tracking_heading = target.yaw_rad;
  if (car_like && std::isfinite(target.yaw_rad)) {
  // A Hybrid-A* point carries the body heading that made its bicycle
@@ -670,12 +683,29 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const double route_window_m =
  std::max(std::max(0.0, config_.lookahead_m), reachable_m) +
  std::max(0.0, map.resolution_m);
+ const int active_route_gear = segment_gear(route, route_projection.segment);
+ double active_gear_remaining_m = 0.0;
+ for (std::size_t segment = route_projection.segment;
+ segment + 1 < route.points.size(); ++segment) {
+ if (segment_gear(route, segment) != active_route_gear) break;
+ const RoutePoint& a = route.points[segment];
+ const RoutePoint& b = route.points[segment + 1];
+ const double segment_length_m = std::hypot(
+ b.x_m - a.x_m, b.y_m - a.y_m);
+ const double fraction = segment == route_projection.segment
+ ? route_projection.fraction : 0.0;
+ active_gear_remaining_m +=
+ std::max(0.0, 1.0 - fraction) * segment_length_m;
+ }
+ const double active_gear_window_m = std::min(
+ route_window_m, active_gear_remaining_m);
  const std::vector<core::Vec2> reference = local_route_reference(
- route, route_projection, route_window_m, route_window_m);
+ route, route_projection, route_window_m, active_gear_window_m);
  const PathProjection start_projection =
  project_to_path({est.x_m, est.y_m}, reference);
 
  std::vector<LocalCandidate> proposals;
+ bool moving_command_reachable = false;
  const auto commands_resolvable_motion = [&](double forward,
  double angular, double lateral) {
  // Ackermann may need several acceleration-limited windows before its
@@ -771,6 +801,15 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  if (car_like && std::abs(angular) >
  std::abs(velocity) * limits.max_curvature_inv_m + 1e-9) continue;
       for (double lateral : lateral_samples) {
+ if (commands_resolvable_motion(velocity, angular, lateral)) {
+ // Record command-window reachability before collision filtering. A live
+ // local obstacle can reject every moving rollout while leaving hold; a
+ // new global route over the unchanged survey cannot remove that obstacle.
+ // Recovery must consume the local evidence instead. Replanning is useful
+ // only when acceleration, curvature, gear and tracking-tube constraints
+ // leave no executable moving command at all.
+ moving_command_reachable = true;
+ }
       double x = est.x_m, y = est.y_m, heading = est.yaw_rad;
       double rollout_v = est.forward_mps, rollout_w = est.yaw_rate_radps;
       std::vector<core::Vec2> samples{{x, y}};
@@ -883,7 +922,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // The window is stateful and direction changes are already gated at the
  // physical cusp, so a self-overlapping return leg cannot be skipped.
  const PathProjection directed_end_projection = project_to_route_window(
- {x, y}, route, {route_segment_, route_fraction_}, route_window_m);
+ {x, y}, route, {route_segment_, route_fraction_}, active_gear_window_m);
  const double directed_progress_m =
  std::isfinite(directed_end_projection.distance_m)
  ? directed_end_projection.along_m
@@ -935,6 +974,10 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  candidate.yaw_rate_radps = angular;
  candidate.lateral_mps = lateral;
  candidate.cost = -score;
+ candidate.route_progress_m = directed_progress_m;
+ candidate.route_tracking_error_m = directed_end_projection.distance_m;
+ candidate.route_heading_error_rad = std::abs(
+ core::wrap_angle(heading_target - heading));
  candidate.feasible = true;
  proposals.push_back(candidate);
  if (commands_resolvable_motion(candidate.forward_mps,
@@ -969,27 +1012,78 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const bool route_lattice_exhausted =
  route_tracking_tube_m - route_projection.distance_m <
  minimum_sample_stop_m;
+ bool nonholonomic_reacquire_exhausted = false;
+ if (car_like && limits.max_curvature_inv_m > 0.0 &&
+ route_projection.segment + 1 < route.points.size()) {
+ const RoutePoint& route_a = route.points[route_projection.segment];
+ const RoutePoint& route_b = route.points[route_projection.segment + 1];
+ const double closest_x = route_a.x_m + route_projection.fraction *
+ (route_b.x_m - route_a.x_m);
+ const double closest_y = route_a.y_m + route_projection.fraction *
+ (route_b.y_m - route_a.y_m);
+ const double signed_cross_track_m =
+ -(est.x_m - closest_x) * std::sin(route_projection.tangent_rad) +
+ (est.y_m - closest_y) * std::cos(route_projection.tangent_rad);
+ const double travel_heading_rad = core::wrap_angle(
+ est.yaw_rad + (target.gear < 0 ? core::kPi : 0.0));
+ const double heading_from_route_rad = core::wrap_angle(
+ travel_heading_rad - route_projection.tangent_rad);
+ // Even with immediate maximum steering, an Ackermann base follows a
+ // minimum-radius arc before its travel heading can align with the route.
+ // R(1-cos(delta)) is the unavoidable normal displacement of that arc.
+ // If it points farther outside the route tube, the current route is no
+ // longer physically reacquirable and must be rebuilt from this pose.
+ const bool initially_moving_outward =
+ signed_cross_track_m * heading_from_route_rad > 0.0;
+ const double unavoidable_outward_m = initially_moving_outward
+ ? (1.0 - std::cos(std::abs(heading_from_route_rad))) /
+ limits.max_curvature_inv_m
+ : 0.0;
+ nonholonomic_reacquire_exhausted =
+ std::abs(signed_cross_track_m) + unavoidable_outward_m >
+ route_tracking_tube_m + 1e-9;
+ }
  if (car_like && prioritize_route_motion &&
- out.moving_candidate_count == 0 &&
+ (nonholonomic_reacquire_exhausted ||
+ (!moving_command_reachable &&
  (route_lattice_exhausted ||
- std::abs(est.forward_mps) <= decel * dt + 1e-9)) {
- // A quantized dynamic window can contain only hold either at the edge of
- // the tracking tube or after a car-like base has physically stopped at an
- // intermediate pose it cannot leave. Waiting cannot improve either state;
- // request a new kinematic route from the current estimate. Dynamic actors
- // do not cause this branch because their overlap remains a ranked cost and
- // the independent validator owns the live veto.
+ std::abs(est.forward_mps) <= decel * dt + 1e-9)))) {
+ // Either the minimum-radius alignment arc leaves the route tube, or the
+ // command lattice itself contains only hold at a state waiting cannot
+ // improve. Request a new kinematic route from the current estimate.
+ // Collision-filtered motion is deliberately excluded: the local map and
+ // independent validator own that live obstacle response.
  out.route_replan_requested = true;
  }
  std::stable_sort(proposals.begin(), proposals.end(),
- [prioritize_route_motion, &commands_resolvable_motion](const LocalCandidate& a,
- const LocalCandidate& b) {
+ [prioritize_route_motion, car_like, &commands_resolvable_motion,
+ route_error_m = route_projection.distance_m,
+ route_resolution_m = std::max(1e-6, map.resolution_m),
+ current_heading_error_rad = std::abs(
+ core::wrap_angle(heading_target - est.yaw_rad))](
+ const LocalCandidate& a, const LocalCandidate& b) {
  if (prioritize_route_motion) {
  const bool a_moves = commands_resolvable_motion(
  a.forward_mps, a.yaw_rate_radps, a.lateral_mps);
  const bool b_moves = commands_resolvable_motion(
  b.forward_mps, b.yaw_rate_radps, b.lateral_mps);
  if (a_moves != b_moves) return a_moves;
+ if (car_like && a_moves && b_moves) {
+ const bool a_reacquires = a.route_tracking_error_m <=
+ route_error_m + route_resolution_m &&
+ (current_heading_error_rad <= 1e-9 ||
+ a.route_heading_error_rad + 1e-9 < current_heading_error_rad);
+ const bool b_reacquires = b.route_tracking_error_m <=
+ route_error_m + route_resolution_m &&
+ (current_heading_error_rad <= 1e-9 ||
+ b.route_heading_error_rad + 1e-9 < current_heading_error_rad);
+ if (a_reacquires != b_reacquires) return a_reacquires;
+ if (a_reacquires &&
+ std::abs(a.route_progress_m - b.route_progress_m) >=
+ route_resolution_m) {
+ return a.route_progress_m > b.route_progress_m;
+ }
+ }
  }
  return a.cost < b.cost;
  });
