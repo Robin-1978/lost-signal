@@ -90,8 +90,9 @@ out.local_plan_reset_requested = true;
 
 // Incremental scan-to-submap tracking, ahead of the supervisor-sequenced
 // corrections. Bounded window (±track_window_m) so it can never kidnap;
-// applied through correct_pose only — the supervisor trust state is
-// untouched (tracking bounds drift, loop closures establish the frame).
+// applied through the correlated relative-correction path — the supervisor
+// trust state and absolute covariance are untouched (tracking bounds local
+// drift, independent global/loop constraints establish the frame).
 // Runs after the supervisor establishes a map frame. A known-map cold start
 // must not feed arbitrary odometry-frame SLAM corrections into a concurrent
 // global search; mapless startup establishes its odometry origin immediately.
@@ -113,17 +114,13 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
  SlamTrackResult tr = slam_.track(
  estimator.estimate(), obs, mapless_slam);
   if (!tr.accepted) return;
- if (supervisor_.startup_mode() == StartupMode::kSlamOnly) {
- // In mapless operation the keyframe/SLAM frame is the navigation frame,
- // so a verified two-sided track directly observes the pose used by goals.
- estimator.correct_pose(tr.x_m, tr.y_m, tr.yaw_rad,
- tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
- } else {
- // On a surveyed map the keyframe chain can drift relative to map. Tracking
- // improves local consistency but cannot claim new absolute-map certainty.
+ // Scan-to-submap samples share the same keyframe chain as the prediction.
+ // This correlation remains in mapless mode even though that chain names the
+ // navigation frame: tracking improves local consistency but cannot repeatedly
+ // manufacture independent absolute information. Only an accepted global map
+ // match or pose-graph loop constraint may reduce map-frame uncertainty.
  estimator.correct_relative_pose(tr.x_m, tr.y_m, tr.yaw_rad,
  tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
- }
 }
 
 bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,

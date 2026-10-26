@@ -5,6 +5,7 @@
 #include "robot/autonomy/coordinator.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/localization/global_search.hpp"
+#include "robot/autonomy/localization/localization_system.hpp"
 #include "robot/autonomy/localization/scan_matcher.hpp"
 #include "robot/autonomy/localization/startup_selector.hpp"
 #include "robot/autonomy/localization/supervisor.hpp"
@@ -886,6 +887,48 @@ o.stamp_ns = static_cast<core::MonotonicNs>(i + 2) * 20'000'000LL;
  coord.ingest_observation(o);
  coord.update(map, iface::ChannelHealth{}, o.stamp_ns);
  assert(coord.last_localization_action() == "slam-only");
+ }
+
+ // 10. Mapless scan-to-submap tracking is correlated with the keyframe chain.
+ // It may correct local drift, but an accepted track must not reduce absolute
+ // map-frame covariance as if the same submap were a fresh surveyed landmark.
+ {
+ LocalizationSystem localization;
+ localization.set_startup_mode(StartupMode::kSlamOnly);
+ localization.reset();
+ FusedOdometryEstimator estimator;
+ estimator.reset();
+ RayClearingMapper mapper;
+ mapper.reset();
+ iface::MapSnapshot no_survey;
+ const auto geometry = make_wall_map();
+ std::size_t accepted_tracks = 0;
+ double true_x_m = 0.0;
+ for (int sample = 0; sample < 8 && accepted_tracks == 0; ++sample) {
+ iface::ObservationFrame observation;
+ observation.sequence = static_cast<std::uint64_t>(sample + 1);
+ observation.stamp_ns =
+ 1'000'000'000LL + static_cast<core::MonotonicNs>(sample) * 200'000'000LL;
+ observation.source = "t.mapless-correlated-track";
+ observation.frame = core::Frame::kLidarLink;
+ observation.odometry_valid = true;
+ observation.forward_mps = sample == 0 ? 0.0 : 1.25;
+ observation.scan_valid = true;
+ observation.ranges_m = scan_from(true_x_m, 0.0, 0.0, geometry);
+ observation.scan_angle_min_rad = -M_PI;
+ observation.scan_angle_increment_rad = 2.0 * M_PI / 72;
+ estimator.predict(observation);
+ const double sigma_before = estimator.estimate().position_sigma_m;
+ const std::size_t tracks_before = localization.slam_tracks();
+ localization.update(
+ no_survey, observation, observation.stamp_ns, true, estimator, mapper);
+ accepted_tracks = localization.slam_tracks();
+ if (accepted_tracks > tracks_before) {
+ assert(estimator.estimate().position_sigma_m == sigma_before);
+ }
+ true_x_m += 0.25;
+ }
+ assert(accepted_tracks > 0);
  }
 
   std::printf("localization ok\n");

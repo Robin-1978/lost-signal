@@ -109,6 +109,13 @@ plant、不会反向驱动车辆，并覆盖非法请求和过期降级。低抓
 
 **REP-105 修复状态：已完成。** estimator 现在分别持有连续 odom 状态与允许绝对定位校正的 map 状态；wheel/IMU prediction 同时推进二者，`correct_pose`、relative SLAM correction 和 operator seed 只改变 map 状态。Coordinator 只发布 `odom→base_link` 以及由两状态计算的持久 `map→odom`，不再用单 tick 的“校正前/后”临时差值。RobotDescription 中的 `world→base_link` 只作为根标记，不进入静态 TF，避免与动态链形成冲突环。回归覆盖 map jump 前后 odom 连续、`map→odom` 跳变和组合后的 map pose 一致。
 
+**相关观测修复状态：已完成。** SLAM-only 的 scan-to-submap tracking
+来自当前 keyframe chain，与里程计 prior 相关；它现在只通过 relative
+correction 改善局部一致性，不再把每帧 tracking 当作独立绝对地图观测而
+重复压小全局协方差。只有经过 supervisor 接受的 surveyed-map/global match
+或 pose-graph loop constraint 才能增加独立全局信息。模块回归实际触发一次
+mapless tracking correction，并断言位姿可修正而绝对 position sigma 不下降。
+
 执行跟踪也只观察连续 odom 状态，避免定位修正被误判为底盘失控。2026-10-25 验证结果：Debug 与 Release 均 59/59 通过，ROBOT/SIM 边界检查通过；异步 `signal_town` 在 984 步完成，行驶 20.68 m、0 碰撞、最大定位误差 0.285 m，robot tick p99/max 为 12.353/13.382 ms。
 
 剩余修复是至少估计陀螺 bias 和二维相关 covariance，对每种 measurement 做 timestamp、frame、innovation/NIS gate。增加长走廊、重复纹理、稀疏特征、玻璃/缺测和异步传感器测试，并验证 covariance consistency，而不只看离线真值最大误差。
@@ -184,7 +191,7 @@ Mecanum 当前使用 body wrench 简化，没有显式滚子刚体与逐滚子�
 - [Autoware Obstacle Collision Checker](https://autowarefoundation.github.io/autoware_universe/main/planning/planning_validator/autoware_obstacle_collision_checker/)：结合预测轨迹、点云、延迟、footprint margin 和最大减速度检查碰撞；对应动态预测与制动契约。
 - [REP-105](https://www.ros.org/reps/rep-0105.html)：`odom` 连续但允许漂移，`map` 长期稳定但允许离散跳变；对应 P1-4 的双层状态。
 - [robot_localization](https://docs.ros.org/en/rolling/p/robot_localization/)：支持多源、逐传感器配置、15 维状态和连续预测；当前估计器明显更简化。
-- [SLAM Toolbox](https://docs.ros.org/en/ros2_packages/jazzy/api/slam_toolbox/) 及其官方 `mapper_params_online_async.yaml`：明确区分 mapping/localization/lifelong 模式，使用 odometry prior、scan matching、recent-scan buffer 与 pose graph；默认配置用 `minimum_travel_distance/heading` 控制节点采样，并以 `loop_match_minimum_chain_size`、coarse/fine response、variance 和最大回环距离共同约束回环。当前实现据此保持 `map/odom` 权限分层，并采用多视角确认；不会照搬参数，也不会把 tracking 搜索窗错误扩成“最高速度 × 周期”。搜索窗围绕 odometry prior 覆盖预期估计误差，运动包络由里程计传播、协方差和速度安全层分别负责。
+- [SLAM Toolbox ROS 文档](https://docs.ros.org/en/ros2_packages/jazzy/api/slam_toolbox/) 与[官方 README](https://github.com/SteveMacenski/slam_toolbox/blob/ros2/README.md)：明确区分 mapping/localization/lifelong 模式；scan matching 先修正 odometry，PosedScan 进入 pose graph，再由回环约束优化并发布 `map→odom`。Localization mode 加载已有 serialized pose graph，只保留 recent-scan rolling buffer，过期 scan 会移除且不修改底图。当前实现据此保持 `map/odom` 权限分层，并采用多视角确认；相关的 scan-to-current-submap tracking 只能改善局部位姿，不能按帧重复制造全局置信度。不会照搬参数，也不会把 tracking 搜索窗错误扩成“最高速度 × 周期”。搜索窗围绕 odometry prior 覆盖预期估计误差，运动包络由里程计传播、协方差和速度安全层分别负责。README 还报告其同步模式曾用于约 20 万平方英尺场地，这只作为规模参考，不替代本项目 20 万平方米发布测试。
 - [MuJoCo Modeling](https://mujoco.readthedocs.io/en/stable/modeling.html) 与 [Computation](https://mujoco.readthedocs.io/en/stable/computation/index.html)：接触 `solref` time constant 应相对 timestep 足够大；打滑问题可评估 elliptic friction cone、较大 `impratio`、Newton solver、小 tolerance，必要时使用 NoSlip 后处理。当前 1 ms substep 与默认 20 ms contact time constant 满足基本比例，但仍缺参数敏感性矩阵。
 - [Gazebo Sensors](https://gazebosim.org/docs/harmonic/sensors/) 与 [SDFormat Sensor Spec](https://sdformat.org/spec?ver=1.12&elem=sensor)：传感器 update rate、射线数量、角/距离分辨率、量程和噪声应是明确设备属性；对应 P0-1 和 P1-7。
 
