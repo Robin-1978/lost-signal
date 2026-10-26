@@ -603,6 +603,27 @@ void MujocoBackend::sync(const MotorParams& motor,
     return;
   }
   spec->option.timestep = 0.001;
+ // Flat contact stays on MuJoCo's default PGS path for broad compatibility
+ // with ordinary driving and obstacle interactions. Non-flat or rough
+ // authored terrain has coupled normal/friction constraints; use the
+ // elliptic Newton configuration there so low-grip slope contact is stable
+ // across Debug and Release. The choice is derived from SIM contact
+ // geometry, never from a scenario id or ROBOT state.
+ const bool has_complex_terrain = std::any_of(
+ patches.begin(), patches.end(), [](const TerrainPatch& p) {
+ return std::abs(p.base_height_m) > 1e-12 ||
+ std::abs(p.grade_x) > 1e-12 || std::abs(p.grade_y) > 1e-12 ||
+ std::abs(p.grade_xy_per_m) > 1e-12 || p.roughness > 0.0;
+ });
+ if (has_complex_terrain) {
+ spec->option.cone = mjCONE_ELLIPTIC;
+ spec->option.solver = mjSOL_NEWTON;
+ spec->option.impratio = 10.0;
+ spec->option.iterations = 50;
+ spec->option.tolerance = 1.0e-10;
+ spec->option.ls_tolerance = 1.0e-10;
+ spec->option.ls_iterations = 50;
+ }
   mjsBody* world = mjs_findBody(spec, "world");
  const bool use_heightfield = std::any_of(
  patches.begin(), patches.end(), [](const TerrainPatch& p) {

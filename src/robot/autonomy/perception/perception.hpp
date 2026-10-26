@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -74,6 +75,16 @@ class IPerception {
   virtual void reset() = 0;
   virtual PerceptionResult update(const iface::ObservationFrame& obs,
                                   const EstimatedState& est) = 0;
+ // Dynamic scan history belongs to the continuous odom frame (REP-105),
+ // while surveyed-map foreground classification belongs to map. The
+ // default preserves compatibility for estimators that expose one pose;
+ // implementations that keep temporal state should consume both.
+ virtual PerceptionResult update(const iface::ObservationFrame& obs,
+ const EstimatedState& map_estimate,
+ const EstimatedState& odom_estimate) {
+ (void)odom_estimate;
+ return update(obs, map_estimate);
+ }
   // Full lidar mount from the TF tree (base<-lidar). Default identity.
   // The coordinator is the only caller.
   virtual void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
@@ -151,6 +162,9 @@ class LidarPerception : public IPerception {
   void reset() override;
   PerceptionResult update(const iface::ObservationFrame& obs,
                           const EstimatedState& est) override;
+ PerceptionResult update(const iface::ObservationFrame& obs,
+ const EstimatedState& map_estimate,
+ const EstimatedState& odom_estimate) override;
   void set_lidar_mount(const core::RigidTransform& base_from_lidar) override {
     base_from_lidar_ = base_from_lidar;
   }
@@ -198,6 +212,11 @@ class LidarPerception : public IPerception {
  bool static_map_has_known_occupancy_ = false;
   std::unordered_map<std::uint32_t, TrackState> tracks_;
   std::uint32_t next_id_ = 1;
+ // Last map<-odom correction used to express the internally retained
+ // temporal history. When localization changes this edge, all retained
+ // samples move rigidly with it; a map correction must never look like
+ // object velocity.
+ std::optional<core::RigidTransform> map_from_odom_;
 };
 
 }  // namespace lost_signal::robot::autonomy

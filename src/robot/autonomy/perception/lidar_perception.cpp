@@ -1,6 +1,7 @@
 #include "robot/autonomy/perception/perception.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -122,17 +123,87 @@ LidarPerception::LidarPerception(LidarPerceptionConfig config)
 void LidarPerception::reset() {
   tracks_.clear();
   next_id_ = 1;
+ map_from_odom_.reset();
  static_map_ = nullptr;
  static_map_has_known_occupancy_ = false;
 }
 
 PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
                                          const EstimatedState& est) {
+ return update(obs, est, est);
+}
+
+PerceptionResult LidarPerception::update(
+ const iface::ObservationFrame& obs, const EstimatedState& est,
+ const EstimatedState& odom_estimate) {
   PerceptionResult out;
   out.stamp_ns = obs.stamp_ns;
-  if (!est.valid || !obs.scan_valid || obs.ranges_m.empty()) return out;
+ if (!est.valid || !odom_estimate.valid || !obs.scan_valid ||
+ obs.ranges_m.empty()) {
+ return out;
+ }
   out.scan_ok = true;
   const double now_s = obs.stamp_ns * 1e-9;
+
+ // Retained tracks are expressed in the current map frame for downstream
+ // planners. Move the complete history by the changed map<-odom edge before
+ // associating this scan. Translation and rotation therefore affect the
+ // track and its measurements equally and cannot manufacture velocity.
+ const core::RigidTransform current_map_from_odom =
+ core::map_from_odom_delta(
+ odom_estimate.x_m, odom_estimate.y_m, odom_estimate.yaw_rad,
+ est.x_m, est.y_m, est.yaw_rad);
+ if (map_from_odom_.has_value()) {
+ const core::RigidTransform current_map_from_previous_map = core::compose(
+ current_map_from_odom, core::inverse(*map_from_odom_));
+ const auto move_point = [&](core::Vec2 p) {
+ const core::Vec3 moved = core::transform_point(
+ current_map_from_previous_map, {p.x, p.y, 0.0});
+ return core::Vec2{moved.x, moved.y};
+ };
+ const auto move_vector = [&](core::Vec2 v) {
+ const core::Vec3 moved = core::rotate_vector(
+ current_map_from_previous_map.rotation, {v.x, v.y, 0.0});
+ return core::Vec2{moved.x, moved.y};
+ };
+ for (auto& [id, state] : tracks_) {
+ (void)id;
+ const core::Vec2 moved_position =
+ move_point({state.track.x_m, state.track.y_m});
+ state.track.x_m = moved_position.x;
+ state.track.y_m = moved_position.y;
+ const core::Vec2 moved_velocity =
+ move_vector({state.track.vx_mps, state.track.vy_mps});
+ state.track.vx_mps = moved_velocity.x;
+ state.track.vy_mps = moved_velocity.y;
+ state.last_reliable_velocity = move_vector(state.last_reliable_velocity);
+ const core::Vec2 moved_first =
+ move_point({state.first_x_m, state.first_y_m});
+ state.first_x_m = moved_first.x;
+ state.first_y_m = moved_first.y;
+ for (auto& sample : state.motion_samples) {
+ sample.position = move_point(sample.position);
+ }
+ const std::array<core::Vec2, 4> corners{{
+ {state.track.min_observed.x, state.track.min_observed.y},
+ {state.track.min_observed.x, state.track.max_observed.y},
+ {state.track.max_observed.x, state.track.min_observed.y},
+ {state.track.max_observed.x, state.track.max_observed.y},
+ }};
+ core::Vec2 minimum = move_point(corners.front());
+ core::Vec2 maximum = minimum;
+ for (std::size_t corner = 1; corner < corners.size(); ++corner) {
+ const core::Vec2 moved = move_point(corners[corner]);
+ minimum.x = std::min(minimum.x, moved.x);
+ minimum.y = std::min(minimum.y, moved.y);
+ maximum.x = std::max(maximum.x, moved.x);
+ maximum.y = std::max(maximum.y, moved.y);
+ }
+ state.track.min_observed = minimum;
+ state.track.max_observed = maximum;
+ }
+ }
+ map_from_odom_ = current_map_from_odom;
 
  double map_reference_quantile = std::numeric_limits<double>::infinity();
  if (config_.foreground_false_positive_probability > 0.0 &&
@@ -228,17 +299,27 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  inferred_no_return_m)
  : std::optional<double>{};
  if (expected) {
- // Only a return measurably in front of the ROBOT map is foreground.
- // A farther return is clearing evidence or map mismatch, never an actor.
- if (!(range + map_foreground_threshold_m < *expected)) continue;
+ // A return beyond the complete pose-uncertainty gate is trusted as
+ // map-relative foreground immediately. A return that is measurably in
+ // front of the survey by the sensor gate alone remains useful temporal
+ // evidence: track it like an unknown-map cluster, but do not publish it
+ // until the existing motion-history test confirms repeatable movement.
+ // Dropping this middle case makes moving actors disappear precisely when
+ // global covariance grows, leaving only raw contact at a crossing. A
+ // farther return is clearing evidence or map mismatch, never an actor.
+ if (range + map_foreground_threshold_m < *expected) {
  reference_backed = true;
+ } else if (!(range + config_.foreground_threshold_m < *expected)) {
+ continue;
+ }
  } else if (static_map_has_known_occupancy_ && endpoint_matches_static_map(
  *static_map_, sensor_p.x + off.x, sensor_p.y + off.y,
- map_foreground_threshold_m + static_map_->resolution_m)) {
- // Sparse priors legitimately keep free space unknown. Matching a measured
- // endpoint to known occupied geometry does not require assuming the unknown
- // cells before it are free, and prevents wall fragments from becoming
- // mapless moving-object tracks as their visible centroid changes.
+ config_.foreground_threshold_m + static_map_->resolution_m)) {
+ // Sparse priors legitimately keep free space unknown. Only a direct
+ // sensor-scale endpoint match is static evidence. A return merely inside
+ // the localization-covariance envelope is ambiguous and must survive as
+ // temporal-only evidence; deleting it here makes a moving object beside a
+ // mapped wall invisible until contact.
  continue;
  } else if (inferred_no_return_m > config_.foreground_threshold_m &&
  range >= inferred_no_return_m - config_.foreground_threshold_m) {

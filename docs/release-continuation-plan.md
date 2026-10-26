@@ -116,17 +116,17 @@
 
 ### 阶段 6 当前检查点（2026-10-27）
 
-- 阶段 6 功能实现已完成，尚未提交：
+- 阶段 6 的算法/物理稳定性子阶段已完成，Viewer/音频效果仍待单独提交：
  - `PhysicalAudioEvidence` 按 sim step 消费真实 wheel speed、逐轮 normal load/contact motion/slip、service brake、impact impulse/relative speed。
  - Viewer 播放 motor、rolling、slip、brake 四层循环声及由物理碰撞证据控制增益的 impact；暂停、Turbo、静音、重复帧和回放回退不会补播历史事件。
  - 2D/3D Validator 与 Safety sweep 使用连续 capsule/tube；Viewer 直接消费 ROBOT costmap、Validator 和 Safety Monitor 证据，不在绘制时重建算法结果。
  - `--lidar`、`--robot-evidence`、`--shot` 支持可复现视觉验收；HUD 明确区分 `ROBOT OBS/AI`、`ROBOT ESTIMATE` 与 `SIM PHYSICS/AUDIO`。
  - 新增无音频设备依赖的 `test_physical_audio`、`test_viewer_audio`，以及 `motor_drive.wav`、`wheel_roll.wav`、`tire_slip.wav`、`service_brake.wav`。
-- Release/Debug 构建和阶段 6 的 17/17 定向测试已通过；`stage6-*.png` 是临时验收截图，提交前必须删除。
-- Debug 全量回归当前为 75/77，暴露两个算法鲁棒性问题，不能用 Viewer 改动、关卡特化或改变场景掩盖：
- - `terrain_mission` 在冰面坡道完成第一个目标后，于第二目标附近因差速底盘终端重捕获选择正向 gear 而绕圈。工作区的通用修复根据前进/倒退所需的最小车体转角选择短距离重捕获，复用已有终端容差、置信包络和底盘能力，没有新增阈值；尚需完成输出 gear、单元测试和 Debug/Release 验证。
- - `industrial_200k_mission` 的 Debug 轨迹在前往 `south_yard` 时与 `east_shuttle` 相遇并锁死，100000 步只完成 4/5 且发生 691 个碰撞 step；Release 同任务 62169 步完成 5/5、零碰撞。需要建立短小、确定性的动态横穿相位测试，再修复 predictor/behavior/DWA/Validator/Safety 的通用链路。SIM actor truth 只允许用于失败诊断。
-- `tests/test_terrain_mission.cpp` 当前含临时诊断：第一段预算临时为 3000，2200 步后每 25 步输出状态。提交前必须恢复为 `drive_until_done(session, 2500)` 并删除 trace。
+- Release/Debug 定向回归已通过；`stage6-*.png` 是临时验收截图，Viewer 提交前必须删除。
+- 终端差速重捕获按位置误差投影选择前进/倒退 gear；低抓地斜坡的终端转向只在 ROBOT 有效姿态证据下允许由剩余位置误差推导的 crawl，默认平面/未知姿态仍保持纯旋转。
+- MuJoCo 接触求解按真实 SIM 接触几何选择：普通平面保持默认 PGS；存在非平面、粗糙或有高程的 terrain patch 时使用 elliptic Newton、`impratio=10`、50 次主迭代和显式线搜索容差。该条件不读取关卡 ID、actor 真值或 ROBOT 状态。
+- Release/Debug 的 autonomy、perception、DWA、dynamic escape/crossing、terrain、scenario、safety experience、composite、signal_town 和 20 万平方米定向回归均通过；terrain 与 industrial 均为 5/5、零碰撞。
+- `tests/test_terrain_mission.cpp` 已恢复正式 2500 步预算并删除临时诊断。
 
 ### 阶段 7 预审检查点（2026-10-27）
 
@@ -142,18 +142,15 @@
 - terrain 的通用修复已经完成。差速底盘在终端位置漂到车后、或位置进入包络但终端航向尚未稳定且目标落到车后时，会根据现有几何误差选择倒车重捕获；`requested_gear` 已进入 DWA 输出、采样和评分。实现只使用误差投影、现有置信包络和底盘能力，没有新增阈值。`test_terrain_mission` 已恢复正式 2500 步预算并删除临时 trace；Debug/Release 的 `test_dwa` 和 `test_terrain_mission` 均通过。
 - 不确定到达的永久停车已经修复。`GoalArrivalDecision::observation_motion_required` 在名义估计进入原始目标容差、但置信区域尚不能放进目标包络时请求低速观测运动；运动仍由 `MotionDecisionPipeline` 产生，并经过 Validator 和 Safety。严格到达仍要求置信包络、姿态和稳定停车。策略位于 goal-arrival/decision 模块，Coordinator 只合并并传递请求。Debug/Release `test_autonomy` 通过。
 - 高定位协方差下的动态物体丢失已经修复。LiDAR 中处于 map-relative foreground 强证据门与协方差扩张门之间的回波保留为 temporal-only 候选，只有经过现有运动更新次数和 1 秒速度拟合窗口后才发布匿名动态 track；静态墙在高协方差下仍不能成为动态物体。复用现有 `foreground_threshold_m`，没有新增阈值。Debug/Release `test_perception` 通过。
-- 新增 `tests/test_dynamic_crossing_mission.cpp`：Ackermann 底盘分别验证 actor 在机器人之前、同时和之后到达横穿点；链路使用真实 LiDAR、匿名 track、prediction、behavior、DWA、Validator 和 Safety，要求零碰撞、危险相位产生预测响应并在风险消失后恢复前进。SIM 真值只用于离线断言。Debug 已通过，Release 尚待运行。
-- Debug `industrial_200k_mission` 正在以本轮修复后的 binary 做完整五目标复测。当前统一 exec session 为 `53069`，最后记录约为 step 42500；central worker 横穿已形成匿名动态 track 并进入 `dynamic_clearance` 安全停车。关键 `east_shuttle` 横穿预计在 step 52000–54000，必须继续运行至任务终态，不能以中途状态判定通过。
+- 新增 `tests/test_dynamic_crossing_mission.cpp`：Ackermann 底盘分别验证 actor 在机器人之前、同时和之后到达横穿点；链路使用真实 LiDAR、匿名 track、prediction、behavior、DWA、Validator 和 Safety，要求零碰撞、危险相位产生预测响应并在风险消失后恢复前进。Debug/Release 均通过，SIM 真值只用于离线断言。
+- Debug/Release `industrial_200k_mission` 完整五目标均通过；Release 长测为 70593 步、5/5、0 碰撞、最大定位误差 1.073 m。`signal_town` Release 为 5826 步、5/5、0 碰撞。
 - 当前尚未提交的算法回归文件包括 `dwa_planner.cpp`、`goal_arrival.hpp/.cpp`、`coordinator.cpp`、`lidar_perception.cpp` 及对应 DWA、terrain、autonomy、perception、dynamic-crossing 测试。不得把这些修改与 Viewer/音频提交混为同一阶段提交，也不得丢弃。
 
 最新恢复顺序：
 
-1. 若 session `53069` 仍存在，先轮询到 `industrial_200k_mission` 完成；若进程已不存在，用现有 Debug binary 重新运行同一测试并保留 step 51500–53500 的匿名 track、预测 clearance、Safety 和 actor 离线诊断。
-2. 若 20 万平方米任务失败，只修复 ROBOT 的通用感知、预测、行为、局部规划、Validator 或 Safety 链路；不得移动 `east_shuttle`、修改关卡或放宽碰撞/到达条件。
-3. 运行 Release 的 `test_dynamic_crossing_mission`、`test_perception`、`test_autonomy`、`test_dwa`、`test_terrain_mission` 和 `test_industrial_200k_mission`。
-4. 全部通过后，只暂存算法和相关测试，单独提交“算法鲁棒性回归修复”。
-5. 删除 `stage6-*.png` 临时截图；跑 Debug 全量（新增测试后预计 78 项）、truth isolation、ROBOT boundary 和 `git diff --check`。
-6. 更新本文件的阶段 6 验收记录，再单独提交 Viewer、物理音频、WAV、文档及其测试；随后立即进入阶段 7。
+1. 删除 `stage6-*.png` 临时截图；跑 Debug/Release 全量 CTest、truth isolation、ROBOT boundary 和 `git diff --check`。
+2. 将算法、物理求解选择和相关测试单独提交；不得把这些修改与 Viewer/音频提交混为同一阶段提交。
+3. 再单独提交 Viewer、物理音频、WAV、文档及其测试；随后立即进入阶段 7。
 
 恢复后按以下顺序继续：
 
@@ -175,5 +172,5 @@
 | 3. 算法与系统回归 | 已完成 | `2c13308` | 完整构建；定向 14/14；全量 75/75；20 万平方米、signal_town、四底盘、SLAM/回环、truth isolation 均通过 |
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
-| 6. 物理证据可视化与效果 | 进行中 | - | 功能与 17/17 定向测试完成；Debug 全量 75/77，先修复 terrain 终端重捕获和 20 万平方米动态横穿鲁棒性 |
+| 6. 物理证据可视化与效果 | 算法/物理完成，Viewer 待提交 | 待提交 | Debug/Release 定向回归通过；terrain、signal_town、scenario、safety experience、composite 和 20 万平方米任务通过，Viewer/音频仍需独立提交 |
 | 7. 模型与场景升级 | 待开始 | - | 待完成 |

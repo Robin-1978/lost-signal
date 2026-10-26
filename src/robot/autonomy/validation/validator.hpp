@@ -86,7 +86,11 @@ struct ValidationResult {
 struct ClearanceValidatorConfig {
   double footprint_radius_m = 0.4;
  double extra_margin_m = platform::kDefaultNavigationClearanceMarginM;
+ double acceleration_mps2 = 2.0;
   double brake_decel_mps2 = 2.0;
+ double lateral_acceleration_mps2 = 2.0;
+ double yaw_acceleration_radps2 = 8.0;
+ double actuator_response_delay_s = 0.1;
   double forward_half_angle_rad = 0.5;
  // Sensor mount lives in the TF tree; set via set_lidar_mount().
   // Rollout horizon for swept-path checks.
@@ -244,13 +248,12 @@ class IValidator {
   }
 };
 
-// Trajectory validator: constant-twist rollout of the exact candidate,
-// swept against raw scan endpoints (map-frame) and predicted tracks, with
-// a braking-tail fit check. Holds always pass; motion needs footprint plus
-// margin plus braking distance, or a minimum-risk escape when already
-// inside the margin and the rollout gains clearance. Conservative and
-// explicit; without a valid estimate it falls back to the forward-sector
-// check (dead-reckoning start, never a silent full validation).
+// Trajectory validator: actuator-reachable rollout of the exact candidate,
+// swept against raw scan endpoints (map-frame) and predicted tracks. The
+// rollout begins at measured twist, retains it through the declared actuator
+// delay, then slews under the same acceleration/deceleration contract as the
+// local planner. A zero command therefore includes its physical braking tail
+// instead of pretending the chassis stops instantly.
 class ClearanceValidator : public IValidator {
  public:
  using IValidator::validate;
@@ -444,7 +447,10 @@ class ClearanceValidator : public IValidator {
       }
       endpoints.push_back({ex, ey});
     }
-    // Rollout the exact candidate twist; sample the swept footprint.
+ // Roll out from measured twist toward the exact candidate. This is an
+ // independent replay of the declared actuator envelope: a hold command
+ // still moves through delay and braking, and a new turn cannot appear at
+ // full yaw rate on the first sample.
  const double dynamic_horizon_s = prediction.future_times_s.empty()
  ? config_.rollout_horizon_s
  : std::max(config_.rollout_horizon_s,
@@ -462,25 +468,67 @@ class ClearanceValidator : public IValidator {
         // rollout samples, so a thin obstacle cannot disappear between them.
         double prev_x = est.x_m;
         double prev_y = est.y_m;
+ double rollout_x = est.x_m;
+ double rollout_y = est.y_m;
+ double rollout_heading = est.yaw_rad;
+ double rollout_v = est.forward_mps;
+ double rollout_lateral = est.lateral_mps;
+ double rollout_w = est.yaw_rate_radps;
+ const auto slew = [](double current, double target,
+ double acceleration, double deceleration,
+ double dt_s) {
+ if (!(dt_s > 0.0)) return current;
+ const bool accelerating = current * target >= 0.0 &&
+ std::abs(target) > std::abs(current);
+ const double rate = std::max(
+ 0.0, accelerating ? acceleration : deceleration);
+ return current + std::clamp(
+ target - current, -rate * dt_s, rate * dt_s);
+ };
+ const double response_delay_s =
+ std::max(0.0, config_.actuator_response_delay_s);
         for (int s = 1; s <= steps; ++s) {
       const double t = s * config_.rollout_dt_s;
-      // Exact constant-twist integration, body twist (v, lateral) rotated
-      // into the map frame. Matches the planner's rollout convention.
-      const double lat = candidate.lateral_mps;
-      double ax = est.x_m, ay = est.y_m;
-      if (std::abs(candidate.yaw_rate_radps) >= 1e-9) {
-        const double w = candidate.yaw_rate_radps;
-        const double h1 = est.yaw_rad + w * t;
-        ax = est.x_m + (candidate.forward_mps * (std::sin(h1) - std::sin(est.yaw_rad)) +
-                        lat * (std::cos(h1) - std::cos(est.yaw_rad))) / w;
-        ay = est.y_m + (-candidate.forward_mps * (std::cos(h1) - std::cos(est.yaw_rad)) +
-                        lat * (std::sin(h1) - std::sin(est.yaw_rad))) / w;
-      } else {
-        ax = est.x_m + (candidate.forward_mps * std::cos(est.yaw_rad) -
-                        lat * std::sin(est.yaw_rad)) * t;
-        ay = est.y_m + (candidate.forward_mps * std::sin(est.yaw_rad) +
-                        lat * std::cos(est.yaw_rad)) * t;
-      }
+ const double t0 = (s - 1) * config_.rollout_dt_s;
+ const double dt_s = t - t0;
+ const double responsive_dt_s = std::max(
+ 0.0, t - std::max(t0, response_delay_s));
+ const double delayed_dt_s = dt_s - responsive_dt_s;
+ const double previous_v = rollout_v;
+ const double previous_lateral = rollout_lateral;
+ const double previous_w = rollout_w;
+ rollout_v = slew(
+ rollout_v, candidate.forward_mps,
+ config_.acceleration_mps2, config_.brake_decel_mps2,
+ responsive_dt_s);
+ rollout_lateral = slew(
+ rollout_lateral, candidate.lateral_mps,
+ config_.lateral_acceleration_mps2,
+ config_.lateral_acceleration_mps2, responsive_dt_s);
+ rollout_w = slew(
+ rollout_w, candidate.yaw_rate_radps,
+ config_.yaw_acceleration_radps2,
+ config_.yaw_acceleration_radps2, responsive_dt_s);
+ const double average_v = dt_s > 0.0
+ ? (previous_v * delayed_dt_s +
+ 0.5 * (previous_v + rollout_v) * responsive_dt_s) / dt_s
+ : rollout_v;
+ const double average_lateral = dt_s > 0.0
+ ? (previous_lateral * delayed_dt_s +
+ 0.5 * (previous_lateral + rollout_lateral) * responsive_dt_s) / dt_s
+ : rollout_lateral;
+ const double average_w = dt_s > 0.0
+ ? (previous_w * delayed_dt_s +
+ 0.5 * (previous_w + rollout_w) * responsive_dt_s) / dt_s
+ : rollout_w;
+ const double middle_heading = rollout_heading + 0.5 * average_w * dt_s;
+ rollout_x += (average_v * std::cos(middle_heading) -
+ average_lateral * std::sin(middle_heading)) * dt_s;
+ rollout_y += (average_v * std::sin(middle_heading) +
+ average_lateral * std::cos(middle_heading)) * dt_s;
+ rollout_heading += average_w * dt_s;
+ const double ax = rollout_x;
+ const double ay = rollout_y;
  out.swept_centerline.push_back({ax, ay});
       double sample_min = std::numeric_limits<double>::infinity();
       const double vx = ax - prev_x;
@@ -517,7 +565,7 @@ class ClearanceValidator : public IValidator {
  const PredictedClearance dynamic_clearance = minimum_predicted_clearance(
  prediction, {prev_x, prev_y}, {ax, ay},
  (s - 1) * config_.rollout_dt_s, t,
- config_.footprint_radius_m);
+ config_.footprint_radius_m + config_.extra_margin_m);
  min_dynamic_clear = std::min(
  min_dynamic_clear, dynamic_clearance.clearance_m);
  if (s == steps) terminal_dynamic_clear = dynamic_clearance.clearance_m;
@@ -531,8 +579,7 @@ class ClearanceValidator : public IValidator {
       // the rollout. Unknown survey reads flat and passes (the raw-scan
       // veto above still owns unmapped obstacles).
       if (survey != nullptr) {
-        const double heading_t =
-            est.yaw_rad + candidate.yaw_rate_radps * t;
+ const double heading_t = rollout_heading;
         const double along =
             survey_longitudinal_grade(*survey->map, ax, ay, heading_t);
         if (std::abs(along) > survey->max_grade) {
@@ -556,8 +603,7 @@ class ClearanceValidator : public IValidator {
         // slow on a legal slope passes; carrying speed into a turn on the
         // same slope trips the cap. Lateral load is v*w for the constant
         // candidate twist (rotating-frame exact; yaw accel is zero).
-        const double lateral_accel_mps2 =
-            candidate.forward_mps * candidate.yaw_rate_radps;
+ const double lateral_accel_mps2 = rollout_v * rollout_w;
         const double risk = dynamic_rollover_risk(
             cross, lateral_accel_mps2, config_.support_width_m,
             config_.com_height_m);
@@ -609,7 +655,8 @@ class ClearanceValidator : public IValidator {
  const double t1 = s * config_.rollout_dt_s;
  const PredictedClearance clearance = minimum_predicted_clearance(
  prediction, {est.x_m, est.y_m}, {est.x_m, est.y_m},
- t0, t1, config_.footprint_radius_m);
+ t0, t1,
+ config_.footprint_radius_m + config_.extra_margin_m);
  hold_min = std::min(hold_min, clearance.clearance_m);
  if (s == steps) hold_terminal = clearance.clearance_m;
  }

@@ -31,6 +31,11 @@ struct GoalArrivalConfig {
 struct GoalArrivalDecision {
  bool hold = false;
  bool arrived = false;
+ // The nominal pose is inside the raw arrival envelope, but its confidence
+ // region is not. Continue with a bounded, independently validated motion
+ // baseline so localization can gain evidence; uncertainty is never treated
+ // as completion.
+ bool observation_motion_required = false;
  double position_error_m = 0.0;
  double heading_error_rad = 0.0;
  double position_confidence_radius_m = 0.0;

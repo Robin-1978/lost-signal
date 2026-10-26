@@ -32,9 +32,9 @@ int main() {
   using namespace lost_signal::robot::autonomy;
 
  // A dead-reckoned pose inside the goal region cannot complete a task while
- // its covariance is wider than the arrival contract. It holds unless the
- // localization subsystem explicitly requests a supervised observation
- // manoeuvre.
+ // its covariance is wider than the arrival contract. It explicitly asks
+ // the motion pipeline for a bounded observation baseline instead of
+ // freezing forever or treating uncertainty as arrival.
  {
  GoalArrivalPolicy arrival;
  EstimatedState estimate;
@@ -45,12 +45,14 @@ int main() {
  estimate.heading_sigma_rad = 0.02;
  const RoutePoint goal{1.0, 2.0, 0.0};
  GoalArrivalDecision decision = arrival.evaluate(estimate, goal, true);
- assert(decision.hold);
+ assert(!decision.hold);
  assert(!decision.arrived);
+ assert(decision.observation_motion_required);
  assert(decision.reason == "localization-uncertain");
  decision = arrival.evaluate(estimate, goal, true, true);
  assert(!decision.hold);
  assert(!decision.arrived);
+ assert(decision.observation_motion_required);
  estimate.position_sigma_m = 0.05;
  for (int cycle = 0; cycle < 3; ++cycle) {
  decision = arrival.evaluate(estimate, goal, true);
@@ -564,7 +566,11 @@ int main() {
  LocalCandidate skim;
  skim.feasible = true;
  skim.forward_mps = 1.0;
- ValidationResult swept = sweep.validate(skim, est, ok, thin);
+ // Start at the sampled speed so this geometry-focused case does not also
+ // assert the actuator acceleration envelope.
+ EstimatedState swept_est = est;
+ swept_est.forward_mps = skim.forward_mps;
+ ValidationResult swept = sweep.validate(skim, swept_est, ok, thin);
  assert(!swept.accepted &&
  swept.verdict == TrajectoryVerdict::kStaticCollision);
  assert(std::abs(swept.swept_envelope_radius_m - 0.1) < 1e-12);

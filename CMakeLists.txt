@@ -536,6 +536,18 @@ add_executable(test_dynamic_escape
 target_link_libraries(test_dynamic_escape PRIVATE lost_signal_robot_autonomy)
 add_test(NAME dynamic_escape COMMAND test_dynamic_escape)
 
+add_executable(test_dynamic_crossing_mission
+ tests/test_dynamic_crossing_mission.cpp
+)
+target_compile_definitions(test_dynamic_crossing_mission PRIVATE
+ TEST_CONFIG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_dynamic_crossing_mission PRIVATE
+ lost_signal_sim_scenario
+ lost_signal_sim_eval
+)
+add_test(NAME dynamic_crossing_mission COMMAND test_dynamic_crossing_mission)
+
 add_executable(test_motion_pipeline
  tests/test_motion_pipeline.cpp
 )

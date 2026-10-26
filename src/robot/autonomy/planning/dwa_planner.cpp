@@ -574,6 +574,32 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  terminal_distance_m <= terminal_position_reset_tolerance_m &&
  std::abs(terminal_lateral_error_m) >
  std::abs(terminal_longitudinal_error_m);
+ // A small position drift can leave the goal behind the body during final
+ // yaw capture. A differential base should reverse the short residual
+ // immediately instead of finishing the rotation, turning through pi,
+ // driving a loop, and then turning back to the requested terminal yaw.
+ // Forward-side drift retains the yaw latch until heading has settled, which
+ // prevents bearing/final-yaw chatter. The longitudinal sign and the two
+ // travel headings are geometric; this introduces no second capture radius.
+ // Arrival remains owned by GoalArrivalPolicy's confidence-bounded pose and
+ // stopped-motion checks.
+ const bool terminal_position_reacquire =
+ rotates_in_place_without_lateral_translation &&
+ terminal_position_latched_ && !terminal_position_reached &&
+ (terminal_heading_settled_ || terminal_longitudinal_error_m < 0.0);
+ const double terminal_forward_heading_rad = std::atan2(
+ terminal_dy_m, terminal_dx_m);
+ const double terminal_reverse_heading_rad = core::wrap_angle(
+ terminal_forward_heading_rad + core::kPi);
+ const bool terminal_reacquire_reverse = terminal_position_reacquire &&
+ std::abs(core::wrap_angle(
+ terminal_reverse_heading_rad - est.yaw_rad)) <
+ std::abs(core::wrap_angle(
+ terminal_forward_heading_rad - est.yaw_rad));
+ const int requested_gear = terminal_position_reacquire
+ ? (terminal_reacquire_reverse ? -1 : 1)
+ : target.gear;
+  out.requested_gear = requested_gear;
  const auto& tracked_a = route.points[route_segment_];
  const auto& tracked_b = route.points[route_segment_ + 1];
  const double tracked_remaining_m = (1.0 - route_fraction_) * std::hypot(
@@ -596,7 +622,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  (route_terminal_consumed || terminal_mismatch_settle_count_ >=
  std::max(1, config_.terminal_replan_settle_cycles));
  const double terminal_travel_heading_rad = core::wrap_angle(
- est.yaw_rad + (target.gear < 0 ? core::kPi : 0.0));
+ est.yaw_rad + (requested_gear < 0 ? core::kPi : 0.0));
  const double terminal_along_travel_m =
  (terminal.x_m - est.x_m) * std::cos(terminal_travel_heading_rad) +
  (terminal.y_m - est.y_m) * std::sin(terminal_travel_heading_rad);
@@ -628,6 +654,10 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  }
  const double heading_target = car_like
  ? car_like_tracking_heading
+ : terminal_position_reacquire
+ ? terminal_reacquire_reverse
+ ? terminal_reverse_heading_rad
+ : terminal_forward_heading_rad
  : !terminal_heading_mode
  ? terminal_bearing_capture
  ? std::atan2(terminal_dy_m, terminal_dx_m)
@@ -640,6 +670,25 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
           std::max(dt, predict_T),
       -w_max, w_max);
  double tracking_speed_limit_mps = v_max;
+ // On a low-grip differential base, a pure in-place terminal turn can
+ // generate lateral slip and move the chassis out of the captured position
+ // envelope. Permit a crawl derived from the remaining measured position
+ // error while heading settles. The crawl vanishes at the pose and uses the
+ // existing prediction horizon, so it is not a second terminal threshold.
+ // A crawl is useful when the robot is actually carrying a measured
+ // attitude/grade state: on a low-grip slope, a pure in-place turn can
+ // spend the available contact friction on lateral slip and drift out of
+ // the captured position.  Keep the default flat/unknown case rotation
+ // only; it is both the safer terminal command and the behaviour expected
+ // when no attitude evidence is available.  This uses only ROBOT-owned
+ // state and introduces no scenario-specific threshold.
+ const bool terminal_heading_creep =
+ !car_like && terminal_heading_mode && terminal_position_reached &&
+ terminal_distance_m > 0.0 && est.attitude_valid &&
+ std::isfinite(est.pitch_rad) && std::abs(est.pitch_rad) > 0.0;
+ const double terminal_creep_speed = terminal_heading_creep
+ ? std::min(v_max, terminal_distance_m / std::max(dt, predict_T))
+ : 0.0;
  if (car_like && route_tracking_valid) {
  // Keep lateral acceleration inside the declared chassis envelope. The
  // chord formula is the constant-curvature connector between the current
@@ -688,7 +737,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
 
  const auto velocity_samples = command_samples(
  velocity_window, std::max(1e-3, config_.velocity_sample_step_mps),
- {est.forward_mps, 0.0, v_max, -v_max});
+ {est.forward_mps, 0.0, v_max, -v_max, terminal_creep_speed,
+ -terminal_creep_speed});
 
   const double ego_radius =
       limits.footprint_radius_m + config_.safety_margin_m;
@@ -780,10 +830,12 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // forward/reverse pose manoeuvre instead.
  const double terminal_braking_floor_mps = std::max(
  0.0, std::abs(est.forward_mps) - decel * dt);
- if (!car_like &&
+ if (!car_like && !terminal_position_reacquire &&
  (terminal_heading_mode || terminal_bearing_capture) &&
  std::abs(velocity) > terminal_braking_floor_mps + 1e-9) {
- continue;
+ const bool creep = terminal_heading_creep &&
+ std::abs(velocity) <= terminal_creep_speed + 1e-9;
+ if (!creep) continue;
  }
  const double one_cycle_braking_floor = std::max(
  0.0, std::abs(est.forward_mps) - decel * dt);
@@ -791,8 +843,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  std::max(tracking_speed_limit_mps, one_cycle_braking_floor) + 1e-9) {
  continue;
  }
- if (target.gear < 0 && velocity > 1e-9) continue;
- if (target.gear > 0 && velocity < -1e-9) continue;
+ if (requested_gear < 0 && velocity > 1e-9) continue;
+ if (requested_gear > 0 && velocity < -1e-9) continue;
  auto angular_window = next_window(est.yaw_rate_radps, -w_max, w_max,
  config_.yaw_accel_radps2 * dt);
  // For a car-like base, yaw rate is not an independent command axis:
@@ -1010,7 +1062,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
           config_.weights.w_path * path_score +
           config_.weights.w_progress * progress_score +
  config_.weights.w_speed *
- (target.gear < 0 ? -velocity : velocity) -
+ (requested_gear < 0 ? -velocity : velocity) -
           config_.weights.w_oscillation * oscillation_penalty -
           angular_effort_penalty;
  if (!static_collision) {

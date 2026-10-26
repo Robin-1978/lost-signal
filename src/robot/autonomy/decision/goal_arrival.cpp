@@ -45,9 +45,16 @@ GoalArrivalDecision GoalArrivalPolicy::evaluate(
  out.heading_confidence_radius_rad <= heading_tolerance;
  if (!confidence_fits) {
  reset();
- out.hold = !observation_motion_requested &&
+ // Reaching the raw geometric envelope with a confidence region wider than
+ // that envelope is a request for more evidence, not permission to report
+ // arrival or to freeze forever. The decision pipeline bounds and validates
+ // the resulting observation motion through the normal planner, Validator,
+ // and Safety Monitor. Outside the raw envelope, ordinary goal approach is
+ // already the required motion.
+ out.observation_motion_required =
  out.position_error_m <= position_tolerance &&
  out.heading_error_rad <= heading_tolerance;
+ out.hold = false;
  out.reason = "localization-uncertain";
  return out;
  }

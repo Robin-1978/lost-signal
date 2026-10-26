@@ -96,6 +96,56 @@ int main() {
  toward, estimate, stamp_ns);
  assert(safety.gate(toward_command, threat, stamp_ns).is_safe_stop());
 
+ // Dynamic clearance uses the same configured navigation margin as DWA,
+ // behavior, and the final safety gate. Geometric non-contact alone is not
+ // enough to admit a trajectory inside that declared margin.
+ DynamicTrack margin_track;
+ margin_track.id = 8;
+ margin_track.x_m = 0.53;
+ margin_track.radius_m = 0.05;
+ margin_track.prediction_ready = true;
+ margin_track.last_observed_ns = stamp_ns;
+ PerceptionResult margin_perception;
+ margin_perception.scan_ok = true;
+ margin_perception.stamp_ns = stamp_ns;
+ margin_perception.tracks = {margin_track};
+ const PredictionBatch margin_prediction = predict_perception(
+ margin_perception, 1.0, {.horizon_s = 2.5, .frame_dt_s = 0.1});
+ const ValidationResult padded_hold = validator.validate(
+ hold, estimate, margin_perception, margin_prediction, observation);
+ assert(!padded_hold.accepted);
+ assert(padded_hold.verdict == TrajectoryVerdict::kDynamicCollision);
+ ClearanceValidatorConfig no_margin_config;
+ no_margin_config.extra_margin_m = 0.0;
+ ClearanceValidator no_margin_validator(no_margin_config);
+ const ValidationResult geometric_hold = no_margin_validator.validate(
+ hold, estimate, margin_perception, margin_prediction, observation);
+ assert(geometric_hold.accepted);
+
+ // A zero command starts from measured chassis speed. Its validator rollout
+ // includes the configured response delay and braking tail, so an obstacle
+ // that is clear at the current pose but intersects the physical stop is
+ // rejected before the controller publishes the hold.
+ EstimatedState moving_estimate = estimate;
+ moving_estimate.forward_mps = 1.0;
+ DynamicTrack braking_track;
+ braking_track.id = 9;
+ braking_track.x_m = 0.9;
+ braking_track.radius_m = 0.1;
+ braking_track.prediction_ready = true;
+ braking_track.last_observed_ns = stamp_ns;
+ PerceptionResult braking_perception;
+ braking_perception.scan_ok = true;
+ braking_perception.stamp_ns = stamp_ns;
+ braking_perception.tracks = {braking_track};
+ const PredictionBatch braking_prediction = predict_perception(
+ braking_perception, 1.0, {.horizon_s = 2.5, .frame_dt_s = 0.1});
+ const ValidationResult physical_hold = validator.validate(
+ hold, moving_estimate, braking_perception, braking_prediction,
+ observation);
+ assert(!physical_hold.accepted);
+ assert(physical_hold.verdict == TrajectoryVerdict::kDynamicCollision);
+
  std::printf("dynamic escape ok\n");
  return 0;
 }

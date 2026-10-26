@@ -33,7 +33,11 @@ ClearanceValidatorConfig validator_config_for(
  ClearanceValidatorConfig config;
  config.footprint_radius_m = limits.footprint_radius_m;
  config.extra_margin_m = navigation.clearance_margin_m;
+ config.acceleration_mps2 = motion.acceleration_mps2;
  config.brake_decel_mps2 = motion.brake_deceleration_mps2;
+ config.lateral_acceleration_mps2 = motion.lateral_acceleration_mps2;
+ config.yaw_acceleration_radps2 = motion.yaw_acceleration_radps2;
+ config.actuator_response_delay_s = motion.actuator_response_delay_s;
  return config;
 }
 
@@ -404,6 +408,9 @@ if (due || replan_requested_ || local_plan_reset_requested_ || map_changed) {
  safety_reason == "forward-recovery" ||
  safety_reason == "static-proximity" ||
  safety_reason == "static-swept-proximity";
+ const bool observation_motion_requested =
+ loc.observation_motion_requested ||
+ goal_arrival_decision_.observation_motion_required;
  MotionDecisionResult motion = decision_pipeline_.run(
  *global_planner_, *local_planner_, *behavior_, *validator_, *controller_,
  estimator_->estimate(), observations_.perception(), robot_local_map,
@@ -412,7 +419,7 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  grip_.effective_limits(limits_, limits_.max_forward_mps), limits_,
  latest_observation,
  survey_ctx, now_ns, forward_blocked,
- loc.observation_motion_requested);
+ observation_motion_requested);
  decision_ = motion.behavior;
  iface::MotionCommand decided = motion.command;
  std::string reason = motion.reason;

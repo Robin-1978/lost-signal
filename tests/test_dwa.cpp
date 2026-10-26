@@ -914,6 +914,42 @@ int main() {
  assert(position_reacquire.has_plan);
  assert(position_reacquire.best.forward_mps > 0.0);
 
+    // The same confidence-bounded miss can lie behind the body after final
+    // yaw has settled. Reacquire it in reverse instead of turning through pi
+    // and later turning back to the requested terminal yaw.
+    DwaPlanner reverse_reacquire_planner;
+    est.x_m = 1.90;
+    const LocalPlan reverse_captured = reverse_reacquire_planner.plan(
+        est, perc, m, route, limits);
+    assert(reverse_captured.has_plan);
+    assert(std::abs(reverse_captured.best.forward_mps) < 1e-9);
+    est.x_m = 2.20; // outside confidence entry, inside raw tolerance
+    const LocalPlan rearward_reacquire = reverse_reacquire_planner.plan(
+        est, perc, m, route, limits);
+    assert(rearward_reacquire.has_plan);
+    assert(rearward_reacquire.requested_gear < 0);
+    assert(rearward_reacquire.best.forward_mps < 0.0);
+
+ // Rearward drift also owns position before an in-progress final rotation
+ // has settled, so the controller does not spend a full extra yaw maneuver
+ // before beginning the same reverse correction.
+ DwaPlanner rotating_reverse_reacquire_planner;
+ est.x_m = 1.90;
+ est.yaw_rad = 0.8;
+ const LocalPlan rotating_capture = rotating_reverse_reacquire_planner.plan(
+ est, perc, m, route, limits);
+ assert(rotating_capture.has_plan);
+ assert(std::abs(rotating_capture.best.forward_mps) < 1e-9);
+ est.x_m = 2.20;
+ est.yaw_rad = 0.3;
+ const LocalPlan rotating_reacquire =
+ rotating_reverse_reacquire_planner.plan(est, perc, m, route, limits);
+ assert(rotating_reacquire.has_plan);
+ assert(rotating_reacquire.requested_gear < 0);
+ assert(rotating_reacquire.best.forward_mps < 0.0);
+
+ est.x_m = 1.80;
+ est.yaw_rad = 0.0;
  planner.reset_tracking(); // same goal was replanned after a map correction
  const LocalPlan replanned = planner.plan(est, perc, m, route, limits);
  assert(replanned.has_plan);

@@ -284,6 +284,82 @@ int main() {
  }
  }
 
+ // Pose uncertainty may prevent one scan from claiming map-relative
+ // foreground, but it must not erase a moving return that repeatedly stays
+ // in front of the surveyed wall. Such evidence remains temporal-only until
+ // the ordinary velocity-fit window confirms motion.
+ {
+ LidarPerception perc;
+ lost_signal::robot::iface::MapSnapshot map;
+ map.map_id = "uncertain-moving-prior";
+ map.revision = 1;
+ map.width = 200;
+ map.height = 200;
+ map.resolution_m = 0.1;
+ map.origin_x_m = -10.0;
+ map.origin_y_m = -10.0;
+ map.occupancy.assign(map.width * map.height, 0);
+ for (int gy = 85; gy <= 115; ++gy) {
+ map.occupancy[static_cast<std::size_t>(gy) * map.width + 130] = 100;
+ }
+ perc.set_static_map(map);
+ EstimatedState uncertain = origin();
+ uncertain.position_sigma_m = 2.0;
+ uncertain.heading_sigma_rad = 0.1;
+ PerceptionResult result;
+ for (int frame = 0; frame < 12; ++frame) {
+ auto mover = make_scan(
+ (frame + 1) * 100'000'000LL, 10.0f, 34, 38,
+ 1.0f + 0.10f * static_cast<float>(frame));
+ mover.scan_static_valid = false;
+ mover.static_ranges_m.clear();
+ result = perc.update(mover, uncertain);
+ if (frame < 10) assert(result.tracks.empty());
+ }
+ assert(result.tracks.size() == 1);
+ assert(result.tracks.front().prediction_ready);
+ assert(result.tracks.front().vx_mps > 0.3);
+ }
+
+ // A sparse prior may have unknown cells before nearby mapped structure.
+ // Localization covariance alone cannot turn the whole neighborhood into
+ // static geometry: a moving return several metres from that structure
+ // remains temporal-only and becomes ready after measured motion history.
+ {
+ LidarPerception perc;
+ lost_signal::robot::iface::MapSnapshot map;
+ map.map_id = "sparse-uncertain-moving-prior";
+ map.revision = 1;
+ map.width = 240;
+ map.height = 240;
+ map.resolution_m = 0.1;
+ map.origin_x_m = -12.0;
+ map.origin_y_m = -12.0;
+ map.occupancy.assign(map.width * map.height, -1);
+ for (int gy = 78; gy <= 82; ++gy) {
+ for (int gx = 118; gx <= 122; ++gx) {
+ map.occupancy[static_cast<std::size_t>(gy) * map.width + gx] = 100;
+ }
+ }
+ perc.set_static_map(map);
+ EstimatedState uncertain = origin();
+ uncertain.position_sigma_m = 2.0;
+ uncertain.heading_sigma_rad = 0.1;
+ PerceptionResult result;
+ for (int frame = 0; frame < 12; ++frame) {
+ auto mover = make_scan(
+ (frame + 1) * 100'000'000LL, 10.0f, 34, 38,
+ 1.0f + 0.10f * static_cast<float>(frame));
+ mover.scan_static_valid = false;
+ mover.static_ranges_m.clear();
+ result = perc.update(mover, uncertain);
+ if (frame < 10) assert(result.tracks.empty());
+ }
+ assert(result.tracks.size() == 1);
+ assert(result.tracks.front().prediction_ready);
+ assert(result.tracks.front().vx_mps > 0.3);
+ }
+
  // Mapless/SLAM startup: static compact returns remain unpublished, while a
  // repeatedly moving cluster becomes an anonymous dynamic track using only
  // scan history in the estimated map frame.
@@ -303,6 +379,24 @@ int main() {
  assert(result.tracks.front().prediction_ready);
  assert(result.tracks.front().vx_mps > 0.3);
  assert(result.tracks.front().last_observed_ns == 1'200'000'000LL);
+ }
+
+ // REP-105: gradual map<-odom localization correction moves a static scan
+ // rigidly in map, but must not become temporal object velocity.
+ {
+ LidarPerception perc;
+ EstimatedState odom = origin();
+ PerceptionResult result;
+ for (int frame = 0; frame < 16; ++frame) {
+ EstimatedState map_estimate = odom;
+ map_estimate.x_m = 0.05 * static_cast<double>(frame);
+ auto wall = make_scan(
+ (frame + 1) * 100'000'000LL, 10.0f, 34, 38, 3.0f);
+ wall.scan_static_valid = false;
+ wall.static_ranges_m.clear();
+ result = perc.update(wall, map_estimate, odom);
+ assert(result.tracks.empty());
+ }
  }
  {
  LidarPerception perc;
