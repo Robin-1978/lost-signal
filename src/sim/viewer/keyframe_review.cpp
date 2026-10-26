@@ -34,7 +34,35 @@ robot::core::MonotonicNs evidence_stamp(const eval::EvalStep& step) {
  return step.obs.stamp_ns;
 }
 
+bool same_event_class(ReviewKeyframeKind lhs, ReviewKeyframeKind rhs) {
+ const auto sim_verdict = [](ReviewKeyframeKind kind) {
+ return kind == ReviewKeyframeKind::kSimAccepted ||
+ kind == ReviewKeyframeKind::kSimRejected;
+ };
+ return lhs == rhs || (sim_verdict(lhs) && sim_verdict(rhs));
+}
+
 } // namespace
+
+std::optional<ReviewKeyframeAlignment> align_review_keyframes_by_event(
+ const std::vector<ReviewKeyframe>& baseline,
+ const std::vector<ReviewKeyframe>& variant,
+ ReviewKeyframeKind selected_variant_kind) {
+ const auto variant_found = std::find_if(
+ variant.begin(), variant.end(), [&](const ReviewKeyframe& keyframe) {
+ return same_event_class(keyframe.kind, selected_variant_kind);
+ });
+ const auto baseline_found = std::find_if(
+ baseline.begin(), baseline.end(), [&](const ReviewKeyframe& keyframe) {
+ return same_event_class(keyframe.kind, selected_variant_kind);
+ });
+ if (variant_found == variant.end() || baseline_found == baseline.end()) {
+ return std::nullopt;
+ }
+ return ReviewKeyframeAlignment{
+ static_cast<std::size_t>(baseline_found - baseline.begin()),
+ static_cast<std::size_t>(variant_found - variant.begin())};
+}
 
 std::vector<ReviewKeyframe> extract_review_keyframes(
  const eval::EpisodeRecorder& episode, KeyframeReviewConfig config,

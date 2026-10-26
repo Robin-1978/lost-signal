@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,20 @@ struct ReviewKeyframe {
  std::string title;
  std::string evidence;
 };
+
+struct ReviewKeyframeAlignment {
+ std::size_t baseline_keyframe_index = 0;
+ std::size_t variant_keyframe_index = 0;
+};
+
+// Matches causal milestones across completed runs. Accepted and rejected SIM
+// verdicts belong to the same terminal event class, so a failed variant can
+// still be compared with a successful baseline at the moment each judge made
+// its decision.
+std::optional<ReviewKeyframeAlignment> align_review_keyframes_by_event(
+ const std::vector<ReviewKeyframe>& baseline,
+ const std::vector<ReviewKeyframe>& variant,
+ ReviewKeyframeKind selected_variant_kind);
 
 struct KeyframeReviewConfig {
  // Use the deployed arrival policy's speed limits and settle count. The

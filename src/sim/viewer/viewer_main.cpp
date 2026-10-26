@@ -1123,6 +1123,8 @@ struct ExperimentUiState {
  VisibleRunSummary baseline;
  VisibleRunSummary variant;
  lost_signal::sim::experiment::EpisodePair episodes;
+ std::vector<ReviewKeyframe> baseline_keyframes;
+ std::vector<ReviewKeyframe> variant_keyframes;
  std::optional<lost_signal::sim::experiment::EpisodeArtifact> standalone;
 };
 
@@ -2177,7 +2179,7 @@ inline Camera3D camera_from_state(const CameraState& st) {
 }
 
 void draw_baseline_comparison_ghost_2d(
- const Frame& baseline, const ViewTransform& view) {
+ const Frame& baseline, const ViewTransform& view, bool event_aligned) {
  const auto center = view.world_to_screen(
  baseline.body.x_m, baseline.body.y_m);
  const float radius = static_cast<float>(
@@ -2189,12 +2191,14 @@ void draw_baseline_comparison_ghost_2d(
  center.x_px + radius * std::cos(static_cast<float>(baseline.body.yaw_rad)),
  center.y_px - radius * std::sin(static_cast<float>(baseline.body.yaw_rad))};
  DrawLineEx({center.x_px, center.y_px}, heading, 2.0f, amber);
- DrawText("BASELINE SIM", static_cast<int>(center.x_px + radius + 6.0f),
+ const char* label = event_aligned
+ ? "BASELINE SIM / SAME EVENT" : "BASELINE SIM / SAME TIME";
+ DrawText(label, static_cast<int>(center.x_px + radius + 6.0f),
  static_cast<int>(center.y_px - 8.0f), 12, amber);
 }
 
 void draw_baseline_comparison_ghost_3d(
- const Frame& baseline, const Camera3D& camera) {
+ const Frame& baseline, const Camera3D& camera, bool event_aligned) {
  const float radius = static_cast<float>(std::hypot(
  baseline.body.half_length_m, baseline.body.half_width_m));
  const Vector3 center = to_raylib(
@@ -2209,7 +2213,9 @@ void draw_baseline_comparison_ghost_3d(
  DrawSphereWires(center, 0.045f, 8, 8, amber);
  EndMode3D();
  const Vector2 label = GetWorldToScreen(center, camera);
- DrawText("BASELINE SIM", static_cast<int>(label.x + 8.0f),
+ const char* label_text = event_aligned
+ ? "BASELINE SIM / SAME EVENT" : "BASELINE SIM / SAME TIME";
+ DrawText(label_text, static_cast<int>(label.x + 8.0f),
  static_cast<int>(label.y - 10.0f), 12, amber);
 }
 
@@ -3785,9 +3791,12 @@ int main(int argc, char** argv) {
  experiment_ui.baseline = {};
  experiment_ui.episodes.baseline.reset();
  experiment_ui.episodes.variant.reset();
+ experiment_ui.baseline_keyframes.clear();
+ experiment_ui.variant_keyframes.clear();
  } else {
  experiment_ui.variant = {};
  experiment_ui.episodes.variant.reset();
+ experiment_ui.variant_keyframes.clear();
  }
  experiment_ui.standalone.reset();
  experience_action_error.clear();
@@ -3825,6 +3834,7 @@ int main(int argc, char** argv) {
  if (!experience_flow->start_variant(0)) return false;
  experiment_ui.variant = {};
  experiment_ui.episodes.variant.reset();
+ experiment_ui.variant_keyframes.clear();
  experience_action_error.clear();
  reset_experience_presentation(false);
  paused = false;
@@ -4255,6 +4265,7 @@ int main(int argc, char** argv) {
  experience_flow->timed_out(), *session);
  if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
  experiment_ui.baseline = run_summary;
+ experiment_ui.baseline_keyframes = review_keyframes;
  if (experience.experiments.empty()) {
  experiment_ui.standalone = std::move(artifact);
  } else {
@@ -4262,6 +4273,7 @@ int main(int argc, char** argv) {
  }
  } else {
  experiment_ui.variant = run_summary;
+ experiment_ui.variant_keyframes = review_keyframes;
  experiment_ui.episodes.variant = std::move(artifact);
  }
  if (!session->episode().steps().empty()) {
@@ -4389,17 +4401,37 @@ int main(int argc, char** argv) {
  if (!historical_frame.has_value()) continue;
  const sim::viewer::Frame& frame = *historical_frame;
  std::optional<sim::viewer::Frame> baseline_comparison_frame;
+ bool baseline_event_aligned = false;
  if (experience_loaded &&
  experience_flow->phase() == ExperiencePhase::kDebrief &&
  experiment_ui.episodes.complete()) {
+ std::optional<std::size_t> baseline_index;
+ if (!review_keyframes.empty()) {
+ const int selected = std::clamp(selected_review_keyframe, 0,
+ static_cast<int>(review_keyframes.size()) - 1);
+ const auto alignment = sim::viewer::align_review_keyframes_by_event(
+ experiment_ui.baseline_keyframes,
+ experiment_ui.variant_keyframes,
+ review_keyframes[static_cast<std::size_t>(selected)].kind);
+ if (alignment.has_value()) {
+ baseline_index = experiment_ui.baseline_keyframes[
+ alignment->baseline_keyframe_index].episode_index;
+ baseline_event_aligned = true;
+ }
+ }
+ if (!baseline_index.has_value()) {
  const auto synchronized =
  sim::experiment::synchronize_episode_pair_by_time(
  experiment_ui.episodes, /*reference_is_variant=*/true,
  presented_index);
  if (synchronized.has_value()) {
+ baseline_index = synchronized->baseline_index;
+ }
+ }
+ if (baseline_index.has_value()) {
  baseline_comparison_frame = sim::viewer::build_episode_frame(
  session->setup_world(), experiment_ui.episodes.baseline->episode,
- synchronized->baseline_index, {}, {}, session_lidar_mount);
+ *baseline_index, {}, {}, session_lidar_mount);
  }
  }
  // Presentation consumes every completed physics frame even when Turbo
@@ -4496,14 +4528,16 @@ int main(int argc, char** argv) {
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
  if (baseline_comparison_frame.has_value()) {
- draw_baseline_comparison_ghost_3d(*baseline_comparison_frame, cam);
+ draw_baseline_comparison_ghost_3d(
+ *baseline_comparison_frame, cam, baseline_event_aligned);
  }
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
  draw_frame_2d(frame, view, show_lidar, show_estimate,
  show_actor_routes);
  if (baseline_comparison_frame.has_value()) {
- draw_baseline_comparison_ghost_2d(*baseline_comparison_frame, view);
+ draw_baseline_comparison_ghost_2d(
+ *baseline_comparison_frame, view, baseline_event_aligned);
  }
     }
  const auto playback_stats = playback.statistics();

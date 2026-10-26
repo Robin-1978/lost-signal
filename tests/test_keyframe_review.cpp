@@ -83,6 +83,27 @@ int main() {
  sim::viewer::ReviewKeyframeKind::kSimRejected);
  assert(rejected_review[7].evidence ==
  "experiment_time_limit / collision");
+ const auto braking_alignment =
+ sim::viewer::align_review_keyframes_by_event(
+ accepted_review, rejected_review,
+ sim::viewer::ReviewKeyframeKind::kBrakeCommand);
+ assert(braking_alignment.has_value());
+ assert(accepted_review[braking_alignment->baseline_keyframe_index].kind ==
+ sim::viewer::ReviewKeyframeKind::kBrakeCommand);
+ assert(rejected_review[braking_alignment->variant_keyframe_index].kind ==
+ sim::viewer::ReviewKeyframeKind::kBrakeCommand);
+ const auto verdict_alignment =
+ sim::viewer::align_review_keyframes_by_event(
+ accepted_review, rejected_review,
+ sim::viewer::ReviewKeyframeKind::kSimRejected);
+ assert(verdict_alignment.has_value());
+ assert(accepted_review[verdict_alignment->baseline_keyframe_index].kind ==
+ sim::viewer::ReviewKeyframeKind::kSimAccepted);
+ assert(rejected_review[verdict_alignment->variant_keyframe_index].kind ==
+ sim::viewer::ReviewKeyframeKind::kSimRejected);
+ assert(!sim::viewer::align_review_keyframes_by_event(
+ accepted_review, rejected_review,
+ sim::viewer::ReviewKeyframeKind::kTimeout).has_value());
 
  sim::eval::EpisodeRecorder empty;
  assert(sim::viewer::extract_review_keyframes(empty, config).empty());
