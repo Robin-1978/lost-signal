@@ -1023,7 +1023,14 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  observation.imu_valid ? "OK" : "--");
  DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
  kText);
- y += 47.0f;
+ std::snprintf(line, sizeof(line), "%s seq %llu t=%.3fs",
+ observation.scan_source.empty() ? "unknown source"
+ : observation.scan_source.c_str(),
+ static_cast<unsigned long long>(observation.scan_sequence),
+ observation.scan_stamp_s);
+ DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 37), 12,
+ kMuted);
+ y += 62.0f;
 
  const auto& estimate = frame->estimate;
  DrawText("ROBOT / ESTIMATE", static_cast<int>(x + 18),
@@ -1309,7 +1316,7 @@ Color box_color(const lost_signal::sim::viewer::FrameBox& b,
 }
 
 void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
-                   bool show_estimate) {
+ bool show_estimate, bool show_truth_debug) {
   // Ground grid, 1 m spacing over the visible range.
   double wx0 = 0.0, wy0 = 0.0, wx1 = 0.0, wy1 = 0.0;
   if (view.screen_to_world(0, 0, wx0, wy0) &&
@@ -1402,15 +1409,26 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
     const auto s = view.world_to_screen(p.x_m, p.y_m);
     DrawCircleLines(s.x_px, s.y_px, 12.0f, RED);
   }
-  // Lidar hits (from the true sensor origin, same as the 3D fan).
+ // ROBOT scan projected by the recorded ROBOT estimate. Truth projection is
+ // deliberately absent from the live overlay.
   if (show_lidar && f.lidar_valid) {
-    const auto o = view.world_to_screen(f.body.sens_x_m, f.body.sens_y_m);
+ const auto o = view.world_to_screen(
+ f.observation.projected_sensor_x_m,
+ f.observation.projected_sensor_y_m);
     for (const auto& hit : f.lidar_hits) {
       const auto s = view.world_to_screen(hit.first, hit.second);
       DrawLineV({o.x_px, o.y_px}, {s.x_px, s.y_px}, {255, 0, 0, 60});
       DrawPixelV({s.x_px, s.y_px}, RED);
     }
   }
+ if (show_truth_debug && f.truth_lidar_valid) {
+ const auto o = view.world_to_screen(f.body.sens_x_m, f.body.sens_y_m);
+ for (const auto& hit : f.truth_lidar_hits) {
+ const auto s = view.world_to_screen(hit.first, hit.second);
+ DrawLineV({o.x_px, o.y_px}, {s.x_px, s.y_px}, {246, 169, 61, 45});
+ DrawPixelV({s.x_px, s.y_px}, Color{246, 169, 61, 210});
+ }
+ }
   // ROBOT estimate ghost (offline truth-vs-estimate overlay, live).
   if (show_estimate && f.body.estimate_valid) {
     const auto s = view.world_to_screen(f.body.est_x_m, f.body.est_y_m);
@@ -1447,7 +1465,8 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
   }
   // Wheels (simplified, default on): short segments at the module
   // positions, steered by the live joint (ackermann fronts read visibly),
-  // red while the engine flags traction saturation (per side on tracks).
+ // red in explicit SIM truth debug while the engine flags traction
+ // saturation (per side on tracks).
   // Screen is y-flipped: world angle t draws along (cos t, -sin t).
   {
     const float yaw = static_cast<float>(f.body.yaw_rad);
@@ -1466,8 +1485,9 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
         const double wy = (k == 0 ? 1.0 : -1.0) * f.body.half_width_m;
         const Vector2 a = to_screen(-f.body.half_length_m, wy);
         const Vector2 b = to_screen(f.body.half_length_m, wy);
-        const bool slip = k < static_cast<int>(f.body.wheels.size()) &&
-                          f.body.wheels[static_cast<std::size_t>(k)].slipping;
+ const bool slip = show_truth_debug &&
+ k < static_cast<int>(f.body.wheels.size()) &&
+ f.body.wheels[static_cast<std::size_t>(k)].slipping;
         DrawLineEx(a, b, 3.0f, slip ? RED : DARKGRAY);
       }
     } else {
@@ -1481,7 +1501,8 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
                         m.y + half * std::sin(t)};
         const Vector2 b{m.x + half * std::cos(t),
                         m.y - half * std::sin(t)};
-        DrawLineEx(a, b, 3.0f, w.slipping ? RED : DARKGRAY);
+ DrawLineEx(a, b, 3.0f,
+ show_truth_debug && w.slipping ? RED : DARKGRAY);
       }
     }
   }
@@ -1827,21 +1848,37 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
                  {150, 100, 220, 180});
     }
   }
-  // Lidar rays from the TRUE sensor origin (mount-composed, same source
-  // generation runs). Endpoints stay planar-projected (see builder).
+ // ROBOT scan projected from the recorded ROBOT estimate. The truth-assisted
+ // fan is held separately for an explicitly labeled evaluation view.
   if (show_lidar && f.lidar_valid) {
-    const Vector3 o = to_raylib(f.body.sens_x_m, f.body.sens_y_m,
-                                f.body.sens_z_m);
+ const Vector3 o = to_raylib(
+ f.observation.projected_sensor_x_m,
+ f.observation.projected_sensor_y_m,
+ f.observation.projected_sensor_z_m);
  const std::size_t stride =
  std::max<std::size_t>(1, f.lidar_hits.size() / 72);
  for (std::size_t i = 0; i < f.lidar_hits.size(); i += stride) {
  const auto& hit = f.lidar_hits[i];
  const Vector3 endpoint =
- to_raylib(hit.first, hit.second, f.body.sens_z_m);
+ to_raylib(hit.first, hit.second,
+ f.observation.projected_sensor_z_m);
  DrawLine3D(o, endpoint, {64, 220, 225, 52});
  DrawSphere(endpoint, 0.018f, {95, 245, 235, 180});
     }
   }
+ if (show_actor_routes && f.truth_lidar_valid) {
+ const Vector3 o = to_raylib(
+ f.body.sens_x_m, f.body.sens_y_m, f.body.sens_z_m);
+ const std::size_t stride =
+ std::max<std::size_t>(1, f.truth_lidar_hits.size() / 72);
+ for (std::size_t i = 0; i < f.truth_lidar_hits.size(); i += stride) {
+ const auto& hit = f.truth_lidar_hits[i];
+ const Vector3 endpoint =
+ to_raylib(hit.first, hit.second, f.body.sens_z_m);
+ DrawLine3D(o, endpoint, {246, 169, 61, 38});
+ DrawSphere(endpoint, 0.014f, {246, 169, 61, 170});
+ }
+ }
   // Estimate ghost: wireframe box at the ROBOT pose.
   if (show_estimate && f.body.estimate_valid) {
     DrawCubeWiresV(
@@ -1887,12 +1924,10 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  static_cast<float>(f.body.z_m),
                  static_cast<float>(-f.body.y_m));
     rlMultMatrixf(m);
- bool slipping = false;
- for (const auto& sw : f.body.wheels) slipping = slipping || sw.slipping;
     {
       // Layered shop model (local frame, y up): charcoal skirt, pearl
-      // hull, orange deck stripe, lidar mast + puck, headlights, status
-      // LED (red while any wheel slips). Collision still flashes red.
+ // hull, orange deck stripe, lidar mast + puck and headlights. Collision
+ // still flashes red; the status LED below follows ROBOT safety state.
       const float bl = static_cast<float>(f.body.half_length_m * 2.0);
       const float bw = static_cast<float>(f.body.half_width_m * 2.0);
       const Color hull = f.static_collision
@@ -1955,9 +1990,14 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  static_cast<float>(-mount_y)}, 0.075f, 0.075f, 0.07f, 14,
  Color{200, 208, 215, 255});
  }
+ const Color status_led = !f.decision.valid
+ ? Color{120, 128, 132, 255}
+ : f.decision.safety_state == "STOPPED" ? RED
+ : f.decision.safety_state == "DEGRADED"
+ ? Color{245, 172, 55, 255} : Color{50, 200, 90, 255};
  DrawSphere({static_cast<float>(mount_x),
  static_cast<float>(mount_z + 0.11), static_cast<float>(-mount_y)},
- 0.025f, slipping ? RED : Color{50, 200, 90, 255}); // status LED
+ 0.025f, status_led);
  // Passive caster assemblies: swivel and roll come from the MuJoCo joints;
  // the fork pivot and wheel contact remain separate when trail is non-zero.
  for (const auto& caster : f.body.casters) {
@@ -2107,10 +2147,11 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  // tangent to the same wheel contact envelope on ramps.
  const float slab_z = -0.04f;
       for (int s = -1; s <= 1; s += 2) {
-        const bool slip = s > 0 ? (f.body.wheels.size() > 1 &&
+ const bool slip = show_actor_routes && (s > 0
+ ? (f.body.wheels.size() > 1 &&
                                    f.body.wheels[1].slipping)
                                 : (f.body.wheels.size() > 0 &&
-                                   f.body.wheels[0].slipping);
+ f.body.wheels[0].slipping));
  const Vector3 track_pos{0.0f, slab_z,
  static_cast<float>(s * (f.body.half_width_m - 0.075))};
  if (assets != nullptr && model_ready(assets->track)) {
@@ -2136,8 +2177,8 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
       // Draw-local axes are raylib-world (Y up, Z = -bodyY): steer yaws
       // about Y (truth + = left, verified by the ackermann left-arc pin),
       // the axle lies lateral (Z) so the cylinder rolls 90 deg about X
-      // first, spin follows about the laid-down axle. Spoke + slip-red
-      // from live joints/flags; mecanum tread stripes sit in the steer
+ // first, spin follows about the laid-down axle. Spoke motion comes from
+ // live joints; slip-red is restricted to SIM truth debug. Mecanum stripes
       // frame (rollers are passive analytic state — static decoration).
       for (const auto& w : f.body.wheels) {
  if (w.pose.valid) {
@@ -2147,7 +2188,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  draw_model_quaternion(assets->wheel, position, rotation,
  wheel_asset_scale(assets->wheel_definition, w.radius_m,
  world.motor_params().tire_half_width_m),
- w.slipping ? Color{210, 60, 48, 255} : WHITE);
+ show_actor_routes && w.slipping ? Color{210, 60, 48, 255} : WHITE);
  } else {
  rotation = QuaternionMultiply(rotation,
  QuaternionFromAxisAngle({1.0f, 0.0f, 0.0f}, PI * 0.5f));
@@ -2157,7 +2198,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  rlPushMatrix();
  rlTranslatef(position.x, position.y, position.z);
  rlRotatef(angle * RAD2DEG, axis.x, axis.y, axis.z);
- const Color tire = w.slipping ? RED
+ const Color tire = show_actor_routes && w.slipping ? RED
  : (w.driven ? Color{40, 40, 40, 255}
  : Color{86, 86, 90, 255});
  DrawCylinder({0.0f, 0.0f, 0.0f},
@@ -2190,7 +2231,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  draw_model_quaternion(assets->wheel,
  {static_cast<float>(w.x_m), axle + wheel_lift, static_cast<float>(-w.y_m)},
  rotation, wheel_scale,
- w.slipping ? Color{210, 60, 48, 255} : WHITE);
+ show_actor_routes && w.slipping ? Color{210, 60, 48, 255} : WHITE);
  if (std::abs(w.steer_rad) > 1e-3 || std::abs(w.steer_rate_radps) > 1e-3) {
  DrawSphere({static_cast<float>(w.x_m), axle,
  static_cast<float>(-w.y_m)}, 0.035f, Color{210, 170, 70, 255});
@@ -2211,7 +2252,8 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 0.0f, 1.0f);
  DrawModelEx(assets->wheel, {0.0f, 0.0f, 0.0f},
  {0.0f, 1.0f, 0.0f}, 0.0f,
- {1.0f, 1.0f, 1.0f}, w.slipping ? Color{210, 60, 48, 255} : WHITE);
+ {1.0f, 1.0f, 1.0f}, show_actor_routes && w.slipping
+ ? Color{210, 60, 48, 255} : WHITE);
  if (std::abs(w.steer_rad) > 1e-3 || std::abs(w.steer_rate_radps) > 1e-3) {
  DrawSphere({0.0f, 0.0f, 0.0f}, 0.035f, Color{210, 170, 70, 255});
  }
@@ -2228,13 +2270,14 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 0.0f, 1.0f);
  DrawCube({0.0f, 0.0f, 0.0f}, 0.018f, 0.024f,
  2.0f * static_cast<float>(w.radius_m),
- w.slipping ? Color{168, 55, 52, 255} : DARKGRAY);
+ show_actor_routes && w.slipping
+ ? Color{168, 55, 52, 255} : DARKGRAY);
             rlPopMatrix();
           }
         }
  rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 0.0f,
  1.0f);
- const Color tire = w.slipping ? RED
+ const Color tire = show_actor_routes && w.slipping ? RED
  : (w.driven ? Color{40, 40, 40, 255} : Color{86, 86, 90, 255});
  if (std::abs(w.steer_rad) > 1e-3 || std::abs(w.steer_rate_radps) > 1e-3) {
  DrawSphere({0.0f, 0.0f, 0.0f}, 0.035f, Color{210, 170, 70, 255});
@@ -3029,7 +3072,7 @@ int main(int argc, char** argv) {
  25.0f, Color{55, 218, 202, 110});
  }
  } else {
- draw_frame_2d(preview, view, false, false);
+ draw_frame_2d(preview, view, false, false, false);
  }
  draw_experience_overlay(experience, experience_phase,
  selected_experience_choice, walkaround_stop, review_keyframes,
@@ -3124,7 +3167,8 @@ int main(int argc, char** argv) {
  }
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
-      draw_frame_2d(frame, view, show_lidar, show_estimate);
+ draw_frame_2d(frame, view, show_lidar, show_estimate,
+ show_actor_routes);
     }
  const auto playback_stats = playback.statistics();
  const RenderQuality active_quality = playback_stats.turbo
@@ -3163,7 +3207,7 @@ int main(int argc, char** argv) {
                     edit_msg.c_str());
       DrawText(ebuf, 10, 32, 14, RED);
     }
-    DrawText("space pause  N step  L lidar  E estimate  K SIM routes  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom",
+    DrawText("space pause  N step  L lidar  E estimate  K SIM truth debug  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom",
              10, GetScreenHeight() - 24, 12, DARKGRAY);
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);

@@ -239,7 +239,7 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  const double half_width = world.motor_params().body_half_width_m;
  if (half_length > 0.0) f.body.half_length_m = half_length;
  if (half_width > 0.0) f.body.half_width_m = half_width;
-  if (step.diag.has_observation) {
+ if (step.diag.estimate.valid) {
     f.body.estimate_valid = true;
     f.body.est_x_m = step.diag.estimate.x_m;
     f.body.est_y_m = step.diag.estimate.y_m;
@@ -258,6 +258,8 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  [](float range_m) { return std::isfinite(range_m) && range_m > 0.0f; }));
  const auto scan_header = robot::iface::scan_measurement_header(step.obs);
  f.observation.scan_source = scan_header.source;
+ f.observation.scan_sequence = scan_header.sequence;
+ f.observation.scan_stamp_s = seconds(scan_header.stamp_ns);
 
  f.estimate.valid = step.diag.estimate.valid;
  f.estimate.localized = step.diag.localized;
@@ -271,6 +273,21 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.estimate.position_sigma_m = step.diag.estimate.position_sigma_m;
  f.estimate.heading_sigma_rad = step.diag.estimate.heading_sigma_rad;
  f.estimate.localization_action = step.diag.localization_action;
+ if (step.diag.estimate.valid && step.obs.scan_valid) {
+ const double estimate_yaw = step.diag.estimate.yaw_rad;
+ const double cy = std::cos(estimate_yaw);
+ const double sy = std::sin(estimate_yaw);
+ f.observation.projection_valid = true;
+ f.observation.projection_pose_stamp_s =
+ seconds(step.diag.estimate.stamp_ns);
+ f.observation.projected_sensor_x_m = step.diag.estimate.x_m +
+ mount.xyz_m[0] * cy - mount.xyz_m[1] * sy;
+ f.observation.projected_sensor_y_m = step.diag.estimate.y_m +
+ mount.xyz_m[0] * sy + mount.xyz_m[1] * cy;
+ // The planar ROBOT estimate has no truth elevation channel. Render the
+ // sensor at its declared base-frame height instead of borrowing body_z.
+ f.observation.projected_sensor_z_m = mount.xyz_m[2];
+ }
 
  const auto& evidence = step.diag.evidence;
  f.decision.valid = evidence.sequence > 0;
@@ -375,9 +392,15 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
     p.selected = (sel.place == static_cast<int>(i));
     f.places.push_back(p);
   }
-  f.lidar_hits = lidar_endpoints(t.body_x_m, t.body_y_m, t.body_yaw_rad,
-                                   step.obs, mount);
+ if (f.observation.projection_valid) {
+ f.lidar_hits = lidar_endpoints(
+ step.diag.estimate.x_m, step.diag.estimate.y_m,
+ step.diag.estimate.yaw_rad, step.obs, mount);
+ }
   f.lidar_valid = !f.lidar_hits.empty();
+ f.truth_lidar_hits = lidar_endpoints(
+ t.body_x_m, t.body_y_m, t.body_yaw_rad, step.obs, mount);
+ f.truth_lidar_valid = !f.truth_lidar_hits.empty();
   f.static_collision = step.judge.static_collision;
   f.dynamic_collision = step.judge.dynamic_collision;
   f.static_clearance_m = step.judge.static_clearance_m;

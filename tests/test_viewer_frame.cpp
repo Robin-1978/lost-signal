@@ -126,12 +126,20 @@ int main() {
     assert(std::abs(f.actors[0].height_m - 1.5) < 1e-12);
     assert(f.places.size() == 1 && f.places[0].reached);
     assert(!f.places[0].selected);
-    assert(f.lidar_valid && f.lidar_hits.size() == 5);
-    // First ray at body yaw + angle_min, range 2 from (1, 2).
-    const double ex = 1.0 + 2.0 * std::cos(0.5 - 1.0);
-    const double ey = 2.0 + 2.0 * std::sin(0.5 - 1.0);
-    assert(std::abs(f.lidar_hits[0].first - ex) < 1e-9);
-    assert(std::abs(f.lidar_hits[0].second - ey) < 1e-9);
+ assert(f.lidar_valid && f.lidar_hits.size() == 5);
+ assert(f.observation.projection_valid);
+ assert(f.observation.scan_sequence == 12);
+ assert(std::abs(f.observation.scan_stamp_s - 7.0) < 1e-12);
+ // Live overlay uses the ROBOT estimate, never the truth body pose.
+ const double ex = 1.1 + 2.0 * std::cos(0.4 - 1.0);
+ const double ey = 1.9 + 2.0 * std::sin(0.4 - 1.0);
+ assert(std::abs(f.lidar_hits[0].first - ex) < 1e-9);
+ assert(std::abs(f.lidar_hits[0].second - ey) < 1e-9);
+ assert(f.truth_lidar_valid && f.truth_lidar_hits.size() == 5);
+ const double truth_ex = 1.0 + 2.0 * std::cos(0.5 - 1.0);
+ const double truth_ey = 2.0 + 2.0 * std::sin(0.5 - 1.0);
+ assert(std::abs(f.truth_lidar_hits[0].first - truth_ex) < 1e-9);
+ assert(std::abs(f.truth_lidar_hits[0].second - truth_ey) < 1e-9);
     assert(!f.static_collision);
     assert(std::abs(f.static_clearance_m - 0.3) < 1e-12);
     // Live attitude rides the frame (ramps tilt the viz).
@@ -140,7 +148,7 @@ int main() {
     // Legacy overload: identity mount reads the body-frame fan exactly.
     auto legacy = sim::viewer::lidar_endpoints(1.0, 2.0, 0.5, step.obs);
     assert(legacy.size() == 5);
-    assert(std::abs(legacy[0].first - ex) < 1e-9);
+ assert(std::abs(legacy[0].first - truth_ex) < 1e-9);
   }
 
   // Ground-truth overlays ride the frame (SIM paint, never ROBOT input):
@@ -310,25 +318,38 @@ int main() {
     sim::world::World w;
     auto step = make_step();
     step.truth_after.body_roll_rad = 0.0;  // level: yaw-only rotation exact
-    step.truth_after.body_pitch_rad = 0.0;
+ step.truth_after.body_pitch_rad = 0.0;
+ step.diag.estimate.valid = true;
+ step.diag.estimate.x_m = 1.2;
+ step.diag.estimate.y_m = 2.1;
+ step.diag.estimate.yaw_rad = 0.4;
+ step.diag.estimate.stamp_ns = 40'000'000;
     sim::viewer::LidarMount mount;
     mount.xyz_m[0] = 0.25;
     mount.xyz_m[2] = 0.35;
     mount.rpy_rad[2] = 0.5;  // fan steered 0.5 rad off the body axis
     const sim::viewer::Frame f = sim::viewer::build_frame(
         w, step, {}, {}, sim::viewer::EditorSelection{}, mount);
-    // Origin: (1, 2) + R(0.5) * (0.25, 0).
-    const double ox = 1.0 + 0.25 * std::cos(0.5);
-    const double oy = 2.0 + 0.25 * std::sin(0.5);
-    // First ray: origin + 2 m along (body yaw + mount yaw + angle_min).
-    const double ex = ox + 2.0 * std::cos(0.5 + 0.5 - 1.0);
-    const double ey = oy + 2.0 * std::sin(0.5 + 0.5 - 1.0);
+ // Live origin and beam fan use the ROBOT estimate.
+ const double robot_ox = 1.2 + 0.25 * std::cos(0.4);
+ const double robot_oy = 2.1 + 0.25 * std::sin(0.4);
+ const double ex = robot_ox + 2.0 * std::cos(0.4 + 0.5 - 1.0);
+ const double ey = robot_oy + 2.0 * std::sin(0.4 + 0.5 - 1.0);
     assert(std::abs(f.lidar_hits[0].first - ex) < 1e-9);
     assert(std::abs(f.lidar_hits[0].second - ey) < 1e-9);
+ assert(std::abs(f.observation.projected_sensor_x_m - robot_ox) < 1e-9);
+ assert(std::abs(f.observation.projected_sensor_y_m - robot_oy) < 1e-9);
+ assert(std::abs(f.observation.projected_sensor_z_m - 0.35) < 1e-9);
     // True 3D sensor origin rides the frame for the 3D fan.
+ const double ox = 1.0 + 0.25 * std::cos(0.5);
+ const double oy = 2.0 + 0.25 * std::sin(0.5);
     assert(std::abs(f.body.sens_x_m - ox) < 1e-9);
     assert(std::abs(f.body.sens_y_m - oy) < 1e-9);
     assert(std::abs(f.body.sens_z_m - (0.12 + 0.35)) < 1e-9);
+ const double truth_ex = ox + 2.0 * std::cos(0.5 + 0.5 - 1.0);
+ const double truth_ey = oy + 2.0 * std::sin(0.5 + 0.5 - 1.0);
+ assert(std::abs(f.truth_lidar_hits[0].first - truth_ex) < 1e-9);
+ assert(std::abs(f.truth_lidar_hits[0].second - truth_ey) < 1e-9);
   }
 
   // Degenerate scans yield no hits, never NaN endpoints.
@@ -343,6 +364,20 @@ int main() {
     sim::viewer::Frame f1 = sim::viewer::build_frame(w, step, {}, {}, {});
     assert(!f1.lidar_valid);
   }
+
+ // A valid scan without a valid ROBOT pose stays in sensor coordinates. The
+ // live viewer must not silently project it with SIM truth.
+ {
+ sim::world::World w;
+ auto step = make_step();
+ step.diag.has_observation = true;
+ step.diag.estimate.valid = false;
+ const sim::viewer::Frame f = sim::viewer::build_frame(w, step, {}, {}, {});
+ assert(!f.body.estimate_valid);
+ assert(!f.observation.projection_valid);
+ assert(!f.lidar_valid && f.lidar_hits.empty());
+ assert(f.truth_lidar_valid && f.truth_lidar_hits.size() == 5);
+ }
 
   std::printf("viewer_frame ok\n");
   return 0;

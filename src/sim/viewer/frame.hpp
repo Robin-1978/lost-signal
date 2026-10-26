@@ -41,6 +41,15 @@ struct FrameObservationTelemetry {
  bool imu_valid = false;
  std::uint64_t sequence = 0;
  double stamp_s = -1.0;
+ std::uint64_t scan_sequence = 0;
+ double scan_stamp_s = -1.0;
+ // World overlay projection uses the ROBOT estimate, never WorldTruth.
+ // The raw ranges remain the recorded sensor measurement.
+ bool projection_valid = false;
+ double projection_pose_stamp_s = -1.0;
+ double projected_sensor_x_m = 0.0;
+ double projected_sensor_y_m = 0.0;
+ double projected_sensor_z_m = 0.0;
  std::size_t lidar_beams = 0;
  std::size_t lidar_returns = 0;
  std::string scan_source;
@@ -108,7 +117,7 @@ struct FrameWheel {
   double steer_rad = 0.0;       // module yaw (fixed wheels read 0)
   double spin_rad = 0.0;        // live joint angle (turns visibly)
   double radius_m = 0.1;
-  bool slipping = false;        // engine traction flag: drawn red
+  bool slipping = false;        // engine traction flag: SIM debug/effects only
   // Mecanum rollers are NOT simulated state (analytic wrench, rollers not
   // meshed): static 45-degree tread stripes, honest decoration only.
  double spin_rate_radps = 0.0;
@@ -151,8 +160,8 @@ struct FrameBody {
  // Unpowered physical caster supports. They are SIM-only presentation state,
  // never drive channels, traction evidence, or ROBOT observations.
  std::vector<FrameCaster> casters;
-  // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
-  // chassis params, slip-reddening per side from the traction flags.
+ // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
+ // chassis params. Traction flags are visible only in SIM truth debug.
   bool tracked = false;
   // ROBOT estimate at the same tick (offline truth-vs-estimate overlay).
   // estimate_valid=false hides the ghost.
@@ -220,8 +229,13 @@ struct Frame {
   std::vector<FramePlace> places;
   std::vector<FrameZone> zones;
   std::vector<FramePatch> patches;
-  std::vector<std::pair<double, double>> lidar_hits;  // world-space endpoints
+  // ROBOT observation projected with the recorded ROBOT estimate. This is the
+  // only scan shown during a live run.
+  std::vector<std::pair<double, double>> lidar_hits;
   bool lidar_valid = false;
+  // SIM truth-assisted projection for explicit debrief/evaluation views only.
+  std::vector<std::pair<double, double>> truth_lidar_hits;
+  bool truth_lidar_valid = false;
   bool static_collision = false;
   bool dynamic_collision = false;
   double static_clearance_m = 999.0;

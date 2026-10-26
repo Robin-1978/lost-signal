@@ -51,12 +51,9 @@ std::optional<Frame> build_episode_frame(
  const LidarMount& mount = LidarMount{},
  std::size_t maximum_trail_points = 600);
 
-// World-space lidar endpoints from the TRUE sensor pose (body pose
-// composed with the mount, same math as generation) + recorded scan.
-// Planar projection: beam tilt from body/mount pitch is not deprojected
-// (same stated limit as the frozen legacy path); the ORIGIN is exact, so
-// a misconfigured mount shows up instead of hiding. Invalid scan or
-// non-finite ranges yield no hits.
+// Project recorded ranges from an explicitly supplied pose. Callers choose
+// the authority: ROBOT estimate for live overlays, SIM truth only for a
+// labeled evaluation view. Planar projection does not deproject pitch.
 std::vector<std::pair<double, double>> lidar_endpoints(
     double body_x_m, double body_y_m, double body_yaw_rad,
     const robot::iface::ObservationFrame& obs,

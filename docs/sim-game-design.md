@@ -42,7 +42,7 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 1. **简报。** 用场景镜头、任务路径和一条知识问题说明目标，不提前暴露隐藏动态事件。
 2. **预测。** 玩家先选择“会直行、会绕开、会停车、会失败”等结果，建立可验证的理解。
-3. **运行。** 1× 用于观察，2×–8× 用于重复实验，Turbo 用于 benchmark。仿真始终执行固定 20 ms 步长。
+3. **运行。** 1× 用于观察，2×–8× 用于重复实验，Turbo 用于 benchmark。仿真始终执行固定 1 ms 物理量子；20 ms episode transition、传感器和 ROBOT cadence 只调度这些已完成的量子，倍率不改变任何仿真时间间隔。
 4. **复盘。** 时间轴自动标注感知更新、定位修正、全局/局部重规划、安全 hold、打滑和接触事件。
 5. **再实验。** 一键克隆本局，只改变一个变量，并排比较结果与证据。
 
@@ -151,6 +151,7 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 ### 机器人认知层（deployable）
 
 - 原始 LiDAR/IMU/encoder measurement 及独立 source、sequence、stamp。
+- 实时 LiDAR 世界坐标 overlay 由原始 range/angle 和同一 ROBOT estimate 组合；投影采用的 estimate stamp 与传感器 stamp 分开显示，不能借用真值 body pose 或 elevation。
 - `odom`、`map→odom`、map pose 与协方差。
 - static/local costmap、unknown、hard inflation 与 soft cost。
 - 全局 route、DWA/TEB-style 候选、Validator 拒绝原因。
@@ -158,7 +159,7 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 每个 overlay 标注数据来源和时间戳。真值层使用琥珀色边框，机器人认知使用青色边框；两层重叠时仍能通过线型区分。任何新增 overlay 先声明属于哪一侧，并由边界测试保证真值类型不能进入 `src/robot`。
 
-实现状态：Viewer 的帧模型已将实时遥测分成 `PHYSICS TRUTH`、`ROBOT OBSERVATION`、`ROBOT ESTIMATE`、`ROBOT DECISION` 和 `GAME/EVAL` 五个有类型的 authority 记录。探索战役运行阶段只展开 ROBOT 三层，真值与离线裁判保持隐藏，到复盘阶段才允许对照；这些记录只由已完成的 episode step 构建，不能发布回 `RobotApplication`。
+实现状态：Viewer 的帧模型已将实时遥测分成 `PHYSICS TRUTH`、`ROBOT OBSERVATION`、`ROBOT ESTIMATE`、`ROBOT DECISION` 和 `GAME/EVAL` 五个有类型的 authority 记录。探索战役运行阶段只展开 ROBOT 三层，真值与离线裁判保持隐藏，到复盘阶段才允许对照；这些记录只由已完成的 episode step 构建，不能发布回 `RobotApplication`。实时 LiDAR 扇面使用记录的 ROBOT estimate 投影并显示 measurement source、sequence、stamp；真值辅助投影单独保存，只在显式 `SIM truth debug` 中以琥珀色显示。机器人状态灯读取 ROBOT decision/safety，轮胎真值打滑着色也只存在于该调试层。
 
 ## 6. 失败解释与评分
 
