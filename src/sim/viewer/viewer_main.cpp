@@ -3182,8 +3182,29 @@ int main(int argc, char** argv) {
  robot_config->arrival.maximum_yaw_rate_radps;
  review_config.settle_samples = robot_config->arrival.settle_cycles;
  }
+ sim::viewer::KeyframeReviewOutcome review_outcome;
+ review_outcome.terminal = true;
+ review_outcome.timed_out = experience_flow->timed_out();
+ const auto terminal_score = session->score();
+ review_outcome.sim_accepted = !review_outcome.timed_out &&
+ session->objectives_done() && session->objectives_passed() &&
+ terminal_score.collision_steps == 0;
+ if (review_outcome.timed_out) {
+ review_outcome.rejection_reasons.push_back("experiment_time_limit");
+ }
+ if (!session->objectives_done()) {
+ review_outcome.rejection_reasons.push_back("mission_incomplete");
+ }
+ if (terminal_score.collision_steps > 0) {
+ review_outcome.rejection_reasons.push_back("collision");
+ }
+ for (const auto& result : session->objectives().results()) {
+ review_outcome.rejection_reasons.insert(
+ review_outcome.rejection_reasons.end(), result.failure_reasons.begin(),
+ result.failure_reasons.end());
+ }
  review_keyframes = sim::viewer::extract_review_keyframes(
- session->episode(), review_config);
+ session->episode(), review_config, std::move(review_outcome));
  selected_review_keyframe = 0;
  }
     const auto& steps = session->episode().steps();

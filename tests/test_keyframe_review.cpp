@@ -21,6 +21,12 @@ int main() {
  robot::core::Frame::kLidarLink};
  step.diag.evidence.action_code = i == 5 ? "stop" : "move";
  step.diag.evidence.reason_code = i == 5 ? "goal-settle" : "tracking";
+ if (i >= 7) {
+ step.diag.goal.handle.id = 1;
+ step.diag.goal.state = robot::iface::GoalState::kDone;
+ step.diag.goal.place_id = "dock";
+ step.diag.goal.detail = "arrived";
+ }
  episode.record(std::move(step));
  }
 
@@ -29,18 +35,54 @@ int main() {
  config.maximum_yaw_rate_radps = 0.05;
  config.settle_samples = 2;
  const auto keyframes = sim::viewer::extract_review_keyframes(episode, config);
- assert(keyframes.size() == 3);
+ assert(keyframes.size() == 5);
  assert(keyframes[0].kind ==
- sim::viewer::ReviewKeyframeKind::kFirstObservation);
- assert(keyframes[0].episode_index == 1);
- assert(keyframes[0].evidence.find("test.lidar") != std::string::npos);
+ sim::viewer::ReviewKeyframeKind::kFirstMotion);
+ assert(keyframes[0].episode_index == 0);
  assert(keyframes[1].kind ==
- sim::viewer::ReviewKeyframeKind::kBrakeCommand);
- assert(keyframes[1].episode_index == 5);
- assert(keyframes[1].evidence == "stop / goal-settle");
+ sim::viewer::ReviewKeyframeKind::kFirstObservation);
+ assert(keyframes[1].episode_index == 1);
+ assert(keyframes[1].evidence.find("test.lidar") != std::string::npos);
  assert(keyframes[2].kind ==
+ sim::viewer::ReviewKeyframeKind::kBrakeCommand);
+ assert(keyframes[2].episode_index == 5);
+ assert(keyframes[2].evidence == "stop / goal-settle");
+ assert(keyframes[3].kind ==
  sim::viewer::ReviewKeyframeKind::kStableStop);
- assert(keyframes[2].episode_index == 7);
+ assert(keyframes[3].episode_index == 7);
+ assert(keyframes[4].kind ==
+ sim::viewer::ReviewKeyframeKind::kRobotDone);
+ assert(keyframes[4].evidence.find("dock / arrived") != std::string::npos);
+
+ sim::viewer::KeyframeReviewOutcome accepted;
+ accepted.terminal = true;
+ accepted.sim_accepted = true;
+ const auto accepted_review = sim::viewer::extract_review_keyframes(
+ episode, config, accepted);
+ assert(accepted_review.size() == 6);
+ assert(accepted_review.back().kind ==
+ sim::viewer::ReviewKeyframeKind::kSimAccepted);
+
+ sim::eval::EpisodeRecorder rejected_episode = episode;
+ auto rejected_steps = rejected_episode.steps();
+ rejected_steps[4].judge.dynamic_collision = true;
+ rejected_episode.clear();
+ for (auto& step : rejected_steps) rejected_episode.record(std::move(step));
+ sim::viewer::KeyframeReviewOutcome rejected;
+ rejected.terminal = true;
+ rejected.timed_out = true;
+ rejected.rejection_reasons = {"experiment_time_limit", "collision"};
+ const auto rejected_review = sim::viewer::extract_review_keyframes(
+ rejected_episode, config, rejected);
+ assert(rejected_review.size() == 8);
+ assert(rejected_review[2].kind ==
+ sim::viewer::ReviewKeyframeKind::kCollision);
+ assert(rejected_review[6].kind ==
+ sim::viewer::ReviewKeyframeKind::kTimeout);
+ assert(rejected_review[7].kind ==
+ sim::viewer::ReviewKeyframeKind::kSimRejected);
+ assert(rejected_review[7].evidence ==
+ "experiment_time_limit / collision");
 
  sim::eval::EpisodeRecorder empty;
  assert(sim::viewer::extract_review_keyframes(empty, config).empty());

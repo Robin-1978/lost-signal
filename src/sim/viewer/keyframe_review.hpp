@@ -11,8 +11,14 @@ namespace lost_signal::sim::viewer {
 
 enum class ReviewKeyframeKind {
  kFirstObservation,
+ kFirstMotion,
  kBrakeCommand,
  kStableStop,
+ kRobotDone,
+ kCollision,
+ kTimeout,
+ kSimAccepted,
+ kSimRejected,
 };
 
 struct ReviewKeyframe {
@@ -32,11 +38,23 @@ struct KeyframeReviewConfig {
  int settle_samples = 3;
 };
 
+// Terminal context is assembled by SIM presentation after the run. It is
+// deliberately separate from EpisodeStep ROBOT diagnostics: objective truth,
+// collision, and timeout verdicts can be reviewed but cannot enter a live
+// RobotApplication decision.
+struct KeyframeReviewOutcome {
+ bool terminal = false;
+ bool timed_out = false;
+ bool sim_accepted = false;
+ std::vector<std::string> rejection_reasons;
+};
+
 // Extracts presentation-only bookmarks from a completed episode. It reads
 // recorded observations, ROBOT estimates, commands, and evidence; it never
 // mutates or republishes them and never participates in a live decision.
 std::vector<ReviewKeyframe> extract_review_keyframes(
  const eval::EpisodeRecorder& episode,
- KeyframeReviewConfig config = {});
+ KeyframeReviewConfig config = {},
+ KeyframeReviewOutcome outcome = {});
 
 } // namespace lost_signal::sim::viewer

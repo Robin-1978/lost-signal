@@ -70,11 +70,16 @@ int main() {
  review_config.settle_samples = robot_config.arrival.settle_cycles;
  const auto keyframes = sim::viewer::extract_review_keyframes(
  session.episode(), review_config);
- assert(keyframes.size() == 3);
- assert(keyframes.front().kind ==
- sim::viewer::ReviewKeyframeKind::kFirstObservation);
- assert(keyframes.back().kind ==
- sim::viewer::ReviewKeyframeKind::kStableStop);
+ assert(keyframes.size() == 5);
+ assert(std::any_of(keyframes.begin(), keyframes.end(), [](const auto& frame) {
+ return frame.kind == sim::viewer::ReviewKeyframeKind::kFirstObservation;
+ }));
+ assert(std::any_of(keyframes.begin(), keyframes.end(), [](const auto& frame) {
+ return frame.kind == sim::viewer::ReviewKeyframeKind::kFirstMotion;
+ }));
+ assert(std::any_of(keyframes.begin(), keyframes.end(), [](const auto& frame) {
+ return frame.kind == sim::viewer::ReviewKeyframeKind::kRobotDone;
+ }));
  assert(!session.episode().steps().empty());
  assert(session.episode().steps().front().presentation.captured);
  assert(session.episode().steps().back().presentation.captured);
