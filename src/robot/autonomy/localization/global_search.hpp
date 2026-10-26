@@ -127,6 +127,12 @@ struct GlobalSearchResult {
   std::vector<RunnerUp> runner_ups;
   std::size_t usable_returns = 0;
   std::size_t coarse_evaluations = 0;
+ // Cells touched while preparing the immutable map revision's occupied-area
+ // prefix and likelihood distance field. The first search on a revision
+ // collectively perform two raster passes; a completed cache reports zero
+ // on later searches. A request that resumes interrupted preparation reports
+ // only the cells it completed. This is diagnostic only.
+ std::size_t map_preparation_cells = 0;
  // Coarse position diagnostics count raster seeds once, before headings.
  // They make exact observability pruning measurable without feeding it back
  // into localization policy.
@@ -188,9 +194,11 @@ class GlobalSearcher {
  void cancel();
 
  private:
+ struct PreparedMap;
  struct WorkState;
   GlobalSearchConfig config_;
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
+ mutable std::shared_ptr<PreparedMap> prepared_map_;
  std::unique_ptr<WorkState> work_;
 };
 

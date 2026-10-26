@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -162,12 +163,26 @@ int main() {
  robot::autonomy::GlobalSearcher global_search;
  global_search.set_lidar_mount(
  {{0.25, 0.0, 0.35}, {0.0, 0.0, 0.0, 1.0}});
+ const auto cold_search_started = std::chrono::steady_clock::now();
  const robot::autonomy::GlobalSearchResult startup = global_search.search(
  startup_scan.ranges_m, startup_scan.scan_angle_min_rad,
  startup_scan.scan_angle_increment_rad, map, startup_scan.stamp_ns);
+ const auto cold_search_finished = std::chrono::steady_clock::now();
  assert(startup.accepted);
  assert(std::hypot(startup.x_m, startup.y_m) < 0.35);
  assert(std::abs(startup.yaw_rad) < 0.10);
+ assert(startup.map_preparation_cells == 2 * map.occupancy.size());
+ const auto warm_search_started = std::chrono::steady_clock::now();
+ const robot::autonomy::GlobalSearchResult warm_startup = global_search.search(
+ startup_scan.ranges_m, startup_scan.scan_angle_min_rad,
+ startup_scan.scan_angle_increment_rad, map, startup_scan.stamp_ns);
+ const auto warm_search_finished = std::chrono::steady_clock::now();
+ assert(warm_startup.accepted);
+ assert(warm_startup.map_preparation_cells == 0);
+ const double cold_search_ms = std::chrono::duration<double, std::milli>(
+ cold_search_finished - cold_search_started).count();
+ const double warm_search_ms = std::chrono::duration<double, std::milli>(
+ warm_search_finished - warm_search_started).count();
 
  // Named work areas represent physical docks and gates, so each has
  // asymmetric surveyed structure within lidar range. A bounded correction
@@ -301,10 +316,11 @@ int main() {
  std::printf(
  "industrial_200k ok: extent=%.0fx%.0f cells=%ux%u actors=%zu "
  "route_points=%zu ackermann_route_points=%zu "
- "startup=(%.3f,%.3f,%.3f)\n",
+ "startup=(%.3f,%.3f,%.3f) global_cold_ms=%.1f global_warm_ms=%.1f\n",
  max_x - min_x, max_y - min_y, map.width, map.height,
  session.setup_world().actors().size(), route_points,
  ackermann_route_points,
- startup.x_m, startup.y_m, startup.yaw_rad);
+ startup.x_m, startup.y_m, startup.yaw_rad,
+ cold_search_ms, warm_search_ms);
  return 0;
 }

@@ -452,6 +452,9 @@ int main() {
  assert(bounded.coarse_positions_skipped_unobservable == 9975);
  assert(bounded.coarse_evaluations ==
  bounded.coarse_positions_considered * 4);
+ const GlobalSearchResult bounded_reused = bounded_searcher.search(
+ short_hits, -M_PI, 2.0 * M_PI / short_hits.size(), empty_extent, 2);
+ assert(bounded_reused.map_preparation_cells == 0);
 
  // Sparse scans fail before allocating or preparing a map-sized index.
  std::vector<float> no_hits(72, 2.0F);
@@ -460,6 +463,55 @@ int main() {
  assert(!insufficient.accepted);
  assert(insufficient.rejection_reason == "insufficient geometric returns");
  assert(insufficient.coarse_evaluations == 0);
+
+ // The expensive map-only index is built once per immutable revision. A
+ // retry with a different scan reuses it, while a revision change rebuilds
+ // it before any candidate can be scored.
+ GlobalSearcher cached_searcher(bounded_config);
+ const auto run_cached = [&](const iface::MapSnapshot& revision,
+ core::MonotonicNs stamp_ns) {
+ cached_searcher.begin(short_hits, -M_PI,
+ 2.0 * M_PI / short_hits.size(), revision, stamp_ns);
+ std::optional<GlobalSearchResult> result;
+ for (int slice = 0; slice < 1000 && !result.has_value(); ++slice) {
+ result = cached_searcher.advance(4096);
+ }
+ assert(result.has_value());
+ return *result;
+ };
+ const auto first_revision_search = run_cached(empty_extent, 2);
+ assert(first_revision_search.map_preparation_cells ==
+ 2 * empty_extent.occupancy.size());
+ const auto reused_revision_search = run_cached(empty_extent, 3);
+ assert(reused_revision_search.map_preparation_cells == 0);
+ // Named providers promise immutable content for one id/revision. Geometry
+ // is checked defensively as well: a malformed fixture that reuses the key
+ // with a different allocation must never read the old index. Occupancy-only
+ // edits must increment revision under IMapProvider's contract.
+ auto malformed_reshaped_extent = empty_extent;
+ malformed_reshaped_extent.width += 1;
+ malformed_reshaped_extent.occupancy.assign(
+ static_cast<std::size_t>(malformed_reshaped_extent.width) *
+ malformed_reshaped_extent.height,
+ -1);
+ malformed_reshaped_extent.occupancy[
+ 50 * malformed_reshaped_extent.width + 50] = 100;
+ const auto reshaped_search = run_cached(malformed_reshaped_extent, 4);
+ assert(reshaped_search.map_preparation_cells ==
+ 2 * malformed_reshaped_extent.occupancy.size());
+ auto changed_extent = empty_extent;
+ ++changed_extent.revision;
+ const auto changed_revision_search = run_cached(changed_extent, 5);
+ assert(changed_revision_search.map_preparation_cells ==
+ 2 * changed_extent.occupancy.size());
+ auto anonymous_extent = empty_extent;
+ anonymous_extent.map_id.clear();
+ const auto anonymous_first = run_cached(anonymous_extent, 6);
+ const auto anonymous_second = run_cached(anonymous_extent, 7);
+ assert(anonymous_first.map_preparation_cells ==
+ 2 * anonymous_extent.occupancy.size());
+ assert(anonymous_second.map_preparation_cells ==
+ 2 * anonymous_extent.occupancy.size());
   }
 
   // 7. Coordinator kidnap path: unlocalized start takes the global branch

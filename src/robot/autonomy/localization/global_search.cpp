@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <new>
 #include <optional>
 #include <vector>
 
@@ -120,6 +121,89 @@ RaycastEvidence raycast_evidence(
 
 }  // namespace
 
+struct GlobalSearcher::PreparedMap {
+ explicit PreparedMap(const iface::MapSnapshot& map)
+ : map_id(map.map_id), revision(map.revision), width(map.width),
+ height(map.height), resolution_m(map.resolution_m),
+ origin_x_m(map.origin_x_m), origin_y_m(map.origin_y_m) {
+ const std::size_t prefix_width = static_cast<std::size_t>(width) + 1;
+ const std::size_t prefix_height = static_cast<std::size_t>(height) + 1;
+ valid = prefix_width <= std::numeric_limits<std::size_t>::max() /
+ prefix_height;
+ }
+
+ bool allocate() {
+ if (!valid) return false;
+ if (occupied_prefix != nullptr && distance_cm != nullptr) return true;
+ const std::size_t prefix_width = static_cast<std::size_t>(width) + 1;
+ const std::size_t prefix_height = static_cast<std::size_t>(height) + 1;
+ // Allocate storage once, then touch it only inside the cooperative prepare
+ // phases. Value-initialising multi-million-cell vectors here caused the
+ // control tick that started recovery to absorb two hidden full-raster
+ // writes. The dynamic arrays are intentionally uninitialised: forward
+ // preparation assigns every distance cell, and the summed-area recurrence
+ // only needs its top row and left column seeded to zero.
+ const std::size_t prefix_count = prefix_width * prefix_height;
+ const std::size_t cell_count = static_cast<std::size_t>(width) * height;
+ occupied_prefix.reset(new (std::nothrow) std::uint32_t[prefix_count]);
+ distance_cm.reset(new (std::nothrow) std::uint16_t[cell_count]);
+ if (occupied_prefix == nullptr || distance_cm == nullptr) {
+ occupied_prefix.reset();
+ distance_cm.reset();
+ return false;
+ }
+ std::fill_n(occupied_prefix.get(), prefix_width, 0U);
+ for (std::size_t y = 1; y < prefix_height; ++y) {
+ occupied_prefix[y * prefix_width] = 0U;
+ }
+ const auto bounded_centimetres = [](double value_m) {
+ return static_cast<std::uint16_t>(std::clamp(
+ std::lround(value_m * 100.0), 1L,
+ static_cast<long>(std::numeric_limits<std::uint16_t>::max())));
+ };
+ distance_orthogonal_cm = bounded_centimetres(resolution_m);
+ distance_diagonal_cm = std::max(
+ distance_orthogonal_cm,
+ bounded_centimetres(resolution_m * std::sqrt(2.0)));
+ return true;
+ }
+
+ bool matches(const iface::MapSnapshot& map) const {
+ if (width != map.width || height != map.height ||
+ resolution_m != map.resolution_m || origin_x_m != map.origin_x_m ||
+ origin_y_m != map.origin_y_m) {
+ return false;
+ }
+ if (!map_id.empty() && !map.map_id.empty()) {
+ // IMapProvider's contract makes a named id/revision immutable. Geometry is
+ // still checked above so malformed test fixtures cannot reuse an
+ // incompatible allocation; changing occupancy under the same named key is
+ // a provider contract violation and must publish a new revision.
+ return map_id == map.map_id && revision == map.revision;
+ }
+ // Anonymous snapshots cannot provide a stable O(1) immutable identity.
+ // Disable reuse instead of hashing every cell synchronously in begin(),
+ // which would bypass the cooperative per-tick preparation budget.
+ return false;
+ }
+
+ std::string map_id;
+ std::uint64_t revision = 0;
+ std::uint32_t width = 0;
+ std::uint32_t height = 0;
+ double resolution_m = 0.0;
+ double origin_x_m = 0.0;
+ double origin_y_m = 0.0;
+ bool valid = false;
+ bool forward_complete = false;
+ bool backward_complete = false;
+ std::size_t prepare_cursor = 0;
+ std::unique_ptr<std::uint32_t[]> occupied_prefix;
+ std::unique_ptr<std::uint16_t[]> distance_cm;
+ std::uint16_t distance_orthogonal_cm = 1;
+ std::uint16_t distance_diagonal_cm = 1;
+};
+
 struct GlobalSearcher::WorkState {
  enum class Phase {
  kPrepareForward,
@@ -135,13 +219,15 @@ struct GlobalSearcher::WorkState {
 
  WorkState(const GlobalSearchConfig& cfg,
  const core::RigidTransform& mount_value,
+ std::shared_ptr<PreparedMap> prepared_value,
  const std::vector<float>& range_values, double angle_min,
  double angle_increment, const iface::MapSnapshot& map_value,
  core::MonotonicNs stamp, double roll, double pitch, double z,
  bool bound_position, double bound_x_m, double bound_y_m,
  double bound_radius_m, bool bound_heading,
  double bound_heading_rad, double bound_heading_radius_rad)
- : config(cfg), mount(mount_value), ranges(range_values), map(map_value),
+ : config(cfg), mount(mount_value), prepared(std::move(prepared_value)),
+ ranges(range_values), map(map_value),
  angle_min_rad(angle_min), angle_increment_rad(angle_increment),
  stamp_ns(stamp), body_roll_rad(roll), body_pitch_rad(pitch), body_z_m(z) {
  result.stamp_ns = stamp;
@@ -151,6 +237,14 @@ struct GlobalSearcher::WorkState {
  }
  if (!map.has_raster()) {
  finish("map snapshot has no raster");
+ return;
+ }
+ if (prepared == nullptr) {
+ finish("map index allocation failed");
+ return;
+ }
+ if (!prepared->valid) {
+ finish("map dimensions overflow observability index");
  return;
  }
  if (config.preparation_cells_per_cycle == 0 ||
@@ -187,6 +281,10 @@ struct GlobalSearcher::WorkState {
  }
  if (result.usable_returns < config.minimum_returns) {
  finish("insufficient geometric returns");
+ return;
+ }
+ if (!prepared->allocate()) {
+ finish("map index allocation failed");
  return;
  }
  const std::size_t coarse_stride = std::max<std::size_t>(
@@ -276,27 +374,6 @@ struct GlobalSearcher::WorkState {
  bound_heading_rad_ = core::wrap_angle(bound_heading_rad);
  bound_heading_radius_rad_ = std::min(core::kPi, bound_heading_radius_rad);
  }
- const std::size_t prefix_width =
- static_cast<std::size_t>(map.width) + 1;
- const std::size_t prefix_height =
- static_cast<std::size_t>(map.height) + 1;
- if (prefix_width > std::numeric_limits<std::size_t>::max() /
- prefix_height) {
- finish("map dimensions overflow observability index");
- return;
- }
- occupied_prefix.assign(prefix_width * prefix_height, 0);
- distance_cm.assign(static_cast<std::size_t>(map.width) * map.height,
- std::numeric_limits<std::uint16_t>::max());
- const auto bounded_centimetres = [](double value_m) {
- return static_cast<std::uint16_t>(std::clamp(
- std::lround(value_m * 100.0), 1L,
- static_cast<long>(std::numeric_limits<std::uint16_t>::max())));
- };
- distance_orthogonal_cm = bounded_centimetres(map.resolution_m);
- distance_diagonal_cm = std::max(
- distance_orthogonal_cm,
- bounded_centimetres(map.resolution_m * std::sqrt(2.0)));
  coarse_lookup.resize(256);
  for (std::size_t i = 0; i < coarse_lookup.size(); ++i) {
  const double distance_m = 0.02 * static_cast<double>(i);
@@ -314,6 +391,11 @@ struct GlobalSearcher::WorkState {
  1, static_cast<int>(std::ceil(
  config.max_range_m + mount_radius_m) / map.resolution_m));
  survivors.reserve(config.coarse_hypotheses);
+ if (prepared->backward_complete) {
+ phase = Phase::kCoarse;
+ } else if (prepared->forward_complete) {
+ phase = Phase::kPrepareBackward;
+ }
  }
 
  void finish(const char* reason) {
@@ -363,10 +445,10 @@ struct GlobalSearcher::WorkState {
  const std::size_t right = static_cast<std::size_t>(x1) + 1;
  const std::size_t bottom = static_cast<std::size_t>(y1) + 1;
  const std::uint32_t count =
- occupied_prefix[bottom * stride + right] -
- occupied_prefix[top * stride + right] -
- occupied_prefix[bottom * stride + left] +
- occupied_prefix[top * stride + left];
+ prepared->occupied_prefix[bottom * stride + right] -
+ prepared->occupied_prefix[top * stride + right] -
+ prepared->occupied_prefix[bottom * stride + left] +
+ prepared->occupied_prefix[top * stride + left];
  return count > 0;
  }
 
@@ -390,7 +472,7 @@ struct GlobalSearcher::WorkState {
  score -= 0.25;
  continue;
  }
- const std::uint16_t distance = distance_cm[
+ const std::uint16_t distance = prepared->distance_cm[
  static_cast<std::size_t>(gy) * map.width + static_cast<std::size_t>(gx)];
  const std::size_t bucket = std::min<std::size_t>(
  distance / 2, coarse_lookup.size() - 1);
@@ -629,6 +711,7 @@ struct GlobalSearcher::WorkState {
 
  GlobalSearchConfig config;
  core::RigidTransform mount;
+ std::shared_ptr<PreparedMap> prepared;
  std::vector<float> ranges;
  const iface::MapSnapshot& map;
  double angle_min_rad = 0.0;
@@ -637,12 +720,7 @@ struct GlobalSearcher::WorkState {
  double body_roll_rad = 0.0, body_pitch_rad = 0.0, body_z_m = 0.0;
  GlobalSearchResult result;
  Phase phase = Phase::kPrepareForward;
- std::vector<std::uint32_t> occupied_prefix;
- std::vector<std::uint16_t> distance_cm;
- std::uint16_t distance_orthogonal_cm = 1;
- std::uint16_t distance_diagonal_cm = 1;
  std::vector<float> coarse_lookup;
- std::size_t prepare_cursor = 0;
  int observable_radius_cells = 1;
  ScanMatcher coarse_matcher;
  ScanMatcher refiner;
@@ -686,8 +764,16 @@ void GlobalSearcher::begin(const std::vector<float>& ranges,
  double angle_min_rad, double angle_increment_rad,
  const iface::MapSnapshot& map, core::MonotonicNs stamp_ns,
  double body_roll_rad, double body_pitch_rad, double body_z_m) {
+ if (prepared_map_ == nullptr || !prepared_map_->matches(map)) {
+ try {
+ prepared_map_ = std::make_shared<PreparedMap>(map);
+ } catch (const std::bad_alloc&) {
+ prepared_map_.reset();
+ }
+ }
  work_ = std::make_unique<WorkState>(
- config_, base_from_lidar_, ranges, angle_min_rad, angle_increment_rad, map,
+ config_, base_from_lidar_, prepared_map_, ranges, angle_min_rad,
+ angle_increment_rad, map,
  stamp_ns, body_roll_rad, body_pitch_rad, body_z_m,
  false, 0.0, 0.0, 0.0, false, 0.0, 0.0);
 }
@@ -699,8 +785,16 @@ void GlobalSearcher::begin_near(
  double radius_m, double center_heading_rad, double heading_radius_rad,
  double body_roll_rad, double body_pitch_rad,
  double body_z_m) {
+ if (prepared_map_ == nullptr || !prepared_map_->matches(map)) {
+ try {
+ prepared_map_ = std::make_shared<PreparedMap>(map);
+ } catch (const std::bad_alloc&) {
+ prepared_map_.reset();
+ }
+ }
  work_ = std::make_unique<WorkState>(
- config_, base_from_lidar_, ranges, angle_min_rad, angle_increment_rad, map,
+ config_, base_from_lidar_, prepared_map_, ranges, angle_min_rad,
+ angle_increment_rad, map,
  stamp_ns, body_roll_rad, body_pitch_rad, body_z_m,
  true, center_x_m, center_y_m, radius_m,
  true, center_heading_rad, heading_radius_rad);
@@ -722,21 +816,22 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  if (w.phase == WorkState::Phase::kPrepareForward) {
  const std::size_t cell_count =
  static_cast<std::size_t>(w.map.width) * w.map.height;
- const std::size_t end = w.prepare_cursor + std::min(
+ const std::size_t end = w.prepared->prepare_cursor + std::min(
  w.config.preparation_cells_per_cycle,
- cell_count - w.prepare_cursor);
+ cell_count - w.prepared->prepare_cursor);
  const std::size_t prefix_width =
  static_cast<std::size_t>(w.map.width) + 1;
- for (; w.prepare_cursor < end; ++w.prepare_cursor) {
- const std::size_t x = w.prepare_cursor % w.map.width;
- const std::size_t y = w.prepare_cursor / w.map.width;
+ for (; w.prepared->prepare_cursor < end;
+ ++w.prepared->prepare_cursor, ++w.result.map_preparation_cells) {
+ const std::size_t x = w.prepared->prepare_cursor % w.map.width;
+ const std::size_t y = w.prepared->prepare_cursor / w.map.width;
  const std::size_t prefix = (y + 1) * prefix_width + (x + 1);
  const std::uint32_t occupied =
- w.map.occupancy[w.prepare_cursor] >= 50 ? 1U : 0U;
- w.occupied_prefix[prefix] = occupied +
- w.occupied_prefix[prefix - 1] +
- w.occupied_prefix[prefix - prefix_width] -
- w.occupied_prefix[prefix - prefix_width - 1];
+ w.map.occupancy[w.prepared->prepare_cursor] >= 50 ? 1U : 0U;
+ w.prepared->occupied_prefix[prefix] = occupied +
+ w.prepared->occupied_prefix[prefix - 1] +
+ w.prepared->occupied_prefix[prefix - prefix_width] -
+ w.prepared->occupied_prefix[prefix - prefix_width - 1];
  const auto add_distance = [](std::uint16_t value, std::uint16_t step) {
  const std::uint16_t infinity =
  std::numeric_limits<std::uint16_t>::max();
@@ -750,36 +845,42 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  if (occupied == 0) {
  if (x > 0) {
  distance = std::min(distance, add_distance(
- w.distance_cm[w.prepare_cursor - 1], w.distance_orthogonal_cm));
+ w.prepared->distance_cm[w.prepared->prepare_cursor - 1],
+ w.prepared->distance_orthogonal_cm));
  }
  if (y > 0) {
  distance = std::min(distance, add_distance(
- w.distance_cm[w.prepare_cursor - w.map.width],
- w.distance_orthogonal_cm));
+ w.prepared->distance_cm[w.prepared->prepare_cursor - w.map.width],
+ w.prepared->distance_orthogonal_cm));
  if (x > 0) {
  distance = std::min(distance, add_distance(
- w.distance_cm[w.prepare_cursor - w.map.width - 1],
- w.distance_diagonal_cm));
+ w.prepared->distance_cm[
+ w.prepared->prepare_cursor - w.map.width - 1],
+ w.prepared->distance_diagonal_cm));
  }
  if (x + 1 < w.map.width) {
  distance = std::min(distance, add_distance(
- w.distance_cm[w.prepare_cursor - w.map.width + 1],
- w.distance_diagonal_cm));
+ w.prepared->distance_cm[
+ w.prepared->prepare_cursor - w.map.width + 1],
+ w.prepared->distance_diagonal_cm));
  }
  }
  }
- w.distance_cm[w.prepare_cursor] = distance;
+ w.prepared->distance_cm[w.prepared->prepare_cursor] = distance;
  }
- if (w.prepare_cursor < cell_count) return std::nullopt;
+ if (w.prepared->prepare_cursor < cell_count) return std::nullopt;
+ w.prepared->forward_complete = true;
  w.phase = WorkState::Phase::kPrepareBackward;
  continue;
  }
  if (w.phase == WorkState::Phase::kPrepareBackward) {
  const std::size_t cell_count =
  static_cast<std::size_t>(w.map.width) * w.map.height;
- if (w.prepare_cursor > cell_count) w.prepare_cursor = cell_count;
- const std::size_t begin = w.prepare_cursor - std::min(
- w.config.preparation_cells_per_cycle, w.prepare_cursor);
+ if (w.prepared->prepare_cursor > cell_count) {
+ w.prepared->prepare_cursor = cell_count;
+ }
+ const std::size_t begin = w.prepared->prepare_cursor - std::min(
+ w.config.preparation_cells_per_cycle, w.prepared->prepare_cursor);
  const auto add_distance = [](std::uint16_t value, std::uint16_t step) {
  const std::uint16_t infinity =
  std::numeric_limits<std::uint16_t>::max();
@@ -787,32 +888,38 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  ? infinity
  : static_cast<std::uint16_t>(value + step);
  };
- while (w.prepare_cursor > begin) {
- --w.prepare_cursor;
- const std::size_t x = w.prepare_cursor % w.map.width;
- const std::size_t y = w.prepare_cursor / w.map.width;
- std::uint16_t& distance = w.distance_cm[w.prepare_cursor];
+ while (w.prepared->prepare_cursor > begin) {
+ --w.prepared->prepare_cursor;
+ ++w.result.map_preparation_cells;
+ const std::size_t x = w.prepared->prepare_cursor % w.map.width;
+ const std::size_t y = w.prepared->prepare_cursor / w.map.width;
+ std::uint16_t& distance =
+ w.prepared->distance_cm[w.prepared->prepare_cursor];
  if (x + 1 < w.map.width) {
  distance = std::min(distance, add_distance(
- w.distance_cm[w.prepare_cursor + 1], w.distance_orthogonal_cm));
+ w.prepared->distance_cm[w.prepared->prepare_cursor + 1],
+ w.prepared->distance_orthogonal_cm));
  }
  if (y + 1 < w.map.height) {
  distance = std::min(distance, add_distance(
- w.distance_cm[w.prepare_cursor + w.map.width],
- w.distance_orthogonal_cm));
+ w.prepared->distance_cm[w.prepared->prepare_cursor + w.map.width],
+ w.prepared->distance_orthogonal_cm));
  if (x > 0) {
  distance = std::min(distance, add_distance(
- w.distance_cm[w.prepare_cursor + w.map.width - 1],
- w.distance_diagonal_cm));
+ w.prepared->distance_cm[
+ w.prepared->prepare_cursor + w.map.width - 1],
+ w.prepared->distance_diagonal_cm));
  }
  if (x + 1 < w.map.width) {
  distance = std::min(distance, add_distance(
- w.distance_cm[w.prepare_cursor + w.map.width + 1],
- w.distance_diagonal_cm));
+ w.prepared->distance_cm[
+ w.prepared->prepare_cursor + w.map.width + 1],
+ w.prepared->distance_diagonal_cm));
  }
  }
  }
- if (w.prepare_cursor > 0) return std::nullopt;
+ if (w.prepared->prepare_cursor > 0) return std::nullopt;
+ w.prepared->backward_complete = true;
  w.phase = WorkState::Phase::kCoarse;
  continue;
  }
@@ -973,12 +1080,16 @@ GlobalSearchResult GlobalSearcher::search(
  double body_z_m) const {
  GlobalSearcher complete(config_);
  complete.set_lidar_mount(base_from_lidar_);
+ complete.prepared_map_ = prepared_map_;
  complete.begin(ranges, angle_min_rad, angle_increment_rad, map, stamp_ns,
  body_roll_rad, body_pitch_rad, body_z_m);
  for (;;) {
  const auto result = complete.advance(
  std::numeric_limits<std::size_t>::max() / 4);
- if (result.has_value()) return *result;
+ if (result.has_value()) {
+ prepared_map_ = complete.prepared_map_;
+ return *result;
+ }
  }
 }
 
