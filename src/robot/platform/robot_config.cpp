@@ -621,6 +621,11 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
         *s.slot = v;
       }
     }
+ if (!(out.brake_apply_time_s > 0.0) ||
+ !(out.brake_release_time_s > 0.0)) {
+ err = "brake apply/release times must be finite and positive";
+ return false;
+ }
   }
  std::string planner;
  bool planner_present = false;

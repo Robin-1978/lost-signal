@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -74,6 +75,9 @@ int main() {
 #endif
 
   sim::world::World world;
+ sim::world::MotorParams brake_motor = world.motor_params();
+ brake_motor.brake_max_torque_Nm = 5.0;
+ world.set_motor_params(brake_motor);
   sim::providers::SimSensorSuite suite(&world);
   robot::app::RobotApplication app(nullptr);
   suite.register_all(app);
@@ -135,6 +139,23 @@ int main() {
   assert(obs2.time_offset_valid);
   assert(obs2.time_offsets_s.size() == obs2.ranges_m.size());
   assert(obs2.time_offsets_s.front() < 0.0f);
+
+ // The deployable actuator contract carries an independent mechanical
+ // brake request through the same endpoint as motor duty. The SIM brake
+ // has finite apply lag and is passive, but stops a coasting plant.
+ const robot::iface::ActuatorCommand stop =
+ robot::iface::ActuatorCommand::SafeStop(
+ world.sim_time_ns(), robot::iface::ActuatorMode::kDiffDuty);
+ assert(robot::iface::valid_actuator_command(stop, world.sim_time_ns()));
+ suite.consume(stop);
+ double minimum_forward_mps = world.truth().forward_mps;
+ for (int i = 0; i < 200; ++i) {
+ world.step(0.02);
+ minimum_forward_mps =
+ std::min(minimum_forward_mps, world.truth().forward_mps);
+ }
+ assert(std::abs(world.truth().forward_mps) < 0.05);
+ assert(minimum_forward_mps > -0.05); // passive brake never drives backward
 
  // Independent provider deadlines must not manufacture fresh data for the
  // other sections. One transport sequence remains monotonic while the

@@ -63,6 +63,10 @@ bool valid_actuator_command(const ActuatorCommand& cmd,
   if (cmd.stamp_ns == core::kInvalidTime) return false;
   if (cmd.expiry_ns <= cmd.stamp_ns) return false;
   if (now_ns != core::kInvalidTime && now_ns > cmd.expiry_ns) return false;
+ if (!std::isfinite(cmd.service_brake) || cmd.service_brake < 0.0 ||
+ cmd.service_brake > 1.0) {
+ return false;
+ }
   const std::uint8_t n_drive = actuator_drive_count(cmd.mode);
   const std::uint8_t n_steer = actuator_steer_count(cmd.mode);
   if (n_drive == 0) return false;

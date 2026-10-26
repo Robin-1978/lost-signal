@@ -72,6 +72,8 @@ void World::apply(const robot::iface::ActuatorCommand& cmd) {
         i < truth_.drive_count ? std::clamp(cmd.drive[i], -1.0, 1.0) : 0.0;
     truth_.steer_duty[i] =
         i < truth_.steer_count ? std::clamp(cmd.steer[i], -1.0, 1.0) : 0.0;
+ brake_request_[i] = i < truth_.drive_count
+ ? std::clamp(cmd.service_brake, 0.0, 1.0) : 0.0;
     // Mode switch retires channels: stale slip flags must not linger.
     if (i >= truth_.drive_count) truth_.drive_slipping[i] = false;
   }

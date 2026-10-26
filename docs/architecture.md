@@ -121,6 +121,16 @@ serializes the same typed structs at the App edge.
   drains in `tick()`.
 - Freshness: `take_command(now)` returns newest non-expired command, else
   `SafeStop`. Expired counts `cmd_expired`.
+- Actuation freshness: expired drive/steer setpoints become a mode-preserving
+ `ActuatorCommand::SafeStop` with zero motor duty and full normalized service
+ brake request. The mechanical brake is an explicit deployable channel and
+ follows the same apply/release plant in SIM; `SafeZero` remains an explicit
+ coast command for setup and tests.
+ The channel is bound to the configured chassis mode during application
+ construction, so the pre-first-command watchdog also brakes the correct
+ number and type of joints.
+ Malformed actuator requests are rejected before they enter the bounded
+ queue and increment `act_rejected`; they cannot change the watchdog mode.
 - Health: `ChannelHealth{obs_received/dropped/rejected, cmd_published/expired}`
   is the bring-up and replay signal.
 - Ordering: per-source strictly increasing `(sequence, stamp_ns)`. Arrival

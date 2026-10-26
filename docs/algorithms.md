@@ -372,10 +372,19 @@ route, pre-activation hold).
   so a measured step response can retune the plant without forking
   geometry. Config files carry the hardware contract only;
   ROBOT never reads SIM truth.
-- Stops are closed-loop: each chassis holds zero through its wheel loops
-  when joints are known (active electrical braking); blind stops stay
-  SafeZero. The SIM service brake (`sim/world/service_brake.hpp`) is the
-  dissipative counterpart, driven by a SIM-side hook, never a ROBOT channel.
+- Stops combine two explicit actuator paths: with fresh joints each chassis
+ holds zero through its wheel loops, while `ActuatorCommand::service_brake`
+ requests the independent passive mechanical brake. Missing joint feedback,
+ malformed commands and watchdog expiry disable motor duty and retain the
+ mechanical stop in the correct chassis mode. SIM and native drivers consume
+ the same normalized request; the MuJoCo service-brake plant applies declared
+ torque and apply/release lag without ever driving the shaft. `SafeZero` now
+ means deliberate coast and is not a watchdog fallback.
+ The checked-in seed machines derive per-wheel peak brake torque from
+ `vehicle_mass * declared_brake_deceleration * wheel_radius / driven_wheels`
+ (2.4 N m for two driven brakes, 1.2 N m for four). Apply/release times are
+ explicit actuator characterization values and must be replaced by measured
+ step-response data for a real machine; neither is an algorithm threshold.
 - Rolling contact (`sim/world/contact.hpp`) shares the ROBOT feedforward
   form (`R = rr*load*tanh(v/s) + c*v`) as the tested effort spec (unit
   tests pin the math); the live plant is the MuJoCo engine, where viscous

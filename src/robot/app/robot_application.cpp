@@ -90,6 +90,7 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
   // Declared plant loadout fans into the autonomy envelopes once, with
   // the machine file (validator rollover support/COM + survey ride).
   coordinator_.set_plant_geometry(desc_.plant);
+ if (chassis_) channel_.set_actuator_mode(chassis_->actuator_mode());
   channel_.activate();
   // Bringup order: autonomy state first, executive policy last.
   bringup_wired_ =
@@ -233,9 +234,9 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
     body = iface::MotionCommand::SafeStop(now_ns);
   }
   body = chassis_->clamp_command(body, now_ns);
-  // Closed-loop translation with the latest joint feedback. The chassis
-  // returns safe zero without valid feedback; loops never close on stale
-  // joints.
+ // Closed-loop translation with the latest joint feedback. Without fresh
+ // joints the chassis drops motor duty and requests its mechanical brake;
+ // loops never close on stale joints.
   const iface::ObservationFrame& last = coordinator_.last_observation();
   iface::MotionFeedback fb;
  fb.source = "app.joints";

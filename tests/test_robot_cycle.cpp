@@ -127,10 +127,13 @@ int main() {
  wheel_app.tick(1'000'000);
  const iface::ActuatorCommand fresh = wheel_app.take_actuator(1'000'000);
  assert(fresh.drive[0] < 0.0 && fresh.drive[1] < 0.0);
+ // A deliberate safe stop combines the measured wheel-speed loop and the
+ // independent mechanical brake.
+ assert(fresh.service_brake == 1.0);
  wheel_app.tick(300'000'000);
  const iface::ActuatorCommand expired =
  wheel_app.take_actuator(300'000'000);
- assert(expired.is_safe_zero());
+ assert(expired.is_safe_stop());
  }
 
   // Shutdown returns modules to Unconfigured; tick holds again.

@@ -104,16 +104,16 @@ Each `to_actuator` closes its own loops (rear/drive PID + model feedforward,
 steer position->rate cascade) against measured joints, stepping on measured
 dt (stamp-derived per call, nominal plant step on first call, clamped to
 the command watchdog — never the old fixed 0.1 s), and returns a
-mode-correct safe zero without valid feedback. The sim plant is the MuJoCo
+mode-correct mechanical safe stop without valid feedback. The sim plant is the MuJoCo
 engine: duties become joint efforts through the same DC-curve +
 service-brake math, contacts resolve in the engine (viscous drag as native
-joint damping), truth is read back from engine state. Stops are
-closed-loop holds at zero through the wheel loops when joints are known
-(open loop coasts down on joint damping over tens of seconds); blind stops
-stay SafeZero. `RobotApplication` accepts joint feedback for actuator
+joint damping), truth is read back from engine state. Stops are closed-loop
+holds at zero through the wheel loops plus an explicit normalized service-brake
+request when joints are known; blind stops drop motor duty and retain the
+passive brake. `RobotApplication` accepts joint feedback for actuator
 closed-loop use only while its motion acquisition time is within the robot
 description's `safety_reaction_time_s`; missing, future-dated or stale joint
-feedback clears the joint counts and the chassis returns SafeZero.
+feedback clears the joint counts and the chassis returns `SafeStop`.
 
 `src/robot/platform/chassis_registry.hpp`. `ChassisRegistry::global()` maps
 kind names to factories; builtins self-register via static

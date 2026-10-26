@@ -18,14 +18,15 @@ class IChassis {
  public:
   virtual ~IChassis() = default;
   virtual const char* chassis_id() const = 0;
+ virtual iface::ActuatorMode actuator_mode() const = 0;
   virtual iface::CommandSpace command_space() const = 0;
   virtual ChassisLimits limits() const = 0;
   // Clamp a body command into chassis limits (rate/velocity envelope).
   virtual iface::MotionCommand clamp_command(const iface::MotionCommand& cmd,
                                             core::MonotonicNs now_ns) const = 0;
   // Translate a (clamped, validated) body command into actuator setpoints
-  // using the latest joint feedback. Without valid feedback the chassis
-  // returns a safe-zero command: loops never close on stale joints.
+ // using the latest joint feedback. Without valid feedback the chassis
+ // returns a mechanical safe-stop command: loops never close on stale joints.
   virtual iface::ActuatorCommand to_actuator(
       const iface::MotionCommand& body, const iface::MotionFeedback& fb,
       core::MonotonicNs now_ns) const = 0;
@@ -44,6 +45,9 @@ class DifferentialChassis : public IChassis {
                       control::WheelControllerConfig wheel_config = {});
 
   const char* chassis_id() const override { return "differential"; }
+ iface::ActuatorMode actuator_mode() const override {
+ return iface::ActuatorMode::kDiffDuty;
+ }
   iface::CommandSpace command_space() const override;
   ChassisLimits limits() const override { return limits_; }
 
@@ -83,6 +87,9 @@ class AckermannChassis : public IChassis {
                    control::AckermannControllerConfig steer_config = {});
 
   const char* chassis_id() const override { return "ackermann"; }
+ iface::ActuatorMode actuator_mode() const override {
+ return iface::ActuatorMode::kAckermannDuty;
+ }
   iface::CommandSpace command_space() const override;
   ChassisLimits limits() const override { return limits_; }
 
@@ -118,6 +125,11 @@ class HolonomicChassis : public IChassis {
     return config_.kind == control::HolonomicKind::Swerve ? "swerve"
                                                          : "mecanum";
   }
+ iface::ActuatorMode actuator_mode() const override {
+ return config_.kind == control::HolonomicKind::Swerve
+ ? iface::ActuatorMode::kSwerveDuty
+ : iface::ActuatorMode::kMecanumDuty;
+ }
   iface::CommandSpace command_space() const override;
   ChassisLimits limits() const override { return limits_; }
 

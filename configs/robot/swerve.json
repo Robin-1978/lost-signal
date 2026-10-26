@@ -26,6 +26,11 @@
  "actuator_response_delay_s": 0.1,
  "safety_reaction_time_s": 0.2
  },
+ "brake": {
+ "max_torque_Nm": 1.2,
+ "apply_time_s": 0.12,
+ "release_time_s": 0.08
+ },
  "navigation": {
  "clearance_margin_m": 0.1,
  "soft_inflation_radius_m": 0.2
@@ -116,5 +121,5 @@
   ],
  "robot_id": "ro1",
  "local_planner": "dwa",
- "version": 4
+ "version": 5
 }

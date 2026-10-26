@@ -69,21 +69,33 @@ MotionCommand RuntimeChannel::take_command(core::MonotonicNs now_ns) {
 }
 
 bool RuntimeChannel::publish_actuator(const ActuatorCommand& cmd) {
-  std::lock_guard<std::mutex> lock(mutex_);
+ std::lock_guard<std::mutex> lock(mutex_);
+ if (!valid_actuator_command(cmd, core::kInvalidTime)) {
+ health_.act_rejected += 1;
+ return false;
+ }
   if (!active_) return false;
   act_ring_.push(cmd);  // newest wins; oldest overwritten (no counter)
+  last_actuator_mode_ = cmd.mode;
   health_.act_published += 1;
   return true;
+}
+
+void RuntimeChannel::set_actuator_mode(ActuatorMode mode) {
+ std::lock_guard<std::mutex> lock(mutex_);
+ last_actuator_mode_ = mode;
 }
 
 ActuatorCommand RuntimeChannel::take_actuator(core::MonotonicNs now_ns) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto cmds = act_ring_.drain();
-  if (cmds.empty()) return ActuatorCommand::SafeZero(now_ns);
+ if (cmds.empty()) {
+  return ActuatorCommand::SafeStop(now_ns, last_actuator_mode_);
+ }
   ActuatorCommand cmd = cmds.back();
   if (!valid_actuator_command(cmd, now_ns)) {
     health_.act_expired += 1;
-    return ActuatorCommand::SafeZero(now_ns);
+ return ActuatorCommand::SafeStop(now_ns, cmd.mode);
   }
   return cmd;
 }

@@ -9,7 +9,7 @@
 
 当前分支已经建立正确的新框架边界：MuJoCo 是 SIM 物理真值源，ROBOT 只消费 provider 发布的传感器观测、公开地图和自身估计；碰撞、actor 脚本、材质、接触、真值位姿和评分不会进入 ROBOT 决策。`tests/check_boundary.py` 对 include、link 和 truth 类型执行静态门禁。20 万平方米差速底盘长测也证明现有 A*、定位和流式评分可以在大图上运行。
 
-当前版本仍不满足全底盘和真实制动条件下的发布要求。本轮最初确认四项 P0；异步传感器时间语义和 Ackermann 大图规划已经按本审计方案修复并完成回归。剩余两项是机械制动执行契约没有接入闭环、native robot 仍是一次 tick 后退出的 bringup stub。另有 polygon footprint、低抓地制动、执行跟踪故障闭环、传感器默认真实性和动态 actor 动力学等 P1 缺口。
+当前版本仍不满足真机发布要求。本轮最初确认四项 P0；异步传感器时间语义、Ackermann 大图规划和机械制动执行契约已经按本审计方案修复并进入回归。剩余 P0 是 native robot 仍为一次 tick 后退出的 bringup stub。另有 polygon footprint、低抓地制动、执行跟踪故障闭环、传感器默认真实性和动态 actor 动力学等 P1 缺口。
 
 优先级定义：P0 阻止对应产品路径发布；P1 会在合理环境或故障条件下造成安全性、鲁棒性或真实性缺口；P2 是能力完整性和进一步逼真度提升。
 
@@ -40,7 +40,7 @@
 
 **验收。** 增加 10 Hz LiDAR、50 Hz motion、100 Hz IMU、50 Hz decision 的异步相位测试，并覆盖乱序、延迟、重复 sequence、future skew 和 LiDAR 超时。正常新鲜扫描下不得周期性 stop-go；过期扫描必须确定性停车；每个样本只积分一次。
 
-**修复状态：已完成。** `ObservationFrame` 现在为 scan、motion/joints、IMU 保存独立 `MeasurementHeader`；应用入口逐 section 验证 endpoint ownership，headerless legacy frame 只允许一个 endpoint section。排序、去重、缓存、IMU 外参变换和一次性消费全部下沉到 `MeasurementSynchronizer`。其上层 `ObservationPipeline` 完整拥有异步测量处理：按采集时间分发 estimator event，仅在新 scan 到达时触发 perception/mapper，生成一次性 localization/adaptation view，并持有定位状态、感知结果和地形观测时钟。Coordinator 只调用该子系统并串联其输出，不再保存或判断异步测量状态。估计器只处理本次新到的 motion/IMU，迟到样本不会倒退积分时钟；感知、建图、定位只处理新 scan；Validator/Safety 使用缓存的最新 scan，Safety 按 scan 自身采集时间 fail-safe。执行器闭环只接受 `safety_reaction_time_s` 内的新鲜 joint feedback，超时、未来时间或缺失反馈都返回 SafeZero。SIM 不再在新 envelope 中重复携带旧 joint 值。JSONL 升级为保留 section header 的 v3，并兼容读取 v2。
+**修复状态：已完成。** `ObservationFrame` 现在为 scan、motion/joints、IMU 保存独立 `MeasurementHeader`；应用入口逐 section 验证 endpoint ownership，headerless legacy frame 只允许一个 endpoint section。排序、去重、缓存、IMU 外参变换和一次性消费全部下沉到 `MeasurementSynchronizer`。其上层 `ObservationPipeline` 完整拥有异步测量处理：按采集时间分发 estimator event，仅在新 scan 到达时触发 perception/mapper，生成一次性 localization/adaptation view，并持有定位状态、感知结果和地形观测时钟。Coordinator 只调用该子系统并串联其输出，不再保存或判断异步测量状态。估计器只处理本次新到的 motion/IMU，迟到样本不会倒退积分时钟；感知、建图、定位只处理新 scan；Validator/Safety 使用缓存的最新 scan，Safety 按 scan 自身采集时间 fail-safe。执行器闭环只接受 `safety_reaction_time_s` 内的新鲜 joint feedback，超时、未来时间或缺失反馈都关闭 motor duty 并返回机械 `SafeStop`。SIM 不再在新 envelope 中重复携带旧 joint 值。JSONL 升级为保留 section header 的 v3，并兼容读取 v2。
 
 `World::sim_time_ns()` 现在是 SIM 唯一采集时钟，20 ms public transition 会推进到内部各传感器 deadline；300 个 transition 明确产生 600 个 100 Hz IMU measurement。`signal_town` 异步复测在 984 步完成目标，移动 20.68 m、0 碰撞，ROBOT tick p99/max 为 12.725/13.876 ms，不再出现 `no-scan-evidence` 周期误停；修复前 1000 步只移动 0.67 m。新增模块回归覆盖独立来源与时间、旧 scan 缓存、scan 超时、迟到 measurement、future skew、endpoint 冒充、异步场景和 replay header round-trip。
 
@@ -67,6 +67,15 @@
 **修复。** 在 actuator contract 增加有明确语义的 service/emergency brake command，SIM 与 native endpoint 都实现相同状态机。安全模型使用配置上限与 ROBOT 自身制动诊断估计下界中的保守值。SIM 物理接触和真值只能用于测试判定，不能反向更新 ROBOT 的在线制动能力。
 
 **验收。** 用物理实测 stopping distance/velocity decay 校验安全包络；覆盖 apply/release lag、brake failure、低抓地、坡地和失去 motion feedback；命令过期必须进入确定性最小风险制动。
+
+**修复状态：执行器契约已完成。** `ActuatorCommand` 已增加范围校验为
+`[0,1]` 的 service-brake 通道；各底盘在正常停车时同时执行闭环电制动和
+机械制动，feedback 缺失、命令非法及 watchdog 过期时关闭 motor duty 并
+保留正确底盘模式的满额机械制动。`SimMotionEndpoint` 通过普通 actuator
+seam 把请求送入 MuJoCo 的 lagged passive brake plant，发布 robot 配置显式
+声明制动力矩与 apply/release 时间。端到端测试证明相同命令可停止运动中
+plant、不会反向驱动车辆，并覆盖非法请求和过期降级。低抓地力下在线制动
+能力估计仍列在 P1-1，必须只使用 ROBOT 自身 slip/执行反馈继续收敛。
 
 ### P0-4 native robot 尚不是可部署 runtime
 
@@ -152,7 +161,7 @@ Mecanum 当前使用 body wrench 简化，没有显式滚子刚体与逐滚子�
 | localization supervisor/error handling | 已有部分 innovation gate 和分片恢复 | 补完整 covariance、map/odom 分层与持续故障状态 |
 | path smoothing | 已迁移 | 保持规划模块所有权和 collision revalidation |
 | rich sensor realism profile | 底层能力部分存在，配置默认未启用 | 配置化 nominal/adverse profile 并纳入发布测试 |
-| typed actuator channels | drive/steer 已合并，brake 缺失 | 按新 actuator contract 增加制动与反馈 |
+| typed actuator channels | drive/steer/service-brake 命令已合并，执行反馈待补 | native 与 SIM 继续使用同一 actuator contract，补 applied/fault feedback |
 | serial manipulator kinematics、4 关节 PD、重力补偿、MuJoCo arm | 未迁移 | 先建立通用 joint description/command/feedback，再迁移机械臂；所有 pose 来自引擎 joint state |
 | 机械臂验收：闭环误差、FK/tool 对齐、失力下落、墙接触 | 未迁移 | 作为 manipulator 模块与物理 provider 的强制验收集 |
 | 地图 package/runtime provider | 部分被新 MapSnapshot 取代 | 迁移部署加载、版本、frame 和来源，不迁移 SIM-only sidecar authority |

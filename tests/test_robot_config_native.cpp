@@ -26,6 +26,11 @@ int main() {
     assert(desc.limits.max_forward_mps == 2.0);
  assert(desc.motion.acceleration_mps2 == 2.0);
  assert(desc.motion.brake_deceleration_mps2 == 2.0);
+ const bool four_brakes = std::string(kind) == "swerve" ||
+ std::string(kind) == "mecanum";
+ assert(cfg.brake_max_torque_Nm == (four_brakes ? 1.2 : 2.4));
+ assert(cfg.brake_apply_time_s == 0.12);
+ assert(cfg.brake_release_time_s == 0.08);
  if (std::string(kind) == "swerve" || std::string(kind) == "mecanum") {
  assert(desc.limits.max_lateral_mps > 0.0);
  }
@@ -138,6 +143,16 @@ int main() {
     platform::RobotConfig cfg;
     std::string err;
     assert(!platform::load_robot_config(dir + "/no-such.json", cfg, &err));
+ const char* zero_lag =
+ R"({"kind":"differential","brake":{"max_torque_Nm":5.0,"apply_time_s":0.0,"release_time_s":0.08}})";
+ std::FILE* fp = std::fopen("/tmp/test_zero_brake_lag.json", "wb");
+ assert(fp != nullptr);
+ std::fputs(zero_lag, fp);
+ std::fclose(fp);
+ assert(!platform::load_robot_config(
+ "/tmp/test_zero_brake_lag.json", cfg, &err));
+ assert(err.find("positive") != std::string::npos);
+ std::remove("/tmp/test_zero_brake_lag.json");
   }
 
   std::printf("robot_config_native ok\n");

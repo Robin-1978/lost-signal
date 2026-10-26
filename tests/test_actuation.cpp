@@ -16,6 +16,20 @@
 int main() {
   using namespace lost_signal::robot;
 
+ // Service brake is a typed normalized actuator channel. Fail-safe stop
+ // engages it; coast remains explicit and malformed requests are refused.
+ {
+ iface::ActuatorCommand coast = iface::ActuatorCommand::SafeZero(100);
+ iface::ActuatorCommand stop = iface::ActuatorCommand::SafeStop(100);
+ assert(coast.is_safe_zero() && !coast.is_safe_stop());
+ assert(stop.is_safe_stop() && !stop.is_safe_zero());
+ assert(iface::valid_actuator_command(stop, 100));
+ stop.service_brake = 1.01;
+ assert(!iface::valid_actuator_command(stop, 100));
+ stop.service_brake = std::nan("");
+ assert(!iface::valid_actuator_command(stop, 100));
+ }
+
   // PID converges a step error (integral action needs a few hundred
   // ticks at this dt; the loop itself is stable and windup-free).
   {
@@ -66,7 +80,8 @@ int main() {
     assert(v > 1.0);  // converged near the 2 m/s target
   }
 
-  // Diff chassis to_actuator: stop -> safe zero; motion without feedback -> zero.
+  // Diff chassis: stop applies both closed-loop and mechanical braking;
+  // motion without feedback fails closed to the mechanical brake.
   {
     platform::DifferentialChassis chassis(
         0.1, 0.5, {.max_forward_mps = 2.0, .max_yaw_rate_radps = 1.5,
@@ -75,14 +90,14 @@ int main() {
     iface::MotionFeedback fb;
     fb.drive_count = 2;
     auto zero = chassis.to_actuator(stop, fb, 100);
-    assert(zero.is_safe_zero());
+    assert(zero.is_safe_stop());
     iface::MotionCommand go;
     go.space = iface::CommandSpace::kYawRate;
     go.stamp_ns = 100;
     go.expiry_ns = 500;
     go.forward_mps = 1.0;
     iface::MotionFeedback nofb;  // invalid: no joints, no drive
-    assert(chassis.to_actuator(go, nofb, 100).is_safe_zero());
+    assert(chassis.to_actuator(go, nofb, 100).is_safe_stop());
     fb.drive_radps[0] = 5.0;
     fb.drive_radps[1] = 5.0;
     auto act = chassis.to_actuator(go, fb, 100);
@@ -175,7 +190,8 @@ int main() {
     holo.expiry_ns = 500;
     holo.forward_mps = 1.0;
     auto zero = chassis.to_actuator(holo, fb, 100);
-    assert(zero.mode == iface::ActuatorMode::kAckermannDuty && zero.is_safe_zero());
+    assert(zero.mode == iface::ActuatorMode::kAckermannDuty &&
+     zero.is_safe_stop());
   }
 
   // Holonomic swerve controller: lateral+yaw resolve to 4 duties; a pure
@@ -238,7 +254,7 @@ int main() {
     // Swerve without steer feedback fails closed (steers are safety-relevant).
     iface::MotionFeedback no_steer;
     no_steer.drive_count = 4;
-    assert(swerve->to_actuator(yaw, no_steer, 100).is_safe_zero());
+    assert(swerve->to_actuator(yaw, no_steer, 100).is_safe_stop());
   }
 
   // Sim plants: each mode integrates to the commanded body motion.

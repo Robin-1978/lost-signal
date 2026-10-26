@@ -56,6 +56,30 @@ int main() {
   assert(late.is_safe_stop());
   assert(ch.health().cmd_expired == 1);
 
+ // Actuator watchdog expiry enters a mechanical minimum-risk stop even
+ // when encoder feedback or a fresh motor command is unavailable.
+ ch.set_actuator_mode(iface::ActuatorMode::kSwerveDuty);
+ const iface::ActuatorCommand initial_stop = ch.take_actuator(50);
+ assert(initial_stop.is_safe_stop());
+ assert(initial_stop.mode == iface::ActuatorMode::kSwerveDuty);
+ iface::ActuatorCommand malformed = iface::ActuatorCommand::SafeStop(
+ 50, iface::ActuatorMode::kAckermannDuty);
+ malformed.service_brake = 2.0;
+ assert(!ch.publish_actuator(malformed));
+ assert(ch.health().act_rejected == 1);
+ assert(ch.take_actuator(50).mode == iface::ActuatorMode::kSwerveDuty);
+ iface::ActuatorCommand actuator;
+ actuator.mode = iface::ActuatorMode::kSwerveDuty;
+ actuator.stamp_ns = 100;
+ actuator.expiry_ns = 200;
+ actuator.drive = {0.5, 0.5, 0.5, 0.5};
+ assert(ch.publish_actuator(actuator));
+ const iface::ActuatorCommand actuator_late = ch.take_actuator(10'000);
+ assert(actuator_late.is_safe_stop());
+ assert(actuator_late.mode == iface::ActuatorMode::kSwerveDuty);
+ assert(ch.health().act_expired == 1);
+ assert(ch.take_actuator(20'000).mode == iface::ActuatorMode::kSwerveDuty);
+
   // Description: versioned, hashable, no physics fields.
   platform::RobotDescription desc;
   desc.robot_id = "ro1";

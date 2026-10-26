@@ -45,11 +45,11 @@ struct MotionFeedback {
   }
 };
 
-// Actuator command: per-channel normalized duties in ONE explicit mode.
-// All channels share the unit [-1, 1]: drives are motor duties, steers are
-// servo-rate duties (plant maps them through max rate/angle). New modes
-// arrive as new enum values with their own channel counts, never by
-// reinterpreting these arrays.
+// Actuator command: per-channel normalized requests in ONE explicit mode.
+// Drives and steers use [-1, 1]; the passive service brake uses [0, 1].
+// Drives are motor duties and steers are servo-rate duties (the plant maps
+// them through max rate/angle). New modes arrive as new enum values with
+// their own channel counts, never by reinterpreting these arrays.
 //
 // Channel counts per mode: Diff 2 drives; Ackermann 2 drives + 2 steers;
 // Swerve 4 + 4; Mecanum 4 drives.
@@ -66,6 +66,11 @@ struct ActuatorCommand {
   core::MonotonicNs expiry_ns = core::kInvalidTime;
   std::array<double, 4> drive = {};
   std::array<double, 4> steer = {};
+ // Normalized mechanical service-brake request shared by the driven
+ // wheels. It is an explicit actuator channel, independent of encoder
+ // feedback and electric motor duty. Native drivers map this value to
+ // their brake actuator; SIM applies the same lagged passive brake plant.
+ double service_brake = 0.0;
 
   static ActuatorCommand SafeZero(core::MonotonicNs now_ns,
                                   ActuatorMode mode = ActuatorMode::kDiffDuty) {
@@ -76,6 +81,13 @@ struct ActuatorCommand {
     return c;
   }
 
+ static ActuatorCommand SafeStop(core::MonotonicNs now_ns,
+ ActuatorMode mode = ActuatorMode::kDiffDuty) {
+ ActuatorCommand c = SafeZero(now_ns, mode);
+ c.service_brake = 1.0;
+ return c;
+ }
+
   bool is_safe_zero() const {
     for (double d : drive) {
       if (d != 0.0) return false;
@@ -83,7 +95,17 @@ struct ActuatorCommand {
     for (double s : steer) {
       if (s != 0.0) return false;
     }
-    return true;
+ return service_brake == 0.0;
+ }
+
+ bool is_safe_stop() const {
+ for (double d : drive) {
+ if (d != 0.0) return false;
+ }
+ for (double s : steer) {
+ if (s != 0.0) return false;
+ }
+ return service_brake == 1.0;
   }
 };
 

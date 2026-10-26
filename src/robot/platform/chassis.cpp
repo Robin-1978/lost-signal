@@ -97,21 +97,21 @@ iface::ActuatorCommand DifferentialChassis::to_actuator(
     const iface::MotionCommand& body, const iface::MotionFeedback& fb,
     core::MonotonicNs now_ns) const {
   const double dt_s = controller_dt(last_update_ns_, now_ns);
-  // No joints, no loop: fail closed. Never drive (or brake) blind.
+ // No joints, no electric loop: fail closed to the independent mechanical
+ // brake. It does not require encoder feedback and can only dissipate.
   if (!fb.has_joints() || fb.drive_count < 2) {
     wheels_.reset();
-    return iface::ActuatorCommand::SafeZero(now_ns);
+ return iface::ActuatorCommand::SafeStop(now_ns);
   }
-  // Safe stop with measured joints is a closed-loop hold at zero: active
-  // electrical braking through the same wheel loops. The force plant has
-  // no passive drag, so open-loop zero duty would coast forever; the stop
-  // latch upstream still gates re-release. The loop stays warm to hold.
+ // Safe stop with measured joints combines closed-loop electric braking
+ // with the independent mechanical brake. The wheel loop stays active so
+ // it can oppose measured motion while the mechanical brake applies.
   double target_v = 0.0;
   double target_w = 0.0;
   if (!body.is_safe_stop()) {
     if (body.space != iface::CommandSpace::kYawRate) {
       wheels_.reset();
-      return iface::ActuatorCommand::SafeZero(now_ns);
+ return iface::ActuatorCommand::SafeStop(now_ns);
     }
     target_v = body.forward_mps;
     target_w = body.yaw_rate_radps;
@@ -125,9 +125,10 @@ iface::ActuatorCommand DifferentialChassis::to_actuator(
   out.expiry_ns = now_ns + 200'000'000;
   out.drive[0] = wc.left_duty;
   out.drive[1] = wc.right_duty;
+ out.service_brake = body.is_safe_stop() ? 1.0 : 0.0;
   if (!iface::valid_actuator_command(out, now_ns)) {
     wheels_.reset();
-    return iface::ActuatorCommand::SafeZero(now_ns);
+ return iface::ActuatorCommand::SafeStop(now_ns);
   }
   return out;
 }
@@ -173,14 +174,15 @@ iface::ActuatorCommand AckermannChassis::to_actuator(
     const iface::MotionCommand& body, const iface::MotionFeedback& fb,
     core::MonotonicNs now_ns) const {
   const double dt_s = controller_dt(last_update_ns_, now_ns);
-  // No joints, no loop: fail closed. Never drive (or brake) blind.
+ // No joints, no electric loop: fail closed to the independent mechanical
+ // brake. It does not require encoder feedback and can only dissipate.
   if (!fb.has_joints() || fb.drive_count < 2) {
     controller_.reset();
-    return iface::ActuatorCommand::SafeZero(
+ return iface::ActuatorCommand::SafeStop(
         now_ns, iface::ActuatorMode::kAckermannDuty);
   }
-  // Safe stop with measured joints: closed-loop hold at zero (brake the
-  // drives, center the steers). Same force-plant rationale as diff.
+ // Safe stop with measured joints: close the drive loop at zero, center the
+ // steers, and apply the independent mechanical brake.
   double steer = 0.0;
   double target_v = 0.0;
   if (!body.is_safe_stop()) {
@@ -193,7 +195,7 @@ iface::ActuatorCommand AckermannChassis::to_actuator(
                               wheel_base_m_, limits_.max_steer_rad);
     } else {
       controller_.reset();
-      return iface::ActuatorCommand::SafeZero(
+ return iface::ActuatorCommand::SafeStop(
           now_ns, iface::ActuatorMode::kAckermannDuty);
     }
   }
@@ -217,9 +219,10 @@ iface::ActuatorCommand AckermannChassis::to_actuator(
   out.drive[1] = ac.rear_right_duty;
   out.steer[0] = ac.front_left_steer_duty;
   out.steer[1] = ac.front_right_steer_duty;
+ out.service_brake = body.is_safe_stop() ? 1.0 : 0.0;
   if (!iface::valid_actuator_command(out, now_ns)) {
     controller_.reset();
-    return iface::ActuatorCommand::SafeZero(
+ return iface::ActuatorCommand::SafeStop(
         now_ns, iface::ActuatorMode::kAckermannDuty);
   }
   return out;
@@ -270,14 +273,14 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
   const iface::ActuatorMode mode =
       swerve ? iface::ActuatorMode::kSwerveDuty : iface::ActuatorMode::kMecanumDuty;
   const std::uint8_t need_steer = swerve ? 4 : 0;
-  // No joints, no loop: fail closed. Never drive (or brake) blind.
+ // No joints, no electric loop: fail closed to the independent mechanical
+ // brake. It does not require encoder feedback and can only dissipate.
   if (!fb.has_joints() || fb.drive_count < 4 || fb.steer_count < need_steer) {
     controller_.reset();
-    return iface::ActuatorCommand::SafeZero(now_ns, mode);
+ return iface::ActuatorCommand::SafeStop(now_ns, mode);
   }
-  // Safe stop with measured joints: closed-loop hold at zero. Same
-  // force-plant rationale as diff (swerve modules hold their angles from
-  // the zero-twist inverse below).
+ // Safe stop with measured joints: close the drive loop at zero, retain the
+ // zero-twist steering solution, and apply the independent mechanical brake.
   double lateral = 0.0;
   double target_v = 0.0;
   double target_w = 0.0;
@@ -291,7 +294,7 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
       target_w = body.yaw_rate_radps;
     } else {
       controller_.reset();
-      return iface::ActuatorCommand::SafeZero(now_ns, mode);
+ return iface::ActuatorCommand::SafeStop(now_ns, mode);
     }
   }
   control::HolonomicFeedback hfb;
@@ -310,9 +313,10 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
   out.expiry_ns = now_ns + 200'000'000;
   out.drive = hc.drive_duty;
   out.steer = hc.steer_duty;
+ out.service_brake = body.is_safe_stop() ? 1.0 : 0.0;
   if (!iface::valid_actuator_command(out, now_ns)) {
     controller_.reset();
-    return iface::ActuatorCommand::SafeZero(now_ns, mode);
+ return iface::ActuatorCommand::SafeStop(now_ns, mode);
   }
   return out;
 }

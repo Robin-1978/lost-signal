@@ -25,7 +25,8 @@ struct ChannelHealth {
   std::uint64_t obs_rejected = 0;   // invalid / stale / out-of-order
   std::uint64_t cmd_published = 0;
   std::uint64_t cmd_expired = 0;  // consumed after expiry
-  std::uint64_t act_published = 0;
+ std::uint64_t act_published = 0;
+ std::uint64_t act_rejected = 0;
   std::uint64_t act_expired = 0;
 };
 
@@ -110,7 +111,10 @@ class RuntimeChannel {
 
   // Robot side: publish the validated actuator setpoints for this tick.
   bool publish_actuator(const ActuatorCommand& cmd);
-  // Plant side: take the newest non-expired setpoints, or safe zero.
+ // Bind the watchdog fallback to the configured chassis before the first
+ // command. Subsequent valid publications keep this mode current.
+ void set_actuator_mode(ActuatorMode mode);
+ // Plant side: take the newest non-expired setpoints, or mechanical stop.
   ActuatorCommand take_actuator(core::MonotonicNs now_ns);
 
   ChannelHealth health() const;
@@ -122,6 +126,7 @@ class RuntimeChannel {
   RingQueue<ObservationFrame> obs_ring_;
   RingQueue<MotionCommand> cmd_ring_;
   RingQueue<ActuatorCommand> act_ring_;
+ ActuatorMode last_actuator_mode_ = ActuatorMode::kDiffDuty;
   ChannelHealth health_{};
   // Per-source sequence / timestamp gate (strictly increasing).
   std::unordered_map<std::string, std::uint64_t> last_seq_;
