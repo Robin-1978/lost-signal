@@ -453,6 +453,13 @@ int main(int argc, char** argv) {
  }
  }
 
+ // Build the configured zero-command plant before the first public
+ // transition. Otherwise the first headless scan is sampled before the
+ // chassis topology and scene exist, is published as an all-miss frame, and
+ // cold-start localization spends a retry interval on synthetic no-evidence.
+ // This advances neither simulation time nor actors and publishes nothing.
+ session->prepare_world();
+
  std::vector<std::string> objectives = opt.objectives;
  if (objectives.empty()) {
  const auto& places = session->setup_world().places();
