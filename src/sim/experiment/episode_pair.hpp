@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -17,6 +18,7 @@ struct EpisodeArtifact {
  std::string condition_id;
  std::string controlled_variable;
  double controlled_value = 0.0;
+ std::uint64_t invariant_digest = 0;
  eval::EpisodeRecorder episode;
  eval::EpisodeScore score;
  bool timed_out = false;
@@ -31,7 +33,7 @@ struct EpisodeArtifact {
 EpisodeArtifact capture_episode_artifact(
  const std::string& condition_id,
  const viewer::ExperienceVariableSpec* variable,
- double controlled_value, bool timed_out,
+ double controlled_value, std::uint64_t invariant_digest, bool timed_out,
  const scenario::ScenarioSession& session);
 
 struct EpisodePair {

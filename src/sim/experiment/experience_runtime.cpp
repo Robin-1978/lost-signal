@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <utility>
 
 #include "sim/eval/robot_config.hpp"
@@ -9,6 +11,79 @@
 #include "sim/scenario/actor_sidecar.hpp"
 
 namespace lost_signal::sim::experiment {
+namespace {
+
+constexpr std::uint64_t kFnvOffset = 1469598103934665603ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+void hash_bytes(std::uint64_t& hash, const void* data, std::size_t size) {
+ const auto* bytes = static_cast<const unsigned char*>(data);
+ for (std::size_t i = 0; i < size; ++i) {
+ hash ^= bytes[i];
+ hash *= kFnvPrime;
+ }
+}
+
+void hash_string(std::uint64_t& hash, const std::string& value) {
+ const std::uint64_t size = static_cast<std::uint64_t>(value.size());
+ hash_bytes(hash, &size, sizeof(size));
+ hash_bytes(hash, value.data(), value.size());
+}
+
+bool hash_file(std::uint64_t& hash, const char* role,
+ const std::string& path, bool optional, std::string& error) {
+ hash_string(hash, role);
+ std::ifstream input(path, std::ios::binary);
+ if (!input.is_open()) {
+ if (optional) {
+ hash_string(hash, "absent");
+ return true;
+ }
+ error = "cannot hash experience input: " + path;
+ return false;
+ }
+ hash_string(hash, "present");
+ char chunk[4096];
+ while (input.good()) {
+ input.read(chunk, sizeof(chunk));
+ const std::streamsize count = input.gcount();
+ if (count > 0) {
+ hash_bytes(hash, chunk, static_cast<std::size_t>(count));
+ }
+ }
+ if (!input.eof()) {
+ error = "cannot read experience input: " + path;
+ return false;
+ }
+ return true;
+}
+
+std::string actor_sidecar_path(const std::string& map_path) {
+ std::filesystem::path sidecar(map_path);
+ sidecar.replace_extension(".actors.json");
+ return sidecar.string();
+}
+
+bool compute_invariant_digest(const ExperienceRuntimeConfig& config,
+ const ExperienceRuntime& runtime, std::uint64_t& digest,
+ std::string& error) {
+ digest = kFnvOffset;
+ hash_string(digest, "lost-signal-experiment-invariant/1");
+ if (!hash_file(digest, "robot", runtime.used_robot_path, false, error) ||
+ !hash_file(digest, "sim", runtime.used_sim_path, false, error) ||
+ !hash_file(digest, "world", config.map_path, false, error) ||
+ !hash_file(digest, "actors", actor_sidecar_path(config.map_path), true,
+ error)) {
+ return false;
+ }
+ hash_string(digest, "objectives");
+ for (const auto& objective : config.objectives) {
+ hash_string(digest, objective);
+ }
+ return digest != 0;
+}
+
+} // namespace
 
 double experience_variable_value(viewer::ExperienceVariable variable,
  const eval::SimConfig& config) {
@@ -119,6 +194,10 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  if (scenario::load_actors_sidecar(
  config.map_path, *built.session, {}, &config_error) < 0) {
  out_error = "actors sidecar: " + config_error;
+ return false;
+ }
+ if (!compute_invariant_digest(
+ config, built, built.invariant_digest, out_error)) {
  return false;
  }
  built.session->prepare_world();

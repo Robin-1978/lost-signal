@@ -28,6 +28,8 @@ int main() {
  assert(retry.session->score().steps == 0);
  assert(first.session->setup_world().truth().step == 0);
  assert(retry.session->setup_world().truth().step == 0);
+ assert(first.invariant_digest != 0);
+ assert(first.invariant_digest == retry.invariant_digest);
 
  for (std::uint64_t transition = 0;
  transition < experience.time_limit_steps &&
@@ -130,6 +132,7 @@ int main() {
  assert(variant.session->setup_world().truth().step == 0);
  assert(variant.session->setup_world().actors().size() ==
  first.session->setup_world().actors().size());
+ assert(variant.invariant_digest == first.invariant_digest);
 
  variant_config.variable_override = sim::experiment::ExperienceVariableOverride{
  sim::viewer::ExperienceVariable::kLidarScanPeriodS, 0.0105};
@@ -143,7 +146,8 @@ int main() {
  auto baseline_artifact = sim::experiment::capture_episode_artifact(
  "baseline", &sim::viewer::experience_variable_spec(
  sim::viewer::ExperienceVariable::kLidarScanPeriodS),
- first.sim_config->scan_period_s, false, *first.session);
+ first.sim_config->scan_period_s, first.invariant_digest, false,
+ *first.session);
  assert(baseline_artifact.simulation_valid);
  assert(baseline_artifact.safety_passed());
  assert(baseline_artifact.mission_passed());
@@ -157,7 +161,8 @@ int main() {
  pair.variant = sim::experiment::capture_episode_artifact(
  "variant", &sim::viewer::experience_variable_spec(
  sim::viewer::ExperienceVariable::kLidarScanPeriodS),
- variant.sim_config->scan_period_s, false, *first.session);
+ variant.sim_config->scan_period_s, variant.invariant_digest, false,
+ *first.session);
  auto complete = sim::experiment::evaluate_experience_gate(
  experience.progression, *pair.variant, pair);
  assert(complete.simulation_valid);
@@ -165,6 +170,16 @@ int main() {
  assert(complete.mission_passed);
  assert(complete.experiment_passed);
  assert(complete.can_advance);
+
+ auto mismatched_pair = pair;
+ ++mismatched_pair.variant->invariant_digest;
+ const auto mismatched = sim::experiment::evaluate_experience_gate(
+ experience.progression, *mismatched_pair.variant, mismatched_pair);
+ assert(mismatched.simulation_valid);
+ assert(mismatched.safety_passed);
+ assert(mismatched.mission_passed);
+ assert(!mismatched.experiment_passed);
+ assert(!mismatched.can_advance);
 
  auto safe_stop_lesson = baseline_artifact;
  safe_stop_lesson.timed_out = true;

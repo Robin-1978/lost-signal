@@ -17,12 +17,13 @@ bool EpisodeArtifact::mission_passed() const {
 EpisodeArtifact capture_episode_artifact(
  const std::string& condition_id,
  const viewer::ExperienceVariableSpec* variable,
- double controlled_value, bool timed_out,
+ double controlled_value, std::uint64_t invariant_digest, bool timed_out,
  const scenario::ScenarioSession& session) {
  EpisodeArtifact artifact;
  artifact.condition_id = condition_id;
  artifact.controlled_variable = variable != nullptr ? variable->id : "";
  artifact.controlled_value = controlled_value;
+ artifact.invariant_digest = invariant_digest;
  artifact.episode = session.episode();
  artifact.score = session.score();
  artifact.timed_out = timed_out;
@@ -48,6 +49,8 @@ ExperienceGateVerdict evaluate_experience_gate(
  const auto& variant = *pair.variant;
  verdict.experiment_passed = !baseline.controlled_variable.empty() &&
  baseline.controlled_variable == variant.controlled_variable &&
+ baseline.invariant_digest != 0 &&
+ baseline.invariant_digest == variant.invariant_digest &&
  std::isfinite(baseline.controlled_value) &&
  std::isfinite(variant.controlled_value) &&
  baseline.controlled_value != variant.controlled_value;

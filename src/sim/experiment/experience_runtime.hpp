@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,6 +36,12 @@ struct ExperienceRuntime {
  std::optional<eval::SimConfig> sim_config;
  std::string used_robot_path;
  std::string used_sim_path;
+ // FNV-1a digest of every authored execution input that must remain fixed
+ // across a controlled comparison: resolved robot/SIM files, world, optional
+ // actor sidecar, ordered objectives, and the invariant schema. The typed
+ // override is deliberately excluded; it is recorded separately as the one
+ // controlled variable.
+ std::uint64_t invariant_digest = 0;
 };
 
 // Creates one complete, fresh run from authored inputs. Retry calls this

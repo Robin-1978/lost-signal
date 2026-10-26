@@ -3316,6 +3316,7 @@ int main(int argc, char** argv) {
  std::optional<robot::platform::RobotConfig> robot_config;
  std::optional<sim::eval::SimConfig> sim_config;
   std::unique_ptr<sim::scenario::ScenarioSession> session;
+ std::uint64_t runtime_invariant_digest = 0;
  sim::experiment::ExperienceRuntimeConfig runtime_config;
  runtime_config.robot_path = robot_path;
  runtime_config.sim_path = sim_path;
@@ -3332,6 +3333,7 @@ int main(int argc, char** argv) {
     }
  robot_config = std::move(runtime.robot_config);
  sim_config = std::move(runtime.sim_config);
+ runtime_invariant_digest = runtime.invariant_digest;
  if (!runtime.used_robot_path.empty()) {
  std::fprintf(stderr, "robot config: %s\n",
  runtime.used_robot_path.c_str());
@@ -3614,6 +3616,7 @@ int main(int argc, char** argv) {
  session = std::move(rebuilt.session);
  robot_config = std::move(rebuilt.robot_config);
  sim_config = std::move(rebuilt.sim_config);
+ runtime_invariant_digest = rebuilt.invariant_digest;
  session->lidar_mount(
  session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
  if (!experience_flow->retry_current(0)) return false;
@@ -3654,6 +3657,7 @@ int main(int argc, char** argv) {
  session = std::move(rebuilt.session);
  robot_config = std::move(rebuilt.robot_config);
  sim_config = std::move(rebuilt.sim_config);
+ runtime_invariant_digest = rebuilt.invariant_digest;
  runtime_config = std::move(variant_config);
  session->lidar_mount(
  session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
@@ -3724,6 +3728,7 @@ int main(int argc, char** argv) {
  session = std::move(candidate_runtime.session);
  robot_config = std::move(candidate_runtime.robot_config);
  sim_config = std::move(candidate_runtime.sim_config);
+ runtime_invariant_digest = candidate_runtime.invariant_digest;
  visual_scene = std::move(candidate_scene);
  scene_loaded = true;
  session->lidar_mount(
@@ -4085,7 +4090,8 @@ int main(int argc, char** argv) {
  auto artifact = sim::experiment::capture_episode_artifact(
  experience_flow->run_kind() == ExperienceRunKind::kBaseline
  ? "baseline" : "variant",
- variable, controlled_value, experience_flow->timed_out(), *session);
+ variable, controlled_value, runtime_invariant_digest,
+ experience_flow->timed_out(), *session);
  if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
  experiment_ui.baseline = run_summary;
  if (experience.experiments.empty()) {
