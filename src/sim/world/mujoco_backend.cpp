@@ -200,10 +200,14 @@ void MujocoBackend::read_contacts() {
  const auto read_contact = [&](int geom_id, int wheel_body_id,
  bool& valid, double& x, double& y, double& z, double& slip_mps,
  double& longitudinal_slip_mps, double& lateral_slip_mps,
+ double& motion_x_mps, double& motion_y_mps, double& motion_z_mps,
+ double& slip_x_mps, double& slip_y_mps, double& slip_z_mps,
  double& normal_N, double& friction_utilization) {
  valid = false;
  x = y = z = slip_mps = longitudinal_slip_mps =
- lateral_slip_mps = normal_N = friction_utilization = 0.0;
+ lateral_slip_mps = motion_x_mps = motion_y_mps = motion_z_mps =
+ slip_x_mps = slip_y_mps = slip_z_mps = normal_N =
+ friction_utilization = 0.0;
  if (geom_id < 0 || wheel_body_id <= 0 || wheel_body_id >= model->nbody) {
  return;
  }
@@ -238,6 +242,20 @@ void MujocoBackend::read_contacts() {
  const double tx = rvx - normal_v * nx;
  const double ty = rvy - normal_v * ny;
  const double tz = rvz - normal_v * nz;
+ double module_velocity[3] = {};
+ const mjtNum* wheel_center = data->xpos + 3 * wheel_body_id;
+ point_velocity(wheel_body_id, wheel_center, module_velocity);
+ const int surface_body = tire_is_first ? body2 : body1;
+ double surface_velocity[3] = {};
+ point_velocity(surface_body, contact.pos, surface_velocity);
+ const double module_rvx = module_velocity[0] - surface_velocity[0];
+ const double module_rvy = module_velocity[1] - surface_velocity[1];
+ const double module_rvz = module_velocity[2] - surface_velocity[2];
+ const double module_normal_v =
+ module_rvx * nx + module_rvy * ny + module_rvz * nz;
+ const double module_tx = module_rvx - module_normal_v * nx;
+ const double module_ty = module_rvy - module_normal_v * ny;
+ const double module_tz = module_rvz - module_normal_v * nz;
  const mjtNum* wheel_matrix = data->xmat + 9 * wheel_body_id;
  const double axle_x = wheel_matrix[1];
  const double axle_y = wheel_matrix[4];
@@ -269,6 +287,12 @@ void MujocoBackend::read_contacts() {
  (tx * forward_x + ty * forward_y + tz * forward_z);
  lateral_slip_mps += weight *
  (tx * side_x + ty * side_y + tz * side_z);
+ motion_x_mps += weight * module_tx;
+ motion_y_mps += weight * module_ty;
+ motion_z_mps += weight * module_tz;
+ slip_x_mps += weight * tx;
+ slip_y_mps += weight * ty;
+ slip_z_mps += weight * tz;
  normal_N += contact_normal_N;
  if (contact_normal_N > 1e-9 && contact.dim >= 3) {
  const double mu1 = std::max(1e-9, contact.friction[0]);
@@ -290,20 +314,34 @@ void MujocoBackend::read_contacts() {
  slip_mps /= weight_sum;
  longitudinal_slip_mps /= weight_sum;
  lateral_slip_mps /= weight_sum;
+ motion_x_mps /= weight_sum;
+ motion_y_mps /= weight_sum;
+ motion_z_mps /= weight_sum;
+ slip_x_mps /= weight_sum;
+ slip_y_mps /= weight_sum;
+ slip_z_mps /= weight_sum;
  valid = true;
  };
  for (int d = 0; d < 4; ++d) {
  read_contact(tire_geom_[d], drive_body_[d], drive_contact_valid_[d],
  drive_contact_x_[d], drive_contact_y_[d], drive_contact_z_[d],
  drive_contact_slip_mps_[d], drive_contact_longitudinal_slip_mps_[d],
- drive_contact_lateral_slip_mps_[d], drive_contact_normal_N_[d],
+ drive_contact_lateral_slip_mps_[d],
+ drive_contact_motion_x_mps_[d], drive_contact_motion_y_mps_[d],
+ drive_contact_motion_z_mps_[d], drive_contact_slip_x_mps_[d],
+ drive_contact_slip_y_mps_[d], drive_contact_slip_z_mps_[d],
+ drive_contact_normal_N_[d],
  drive_contact_friction_utilization_[d]);
  }
  for (int j = 0; j < 2; ++j) {
  read_contact(idler_geom_[j], idler_body_[j], idler_contact_valid_[j],
  idler_contact_x_[j], idler_contact_y_[j], idler_contact_z_[j],
  idler_contact_slip_mps_[j], idler_contact_longitudinal_slip_mps_[j],
- idler_contact_lateral_slip_mps_[j], idler_contact_normal_N_[j],
+ idler_contact_lateral_slip_mps_[j],
+ idler_contact_motion_x_mps_[j], idler_contact_motion_y_mps_[j],
+ idler_contact_motion_z_mps_[j], idler_contact_slip_x_mps_[j],
+ idler_contact_slip_y_mps_[j], idler_contact_slip_z_mps_[j],
+ idler_contact_normal_N_[j],
  idler_contact_friction_utilization_[j]);
  }
 }

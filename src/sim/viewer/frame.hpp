@@ -109,6 +109,14 @@ struct FrameWheel {
   double slip_speed_mps = 0.0;
  double longitudinal_slip_mps = 0.0;
  double lateral_slip_mps = 0.0;
+ // MuJoCo-resolved world vectors on the contact tangent plane. Loose-surface
+ // displacement follows module motion; tire smoke follows actual slip.
+ double contact_motion_x_mps = 0.0;
+ double contact_motion_y_mps = 0.0;
+ double contact_motion_z_mps = 0.0;
+ double contact_slip_x_mps = 0.0;
+ double contact_slip_y_mps = 0.0;
+ double contact_slip_z_mps = 0.0;
  double friction_utilization = 0.0;
   std::string contact_material_id;
  std::string contact_surface_effect;

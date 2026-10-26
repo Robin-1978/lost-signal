@@ -195,6 +195,12 @@ int main() {
  assert(wheels[i].contact_slip_speed_mps >= 0.0);
  assert(std::isfinite(wheels[i].contact_longitudinal_slip_mps));
  assert(std::isfinite(wheels[i].contact_lateral_slip_mps));
+ assert(std::isfinite(wheels[i].contact_motion_x_mps));
+ assert(std::isfinite(wheels[i].contact_motion_y_mps));
+ assert(std::isfinite(wheels[i].contact_motion_z_mps));
+ assert(std::isfinite(wheels[i].contact_slip_x_mps));
+ assert(std::isfinite(wheels[i].contact_slip_y_mps));
+ assert(std::isfinite(wheels[i].contact_slip_z_mps));
  assert(std::isfinite(wheels[i].contact_friction_utilization));
  assert(wheels[i].contact_friction_utilization >= 0.0);
  const double resolved_slip = std::hypot(
@@ -203,6 +209,11 @@ int main() {
  // Multiple contact points are averaged independently, so the norm of the
  // resolved components cannot exceed the averaged tangential-speed norm.
  assert(resolved_slip <= wheels[i].contact_slip_speed_mps + 1e-9);
+ const double world_slip = std::sqrt(
+ wheels[i].contact_slip_x_mps * wheels[i].contact_slip_x_mps +
+ wheels[i].contact_slip_y_mps * wheels[i].contact_slip_y_mps +
+ wheels[i].contact_slip_z_mps * wheels[i].contact_slip_z_mps);
+ assert(world_slip <= wheels[i].contact_slip_speed_mps + 1e-9);
  assert(wheels[i].contact_normal_force_N > 0.0);
  assert(std::abs(wheels[i].contact_z_m) < 0.01);
     assert(std::abs(wheels[i].pose.z_m) < 1e-9);

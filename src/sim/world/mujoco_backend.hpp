@@ -53,6 +53,16 @@ struct WheelViz {
  double contact_slip_speed_mps = 0.0;
  double contact_longitudinal_slip_mps = 0.0;
  double contact_lateral_slip_mps = 0.0;
+ // World-space vectors resolved on the physical contact tangent plane.
+ // motion is the wheel module translation relative to the static surface;
+ // slip is the tire contact-point relative velocity after removing its
+ // normal component. They are SIM presentation evidence only.
+ double contact_motion_x_mps = 0.0;
+ double contact_motion_y_mps = 0.0;
+ double contact_motion_z_mps = 0.0;
+ double contact_slip_x_mps = 0.0;
+ double contact_slip_y_mps = 0.0;
+ double contact_slip_z_mps = 0.0;
  double contact_normal_force_N = 0.0;
  // Tangential contact force divided by the active MuJoCo friction-cone
  // capacity. One means the contact is saturated. SIM truth only.
@@ -173,6 +183,12 @@ class MujocoBackend {
  w.contact_slip_speed_mps = drive_contact_slip_mps_[d];
  w.contact_longitudinal_slip_mps = drive_contact_longitudinal_slip_mps_[d];
  w.contact_lateral_slip_mps = drive_contact_lateral_slip_mps_[d];
+ w.contact_motion_x_mps = drive_contact_motion_x_mps_[d];
+ w.contact_motion_y_mps = drive_contact_motion_y_mps_[d];
+ w.contact_motion_z_mps = drive_contact_motion_z_mps_[d];
+ w.contact_slip_x_mps = drive_contact_slip_x_mps_[d];
+ w.contact_slip_y_mps = drive_contact_slip_y_mps_[d];
+ w.contact_slip_z_mps = drive_contact_slip_z_mps_[d];
  w.contact_normal_force_N = drive_contact_normal_N_[d];
  w.contact_friction_utilization = drive_contact_friction_utilization_[d];
  w.pose = drive_pose_[d];
@@ -193,6 +209,12 @@ class MujocoBackend {
  w.contact_slip_speed_mps = idler_contact_slip_mps_[j];
  w.contact_longitudinal_slip_mps = idler_contact_longitudinal_slip_mps_[j];
  w.contact_lateral_slip_mps = idler_contact_lateral_slip_mps_[j];
+ w.contact_motion_x_mps = idler_contact_motion_x_mps_[j];
+ w.contact_motion_y_mps = idler_contact_motion_y_mps_[j];
+ w.contact_motion_z_mps = idler_contact_motion_z_mps_[j];
+ w.contact_slip_x_mps = idler_contact_slip_x_mps_[j];
+ w.contact_slip_y_mps = idler_contact_slip_y_mps_[j];
+ w.contact_slip_z_mps = idler_contact_slip_z_mps_[j];
  w.contact_normal_force_N = idler_contact_normal_N_[j];
  w.contact_friction_utilization = idler_contact_friction_utilization_[j];
  w.pose = idler_pose_[j];
@@ -270,6 +292,12 @@ class MujocoBackend {
  double idler_contact_slip_mps_[2] = {0.0, 0.0};
  double idler_contact_longitudinal_slip_mps_[2] = {0.0, 0.0};
  double idler_contact_lateral_slip_mps_[2] = {0.0, 0.0};
+ double idler_contact_motion_x_mps_[2] = {0.0, 0.0};
+ double idler_contact_motion_y_mps_[2] = {0.0, 0.0};
+ double idler_contact_motion_z_mps_[2] = {0.0, 0.0};
+ double idler_contact_slip_x_mps_[2] = {0.0, 0.0};
+ double idler_contact_slip_y_mps_[2] = {0.0, 0.0};
+ double idler_contact_slip_z_mps_[2] = {0.0, 0.0};
  double idler_contact_normal_N_[2] = {0.0, 0.0};
  double idler_contact_friction_utilization_[2] = {0.0, 0.0};
   int idler_dof_[2] = {-1, -1};
@@ -336,6 +364,12 @@ class MujocoBackend {
  double drive_contact_slip_mps_[4] = {0.0, 0.0, 0.0, 0.0};
  double drive_contact_longitudinal_slip_mps_[4] = {0.0, 0.0, 0.0, 0.0};
  double drive_contact_lateral_slip_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_motion_x_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_motion_y_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_motion_z_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_slip_x_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_slip_y_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_slip_z_mps_[4] = {0.0, 0.0, 0.0, 0.0};
  double drive_contact_normal_N_[4] = {0.0, 0.0, 0.0, 0.0};
  double drive_contact_friction_utilization_[4] = {0.0, 0.0, 0.0, 0.0};
   std::array<double, 4> steer_angle_ = {};

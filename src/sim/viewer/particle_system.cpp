@@ -152,7 +152,8 @@ std::size_t ParticleSystem::acquire_slot() {
 }
 
 void ParticleSystem::emit(const Frame& frame, std::size_t wheel_index,
- ParticleKind kind, double activity_mps, double elapsed_s) {
+ ParticleKind kind, const std::array<double, 3>& source_velocity_mps,
+ double activity_mps, double elapsed_s) {
  if (wheel_index >= frame.body.wheels.size() ||
  wheel_index >= emission_carry_.size()) {
  return;
@@ -171,12 +172,19 @@ void ParticleSystem::emit(const Frame& frame, std::size_t wheel_index,
  emission_carry_[wheel_index] -= count;
  if (count <= 0) return;
 
- const double heading = frame.body.yaw_rad + wheel.steer_rad;
- const double direction = wheel.contact_speed_mps < 0.0 ? -1.0 : 1.0;
- const double forward_x = std::cos(heading) * direction;
- const double forward_y = std::sin(heading) * direction;
- const double side_x = -std::sin(heading);
- const double side_y = std::cos(heading);
+ const double direction_norm = std::sqrt(
+ source_velocity_mps[0] * source_velocity_mps[0] +
+ source_velocity_mps[1] * source_velocity_mps[1] +
+ source_velocity_mps[2] * source_velocity_mps[2]);
+ if (!(direction_norm > 1e-9)) return;
+ const double forward_x = source_velocity_mps[0] / direction_norm;
+ const double forward_y = source_velocity_mps[1] / direction_norm;
+ const double forward_z = source_velocity_mps[2] / direction_norm;
+ const double horizontal_norm = std::hypot(forward_x, forward_y);
+ const double side_x = horizontal_norm > 1e-9
+ ? -forward_y / horizontal_norm : 0.0;
+ const double side_y = horizontal_norm > 1e-9
+ ? forward_x / horizontal_norm : 1.0;
  for (int index = 0; index < count; ++index) {
  const double spread = stable_unit(frame.step, wheel_index,
  static_cast<std::size_t>(index) + 101U) - 0.5;
@@ -197,9 +205,9 @@ void ParticleSystem::emit(const Frame& frame, std::size_t wheel_index,
  particle.velocity_mps = {
  -forward_x * backward_mps + side_x * sideways_mps,
  -forward_y * backward_mps + side_y * sideways_mps,
- kind == ParticleKind::kWater
+ -forward_z * backward_mps + (kind == ParticleKind::kWater
  ? (0.16 + 0.10 * speed_variation) * std::sqrt(water_depth_scale)
- : 0.06 + 0.08 * speed_variation};
+ : 0.06 + 0.08 * speed_variation)};
  if (kind == ParticleKind::kWater) {
  particle.lifetime_s = 0.34;
  particle.start_size_m = 0.018;
@@ -252,10 +260,28 @@ void ParticleSystem::advance(const Frame& frame) {
  const double load_scale = average_normal_N > 0.0
  ? std::clamp(std::sqrt(wheel.contact_normal_force_N / average_normal_N),
  0.5, 2.0) : 1.0;
+ const std::array<double, 3> motion = {
+ wheel.contact_motion_x_mps, wheel.contact_motion_y_mps,
+ wheel.contact_motion_z_mps};
+ const std::array<double, 3> slip = {
+ wheel.contact_slip_x_mps, wheel.contact_slip_y_mps,
+ wheel.contact_slip_z_mps};
+ const double motion_speed = std::sqrt(
+ motion[0] * motion[0] + motion[1] * motion[1] +
+ motion[2] * motion[2]);
+ const double slip_speed = std::sqrt(
+ slip[0] * slip[0] + slip[1] * slip[1] + slip[2] * slip[2]);
+ // Rolling through loose material displaces it along module travel. When
+ // the tire surface moves faster than the module (wheelspin or a locked
+ // slide), the measured contact slip owns both direction and activity.
+ const std::array<double, 3>& source =
+ kind == ParticleKind::kTireSmoke || slip_speed > motion_speed
+ ? slip : motion;
  const double activity = load_scale *
- (std::abs(wheel.contact_speed_mps) + 2.0 * wheel.slip_speed_mps);
+ (kind == ParticleKind::kTireSmoke
+ ? slip_speed : std::max(motion_speed, slip_speed));
  if (activity < config_.motion_threshold_mps) continue;
- emit(frame, index, kind, activity, emission_s);
+ emit(frame, index, kind, source, activity, emission_s);
  }
  emit_impact(frame);
  last_step_ = frame.step;

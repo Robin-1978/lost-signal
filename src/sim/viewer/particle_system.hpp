@@ -62,6 +62,7 @@ class ParticleSystem {
  private:
  void integrate(double elapsed_s);
  void emit(const Frame& frame, std::size_t wheel_index, ParticleKind kind,
+ const std::array<double, 3>& source_velocity_mps,
  double activity_mps, double elapsed_s);
  void emit_impact(const Frame& frame);
  std::size_t acquire_slot();

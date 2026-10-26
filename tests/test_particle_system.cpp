@@ -22,6 +22,8 @@ lost_signal::sim::viewer::Frame contact_frame(
  wheel.contact_normal_force_N = 110.0;
  wheel.contact_speed_mps = 1.4;
  wheel.slip_speed_mps = slipping ? 0.6 : 0.02;
+ wheel.contact_motion_x_mps = 1.4;
+ wheel.contact_slip_x_mps = slipping ? 0.6 : 0.02;
  wheel.slipping = slipping;
  wheel.steer_rad = -0.1;
  wheel.radius_m = 0.1;
@@ -94,6 +96,44 @@ int main() {
  }
  }
  assert(found_water);
+
+ // Loose-surface emission follows the measured world tangent vector, not
+ // body yaw or wheel steer reconstructed by the renderer.
+ ParticleSystem directional_dust(config);
+ Frame cross_slope = contact_frame(40, "gravel", false, "dust");
+ cross_slope.body.yaw_rad = -2.4;
+ cross_slope.body.wheels[0].steer_rad = 1.1;
+ cross_slope.body.wheels[0].contact_motion_x_mps = 0.0;
+ cross_slope.body.wheels[0].contact_motion_y_mps = 1.4;
+ cross_slope.body.wheels[0].contact_slip_x_mps = 0.0;
+ cross_slope.body.wheels[0].contact_slip_y_mps = 0.02;
+ directional_dust.advance(cross_slope);
+ bool found_directional_dust = false;
+ for (const auto& particle : directional_dust.particles()) {
+ if (!particle.active || particle.kind != ParticleKind::kDust) continue;
+ found_directional_dust = true;
+ assert(particle.velocity_mps[1] < 0.0);
+ }
+ assert(found_directional_dust);
+
+ // Tire smoke follows the contact slip vector. Here the module travels
+ // sideways while wheelspin slips toward -X, so every puff leaves toward
+ // +X regardless of the chassis heading.
+ ParticleSystem directional_smoke(config);
+ Frame wheelspin = contact_frame(41, "paved", true);
+ wheelspin.body.yaw_rad = 2.7;
+ wheelspin.body.wheels[0].contact_motion_x_mps = 0.0;
+ wheelspin.body.wheels[0].contact_motion_y_mps = 1.4;
+ wheelspin.body.wheels[0].contact_slip_x_mps = -0.6;
+ wheelspin.body.wheels[0].contact_slip_y_mps = 0.0;
+ directional_smoke.advance(wheelspin);
+ bool found_directional_smoke = false;
+ for (const auto& particle : directional_smoke.particles()) {
+ if (!particle.active || particle.kind != ParticleKind::kTireSmoke) continue;
+ found_directional_smoke = true;
+ assert(particle.velocity_mps[0] > 0.0);
+ }
+ assert(found_directional_smoke);
 
  Frame impact;
  impact.step = 100;
