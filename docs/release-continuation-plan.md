@@ -137,15 +137,32 @@
 - 阶段 7 依次完成：按底盘能力加载模型和左右部件；建立统一 `link_binding`；加入显式 SIM debug 的 joint axis/collision geom/COM/contact force；把 forklift、pedestrian、机械臂根和关节迁入 MuJoCo；最后扩展 Blender 环境资产并保持碰撞代理诚实。
 - Blender 路径为 `/disk/blender-5.2.2-linux-x64/blender`。旧代码分支实际为 `main`，仓库没有 `master` 分支。
 
+### 阶段 6 算法回归最新检查点（2026-10-27）
+
+- terrain 的通用修复已经完成。差速底盘在终端位置漂到车后、或位置进入包络但终端航向尚未稳定且目标落到车后时，会根据现有几何误差选择倒车重捕获；`requested_gear` 已进入 DWA 输出、采样和评分。实现只使用误差投影、现有置信包络和底盘能力，没有新增阈值。`test_terrain_mission` 已恢复正式 2500 步预算并删除临时 trace；Debug/Release 的 `test_dwa` 和 `test_terrain_mission` 均通过。
+- 不确定到达的永久停车已经修复。`GoalArrivalDecision::observation_motion_required` 在名义估计进入原始目标容差、但置信区域尚不能放进目标包络时请求低速观测运动；运动仍由 `MotionDecisionPipeline` 产生，并经过 Validator 和 Safety。严格到达仍要求置信包络、姿态和稳定停车。策略位于 goal-arrival/decision 模块，Coordinator 只合并并传递请求。Debug/Release `test_autonomy` 通过。
+- 高定位协方差下的动态物体丢失已经修复。LiDAR 中处于 map-relative foreground 强证据门与协方差扩张门之间的回波保留为 temporal-only 候选，只有经过现有运动更新次数和 1 秒速度拟合窗口后才发布匿名动态 track；静态墙在高协方差下仍不能成为动态物体。复用现有 `foreground_threshold_m`，没有新增阈值。Debug/Release `test_perception` 通过。
+- 新增 `tests/test_dynamic_crossing_mission.cpp`：Ackermann 底盘分别验证 actor 在机器人之前、同时和之后到达横穿点；链路使用真实 LiDAR、匿名 track、prediction、behavior、DWA、Validator 和 Safety，要求零碰撞、危险相位产生预测响应并在风险消失后恢复前进。SIM 真值只用于离线断言。Debug 已通过，Release 尚待运行。
+- Debug `industrial_200k_mission` 正在以本轮修复后的 binary 做完整五目标复测。当前统一 exec session 为 `53069`，最后记录约为 step 42500；central worker 横穿已形成匿名动态 track 并进入 `dynamic_clearance` 安全停车。关键 `east_shuttle` 横穿预计在 step 52000–54000，必须继续运行至任务终态，不能以中途状态判定通过。
+- 当前尚未提交的算法回归文件包括 `dwa_planner.cpp`、`goal_arrival.hpp/.cpp`、`coordinator.cpp`、`lidar_perception.cpp` 及对应 DWA、terrain、autonomy、perception、dynamic-crossing 测试。不得把这些修改与 Viewer/音频提交混为同一阶段提交，也不得丢弃。
+
+最新恢复顺序：
+
+1. 若 session `53069` 仍存在，先轮询到 `industrial_200k_mission` 完成；若进程已不存在，用现有 Debug binary 重新运行同一测试并保留 step 51500–53500 的匿名 track、预测 clearance、Safety 和 actor 离线诊断。
+2. 若 20 万平方米任务失败，只修复 ROBOT 的通用感知、预测、行为、局部规划、Validator 或 Safety 链路；不得移动 `east_shuttle`、修改关卡或放宽碰撞/到达条件。
+3. 运行 Release 的 `test_dynamic_crossing_mission`、`test_perception`、`test_autonomy`、`test_dwa`、`test_terrain_mission` 和 `test_industrial_200k_mission`。
+4. 全部通过后，只暂存算法和相关测试，单独提交“算法鲁棒性回归修复”。
+5. 删除 `stage6-*.png` 临时截图；跑 Debug 全量（新增测试后预计 78 项）、truth isolation、ROBOT boundary 和 `git diff --check`。
+6. 更新本文件的阶段 6 验收记录，再单独提交 Viewer、物理音频、WAV、文档及其测试；随后立即进入阶段 7。
+
 恢复后按以下顺序继续：
 
 1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认 HEAD 至少包含阶段 5 提交 `f22acc9`。
-2. 直接从“阶段 6 当前检查点”的两个回归继续；不得回退 immutable Episode、四类 verdict、ROBOT/SIM 边界、物理音频或已有物理证据可视化。
+2. 直接从“阶段 6 算法回归最新检查点”继续；不得回退 immutable Episode、四类 verdict、ROBOT/SIM 边界、物理音频或已有物理证据可视化。
 3. 所有新增表现只读取已记录的 observation、decision、MuJoCo contact/joint state、actuator feedback 和 sim time；不得把视觉/音频层状态反向输入 ROBOT 或 physics。
-4. 先补完 DWA 终端倒车重捕获和单元测试，恢复 terrain 临时诊断，验证 Debug/Release `terrain_mission`。
-5. 再建立动态横穿相位测试并修复通用预测/避让链，验证 Debug/Release `industrial_200k_mission`；不得移动 actor、改变关卡或放宽碰撞判断。
-6. 回归修复单独提交；随后跑 Debug 全量 77/77，更新阶段 6 验收记录，删除临时截图，通过 `git diff --check`、truth isolation 和 ROBOT boundary 后单独提交阶段 6。
-7. 提交阶段 6 后立即进入第 7 阶段：先验证 MuJoCo body/joint 到 GLB link binding，再增加 joint axis、collision geometry、COM/contact overlay，最后扩展 Blender 环境资产；禁止 draw-time 落地偏移、猜轴或墙钟动画。
+4. DWA 终端倒车重捕获、terrain 正式预算、动态横穿相位测试和高协方差 temporal-only track 已完成；先完成正在运行的 20 万平方米任务和 Release 定向回归。
+5. 回归修复单独提交；随后跑 Debug 全量（新增测试后预计 78/78），更新阶段 6 验收记录，删除临时截图，通过 `git diff --check`、truth isolation 和 ROBOT boundary 后单独提交阶段 6。
+6. 提交阶段 6 后立即进入第 7 阶段：先验证 MuJoCo body/joint 到 GLB link binding，再增加 joint axis、collision geometry、COM/contact overlay，最后扩展 Blender 环境资产；禁止 draw-time 落地偏移、猜轴或墙钟动画。
 
 ## 阶段完成记录
 
