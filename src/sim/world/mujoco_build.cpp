@@ -1039,10 +1039,23 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
  const double x = tile_x0 +
  tile_width * static_cast<double>(ix) / nx;
  const double h = sample_terrain(patches, {}, x, y).height_m;
+ // MuJoCo stores height-field samples in normalized [0, 1] units and
+ // applies hfield.size[2] as the vertical span. Keep metres in the authored
+ // survey/render path, but collect them here until the tile extrema are known
+ // so a ramp crossing 0 m is not accidentally scaled twice by the engine.
  elevation.push_back(static_cast<float>(h));
  min_h = std::min(min_h, h);
  max_h = std::max(max_h, h);
  }
+ }
+ const double elevation_span = max_h - min_h;
+ if (elevation_span > 1e-12 && std::isfinite(elevation_span)) {
+ for (float& sample : elevation) {
+ sample = static_cast<float>(
+ (static_cast<double>(sample) - min_h) / elevation_span);
+ }
+ } else {
+ std::fill(elevation.begin(), elevation.end(), 0.0f);
  }
  const std::string suffix = std::to_string(tile_y) + "_" +
  std::to_string(tile_x);
@@ -1053,7 +1066,7 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
  field->ncol = nx + 1;
  field->size[0] = tile_width * 0.5;
  field->size[1] = tile_height * 0.5;
- field->size[2] = std::max(1e-4, max_h - min_h);
+ field->size[2] = std::max(1e-4, elevation_span);
  field->size[3] = std::max(0.10, std::abs(min_h) + 0.10);
  mjs_setFloat(field->userdata, elevation.data(),
  static_cast<int>(elevation.size()));

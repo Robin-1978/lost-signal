@@ -13,6 +13,7 @@
 #include "robot/platform/holonomic_kinematics.hpp"
 #include "sim/providers/sim_motion.hpp"
 #include "sim/scenario/scenario_session.hpp"
+#include "sim/world/terrain.hpp"
 #include "sim/world/world.hpp"
 
 using namespace lost_signal;
@@ -146,6 +147,26 @@ int main() {
  assert(std::isfinite(geom.y_m));
  assert(std::isfinite(geom.z_m));
  assert(std::isfinite(geom.qw));
+ }
+
+ // Height-field samples are authored in metres but MuJoCo's hfield buffer
+ // is normalized against size[2]. A ramp that crosses a non-zero elevation
+ // must therefore raycast at the canonical survey height; feeding metre
+ // values directly into the engine scales the surface a second time.
+ {
+ sim::world::World terrain_world = make_mujoco_diff();
+ terrain_world.set_terrain_patches({{
+ "normalized_raycast_ramp", -2.0, -2.0, 8.0, 2.0,
+ 4.0, 0.2, 0.0, 0.0, 0.02}});
+ set_diff_duty(terrain_world, 0.0);
+ terrain_world.prepare();
+ double distance_m = 0.0;
+ assert(terrain_world.raycast(0.0, 0.0, 20.0, 0.0, 0.0, -1.0,
+ 30.0, distance_m));
+ const double expected_height = sim::world::sample_terrain(
+ terrain_world.terrain_patches(), terrain_world.support_slabs(), 0.0, 0.0)
+ .height_m;
+ assert(std::abs((20.0 - distance_m) - expected_height) < 1e-3);
  }
 
  sim::scenario::ScenarioSession session;
