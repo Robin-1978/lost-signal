@@ -714,10 +714,11 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const double remaining_tube_m = std::max(
  0.0, route_tracking_tube_m -
  route_projection.distance_m);
- const double response_s = std::max(0.0, config_.response_delay_s);
+ const double cross_track_response_s =
+ std::max(0.0, config_.response_delay_s);
  const double delay_speed_mps =
- -decel * response_s + std::sqrt(
- decel * decel * response_s * response_s +
+ -decel * cross_track_response_s + std::sqrt(
+ decel * decel * cross_track_response_s * cross_track_response_s +
  2.0 * decel * remaining_tube_m);
  tracking_speed_limit_mps = std::min(
  tracking_speed_limit_mps, std::max(0.0, delay_speed_mps));
@@ -1177,7 +1178,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const bool b_moves = commands_resolvable_motion(
  b.forward_mps, b.yaw_rate_radps, b.lateral_mps);
  if (a_moves != b_moves) return a_moves;
- if (car_like && a_moves && b_moves) {
+ if (car_like && a_moves) {
  const bool a_reacquires = a.route_tracking_error_m <=
  route_error_m + route_resolution_m &&
  (current_heading_error_rad <= 1e-9 ||

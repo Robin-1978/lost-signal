@@ -124,7 +124,6 @@ bool RoutePlanningPipeline::advance(
  failed_start_y_m_ = start.y_m;
  } else {
  active_route = std::move(replacement);
- route_state_changed = true;
  }
  return route_state_changed || !active_route.valid;
  }
@@ -144,7 +143,6 @@ bool RoutePlanningPipeline::advance(
  progress.route.valid) {
  active_route = std::move(progress.route);
  failed_ = false;
- route_state_changed = true;
  return true;
  }
 

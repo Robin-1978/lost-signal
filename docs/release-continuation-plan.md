@@ -115,6 +115,11 @@
  新增 Signal Town 五目标、工业 20 万平方米和连续坡/低抓地三个 manifest；它们复用
  既有 Runtime，不增加关卡专用算法或真值入口，缺少装饰场景的地图明确使用物理几何
  fallback。manifest 回归现在会解析这三个入口并验证 map/scene 引用。
+- 代码清理阶段消除了路线流水线中两个“成功后仍写无效状态”的死赋值，简化 DWA
+ 非完整分支的恒真条件，并让 JSON 对象查找不产生未使用结构化绑定。`cppcheck`
+ 对 `src/robot` 的剩余提示均为可读性层面的 `std::find_if/count_if` 建议或 Eigen
+ 逗号初始化误报，没有发现未使用变量/逻辑错误；A*/DWA/TEB 对比与 boundary 回归
+ 通过。
 
 ### Release 运行门禁（2026-10-27）
 

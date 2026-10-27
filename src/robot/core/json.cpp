@@ -9,8 +9,8 @@ namespace lost_signal::robot::core {
 
 const Json* Json::find(const std::string& key) const {
   if (!is_object()) return nullptr;
-  for (const auto& [k, v] : as_object()) {
-    if (k == key) return &v;
+ for (const auto& entry : as_object()) {
+ if (entry.first == key) return &entry.second;
   }
   return nullptr;
 }
