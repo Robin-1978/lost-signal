@@ -54,6 +54,24 @@ int main() {
 
  assert(mcu.tick(11 * kMs).status == VirtualMcuStatus::kWatchdogStop);
  assert(mcu.applied().is_safe_stop());
+
+ // Calling the same logical MCU at every quantum or in a coarser transport
+ // thread produces the same accepted state once both reach the same sim time.
+ VirtualMcu every_quantum(caps(), 9);
+ VirtualMcu batched(caps(), 9);
+ for (std::uint64_t sequence = 1; sequence <= 3; ++sequence) {
+ const SimTimeNs stamp = static_cast<SimTimeNs>(sequence * 10) * kMs;
+ const auto command = duty(sequence, stamp, 100 * kMs);
+ assert(every_quantum.enqueue(9, command, stamp));
+ assert(batched.enqueue(9, command, stamp));
+ }
+ for (SimTimeNs now = kMs; now <= 30 * kMs; now += kMs) {
+ every_quantum.tick(now);
+ if (now % (5 * kMs) == 0) batched.tick(now);
+ }
+ assert(every_quantum.last_accepted_sequence() ==
+ batched.last_accepted_sequence());
+ assert(every_quantum.applied().drive_duty == batched.applied().drive_duty);
  std::puts("virtual_mcu ok");
  return 0;
 }

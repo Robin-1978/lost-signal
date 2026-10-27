@@ -106,8 +106,9 @@ SIM 的执行顺序固定为：完成一个物理 quantum，推进 sim time，�
 2. SIM MCU：`ScenarioSession` 已通过 `VirtualMcu` 把默认 host-duty chassis
  setpoint 放入 sim-time deadline/transport queue；过期、session 失配、sequence
  回退和本地 watchdog 都在 MCU 边界拒绝或停车，物理引擎只消费已接受的命令。
- `test_virtual_mcu` 和 `signal_town_mission` 已通过。下一步再增加 joint/body
- ownership 的转换 adapter 以及同线程/独立线程一致性测试。
+ `test_virtual_mcu` 和 `signal_town_mission` 已通过；测试还比较了逐 1 ms
+ 调用和 5 ms 批量 transport 调用在相同 sim time 的最终 accepted sequence/state，
+ 证明调度方式不改变结果。下一步再增加 joint/body ownership 的转换 adapter。
 3. Native fake transport：用 fake board 跑 bring-up、过期、乱序、断线、重连和独立停车。主机侧 `IChassisMcuTransport` seam 与 native fake board 单测已在 `test_native_runtime` 中建立。
 4. HIL：将固定周期、延迟、丢包和 MCU watchdog 对应到真实板卡。仓库提供
  `examples/stm32_chassis_mcu` 的 HAL-free reference：body twist 在板端转成
