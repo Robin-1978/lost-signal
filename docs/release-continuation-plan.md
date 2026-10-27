@@ -234,6 +234,19 @@
  to MuJoCo actor links`；下一步是扩展 Blender 环境资产和最终 Release 视觉/碰撞
  验收。
 
+### 阶段 7 环境资产子阶段（工作区，待提交）
+
+- 在现有米制、`+Z` up、`+X` forward 和 world-fixture manifest 契约下新增三类
+ 可复用 Blender 资产：`traffic_signal`（红黄绿信号灯）、`safety_bollards`
+ （带链条的安全导流柱）和 `pallet_stack`（带标签的双颜色货物托盘）。它们的
+ 支撑面均落在 z=0，材质角色、三角形预算、hash 和 bounds 进入 manifest。
+- `research_base.scene.json` 将三类资产作为 `surface_only` 视觉实例放到
+ `signal_cross_tower`、叉车通道和 `supply_station`；不创建隐含碰撞体，碰撞世界
+ 仍只由 world JSON 的 proxy 负责，ROBOT 不读取这些渲染资产。
+- Blender `inspect_assets.py` 报 `ASSET_MANIFEST_OK assets=53`；
+ `test_asset_manifest`、`test_scene_manifest` 通过。Xvfb 下 3D viewer 成功加载
+ 三个新 GLB，临时截图已删除；提交前仍需完成 Release 视觉和碰撞代理一致性验收。
+
 ### 工业动态 actor 回归修复（已完成，`0d3cfec`）
 
 - 20 万平方米全量回归曾在 `central_gate` 发生双方等待：让行行人在机器人

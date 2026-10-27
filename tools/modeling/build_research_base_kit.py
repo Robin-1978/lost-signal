@@ -182,10 +182,83 @@ def build_charging_pad():
  export_glb("robot_charging_pad.glb")
 
 
+def build_traffic_signal():
+ reset_scene()
+ graphite = material("signal_graphite", (0.035, 0.050, 0.055), 0.72, 0.22)
+ steel = material("signal_steel", (0.22, 0.30, 0.30), 0.65, 0.26)
+ red = material("signal_red", (0.95, 0.035, 0.025), 0.05, 0.20,
+  (1.0, 0.015, 0.005))
+ amber = material("signal_amber", (0.98, 0.40, 0.025), 0.05, 0.20,
+  (1.0, 0.16, 0.005))
+ green = material("signal_green", (0.03, 0.86, 0.30), 0.05, 0.20,
+  (0.01, 0.32, 0.06))
+ # A compact, readable signal on a weighted foot. The visual is
+ # surface-only in the scene manifest; no collision proxy is inferred
+ # from the mesh and no asset pose is fed back into ROBOT.
+ box("signal_foot", (0.0, 0.0, 0.035), (0.42, 0.32, 0.07), steel, 0.025)
+ cylinder("signal_pole", (0.0, 0.0, 1.02), 0.035, 1.97, graphite, 20)
+ box("signal_head", (0.0, 0.0, 1.82), (0.24, 0.18, 0.72), graphite,
+  0.025)
+ lenses = ((1.60, red), (1.82, amber), (2.04, green))
+ for index, (height, surface) in enumerate(lenses):
+  lens = cylinder(f"signal_lens_{index}", (0.0, -0.097, height),
+  0.072, 0.018, surface, 24)
+  lens.rotation_euler[0] = math.radians(90.0)
+ box("signal_cap", (0.0, 0.0, 2.24), (0.28, 0.22, 0.05), steel, 0.015)
+ export_glb("traffic_signal.glb")
+
+
+def build_safety_bollards():
+ reset_scene()
+ graphite = material("bollard_graphite", (0.045, 0.065, 0.065), 0.60, 0.25)
+ yellow = material("bollard_yellow", (0.95, 0.48, 0.035), 0.12, 0.30)
+ cyan = material("bollard_cyan", (0.02, 0.58, 0.62), 0.20, 0.24,
+  (0.01, 0.12, 0.15))
+ for index, x in enumerate((-0.52, 0.0, 0.52)):
+  box(f"bollard_foot_{index}", (x, 0.0, 0.035), (0.28, 0.28, 0.07),
+  graphite, 0.02)
+  cylinder(f"bollard_post_{index}", (x, 0.0, 0.46), 0.055, 0.82,
+  yellow if index != 1 else cyan, 20)
+  cylinder(f"bollard_cap_{index}", (x, 0.0, 0.89), 0.075, 0.045,
+  graphite, 20)
+ # Thin visual chain marks a boundary; the collision world remains the
+ # only authority and this asset is placed surface-only.
+ for index, x in enumerate((-0.26, 0.26)):
+  chain = cylinder(f"bollard_chain_{index}", (x, 0.0, 0.56), 0.018,
+  0.52, yellow, 12)
+  chain.rotation_euler[1] = math.radians(90.0)
+ export_glb("safety_bollards.glb")
+
+
+def build_pallet_stack():
+ reset_scene()
+ wood = material("pallet_wood", (0.48, 0.24, 0.09), 0.0, 0.62)
+ wood_light = material("pallet_edge", (0.72, 0.42, 0.16), 0.0, 0.55)
+ crate_blue = material("crate_blue", (0.055, 0.22, 0.34), 0.08, 0.42)
+ crate_orange = material("crate_orange", (0.88, 0.24, 0.035), 0.08, 0.40)
+ # One reusable pallet with four contrasting crates. All geometry sits
+ # on z=0 so the scene manifest can place it without a draw-time
+ # grounding correction.
+ box("pallet_deck", (0.0, 0.0, 0.075), (1.10, 0.82, 0.15), wood, 0.025)
+ for index, x in enumerate((-0.42, 0.42)):
+  box(f"pallet_runner_{index}", (x, 0.0, 0.035), (0.12, 0.76, 0.07),
+  wood_light, 0.012)
+ crates = ((-0.28, -0.20, crate_blue), (0.28, -0.20, crate_orange),
+  (-0.28, 0.20, crate_orange), (0.28, 0.20, crate_blue))
+ for index, (x, y, surface) in enumerate(crates):
+  box(f"pallet_crate_{index}", (x, y, 0.39), (0.46, 0.32, 0.48),
+  surface, 0.025)
+  box(f"pallet_label_{index}", (x, y - 0.166, 0.40),
+  (0.23, 0.008, 0.17), wood_light, 0.003)
+ export_glb("pallet_stack.glb")
+
 def main():
  build_storage_rack()
  build_glass_gate()
  build_charging_pad()
+ build_traffic_signal()
+ build_safety_bollards()
+ build_pallet_stack()
  reset_scene()
  print("research-base environment kit generated")
 

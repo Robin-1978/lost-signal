@@ -1,4 +1,5 @@
 #include <cassert>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -41,11 +42,18 @@ int main() {
  assert(scene.lighting.bloom_strength == 0.20);
  assert(scene.lighting.shadow_map_resolution == 2048);
  assert(scene.lighting.shadow_strength == 0.62);
- assert(scene.instances.size() == 35);
+ assert(scene.instances.size() == 38);
  assert(scene.visual_for_box("north_wall_01") != nullptr);
  assert(scene.visual_for_box("west_shelf") != nullptr);
  assert(scene.visual_for_box("east_shelf") != nullptr);
  assert(scene.visual_for_box("glass_door") != nullptr);
+ const auto has_instance = [&](const std::string& id) {
+ return std::any_of(scene.instances.begin(), scene.instances.end(),
+ [&](const auto& instance) { return instance.instance_id == id; });
+ };
+ assert(has_instance("signal_cross_tower_visual"));
+ assert(has_instance("safety_lane_bollards_visual"));
+ assert(has_instance("supply_pallet_visual"));
 
  lost_signal::sim::eval::WorldFileContent slam_world;
  assert(lost_signal::sim::eval::load_world_file(
