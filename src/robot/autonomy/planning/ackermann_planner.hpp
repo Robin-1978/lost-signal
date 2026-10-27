@@ -39,13 +39,9 @@ class AckermannPlanner : public IGlobalPlanner {
  double connector_heading_tolerance_rad = 0.12;
  // Optional deterministic diagnostic ceiling for one local refinement.
  // Production uses -1: route length is handled by local segments and each
- // segment is bounded by compute time and sparse-state memory instead of a
- // map-size-independent expansion count.
+ // segment is bounded by cooperative expansion work and sparse-state memory,
+ // never by host CPU time.
  int max_expansions = -1;
- // Optional synchronous wall-time fail-safe for one local segment. Disabled
- // in production because cooperative per-cycle work already bounds latency;
- // a loaded CPU must delay a valid plan, never change reachability.
- double max_segment_compute_time_s = -1.0;
  // Cooperative work per decision cycle. The 2D guide planner and Hybrid-A*
  // refinement each consume a bounded expansion slice.
  std::size_t expansions_per_cycle = 4096;

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -34,8 +33,6 @@ bool valid_config(const AckermannPlanner::Config& config) {
  config.goal_heading_tolerance_rad >= 0.0 &&
  config.connector_heading_tolerance_rad >= 0.0 &&
  (config.max_expansions == -1 || config.max_expansions > 0) &&
- (config.max_segment_compute_time_s == -1.0 ||
- config.max_segment_compute_time_s > 0.0) &&
  config.expansions_per_cycle > 0 &&
  config.corridor_radius_m > 0.0 && config.unknown_cost_per_m >= 0.0 &&
  config.clearance_cost_per_m >= 0.0 && config.footprint_radius_m > 0.0 &&
@@ -53,7 +50,6 @@ bool valid_config(const AckermannPlanner::Config& config) {
  std::isfinite(config.goal_position_tolerance_m) &&
  std::isfinite(config.goal_heading_tolerance_rad) &&
  std::isfinite(config.connector_heading_tolerance_rad) &&
- std::isfinite(config.max_segment_compute_time_s) &&
  std::isfinite(config.corridor_radius_m) &&
  std::isfinite(config.unknown_cost_per_m) &&
  std::isfinite(config.clearance_cost_per_m) &&
@@ -153,7 +149,6 @@ struct AckermannPlanner::SearchState {
  double resolution_m = 0.0;
  int expanded = 0;
  int segment_expanded = 0;
- double segment_compute_time_s = 0.0;
  std::unordered_map<std::uint64_t, double> best;
  std::vector<Node> nodes;
  std::priority_queue<Entry, std::vector<Entry>, EntryGreater> open;
@@ -327,7 +322,6 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  state.nodes.clear();
  state.open = {};
  state.segment_expanded = 0;
- state.segment_compute_time_s = 0.0;
  const RoutePoint& start_pose = state.assembled.points.back();
  const std::uint64_t start_key = key(
  start_pose.x_m, start_pose.y_m, start_pose.yaw_rad,
@@ -475,17 +469,9 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  const std::array<int, 2> gears{1, -1};
  int goal_node = -1;
  std::size_t work = 0;
- const auto slice_started = std::chrono::steady_clock::now();
- const auto segment_compute_time_s = [&]() {
- return state.segment_compute_time_s +
- std::chrono::duration<double>(
- std::chrono::steady_clock::now() - slice_started).count();
- };
  while (!state.open.empty() && work < expansion_budget &&
  (config_.max_expansions < 0 ||
- state.segment_expanded < config_.max_expansions) &&
- (config_.max_segment_compute_time_s < 0.0 ||
- segment_compute_time_s() < config_.max_segment_compute_time_s)) {
+ state.segment_expanded < config_.max_expansions)) {
  const SearchState::Entry entry = state.open.top();
  state.open.pop();
  ++work;
@@ -629,10 +615,7 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
 
  if (goal_node < 0 && !state.open.empty() &&
  (config_.max_expansions < 0 ||
- state.segment_expanded < config_.max_expansions) &&
- (config_.max_segment_compute_time_s < 0.0 ||
- segment_compute_time_s() < config_.max_segment_compute_time_s)) {
- state.segment_compute_time_s = segment_compute_time_s();
+ state.segment_expanded < config_.max_expansions)) {
  return {GlobalPlanStatus::kPending, {}};
  }
  if (goal_node < 0) {
@@ -643,7 +626,7 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  state.segment_expanded >= config_.max_expansions) {
  return fail("Hybrid-A* segment reached its diagnostic expansion limit");
  }
- return fail("Hybrid-A* segment reached its diagnostic compute limit");
+ return fail("Hybrid-A* segment reached its diagnostic expansion limit");
  }
 
  std::vector<SearchState::Node> path;

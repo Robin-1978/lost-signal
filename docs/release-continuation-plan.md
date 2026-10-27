@@ -78,6 +78,11 @@
 - 当前 HEAD 是 `06b68aa docs: advance release checklist to regression`；分支相对远端领先 3 个提交。
 - 第 3 阶段首次全量回归为 73/75：`terrain_mission` 在冰面坡道终端永久停车/绕圈，`industrial_200k_mission` 在第三目标附近因一次 `global-plan-failed` 永久停车；其余定位、回环、`signal_town`、四底盘、DWA/TEB 和 Experience 测试通过。
 - 工作区有 9 个属于第 3 阶段的未提交修改：`ackermann_planner.cpp`、`astar_planner.cpp`、`dwa_planner.cpp/.hpp`、`global_planner.hpp`、`route_pipeline.cpp`、`test_astar.cpp`、`test_dwa.cpp`、`test_terrain_mission.cpp`。恢复时不得丢弃这些修改。
+
+- Hybrid-A* 的生产分片现在只按 `expansions_per_cycle` 和显式的确定性
+ `max_expansions` 计量工作；已移除按 `steady_clock` 的 segment compute-time
+ fail-safe。这样同一 ROBOT 输入在仿真、重放和不同主机负载下不会因为 CPU 速度
+ 改变可达性或返回结果；真机 wall clock 仍只属于最外层 pacing/watchdog。
 - 坡面终端修复使用现有位置/航向置信包络和底盘运动能力：DWA 进入位置包络后锁存终端航向阶段，位置漂出时重新取得位置而不在目标方位和最终航向之间逐 tick 切换；横向残差占主导时先对准再平移。`terrain_mission` 使用 `SeedAndTrack + surveyed static map + operator prior`，没有读取真值；原始 2500 步预算已通过。
 - 路线恢复改为原子替换：同目标局部重规划失败时保留上一条已验证路线，所有命令仍逐次经过局部规划、Validator 和 Safety；新目标、地图变化或离开路线管道会立即失效旧路线。失败请求只在 ROBOT 估计跨栅格、目标或地图变化时重试，避免规划风暴。
 - A*/Hybrid-A* 的 `GlobalPlanProgress` 已增加结构化 `diagnostic`；新增单元测试覆盖旧路线保留、失败锁存和跨栅格重试。相关 `astar`、`industrial_200k`、`dwa`、`terrain_mission` 模块测试已通过。
