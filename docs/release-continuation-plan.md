@@ -409,4 +409,30 @@
 - Viewer 的模块化叉车路径不会再在真实 MuJoCo link GLB 外叠加旧程序化圆柱；程序化几何只在没有完整模型/绑定时使用。worker、叉车、轮、caster 和机械臂的渲染继续消费 SIM presentation snapshot 的 body/joint pose，ROBOT boundary 不变。
 - 已验证：`test_scene_manifest`、`test_experience_manifest`、`signal_town_mission`、`lost_signal_sim ... signal_town_big ... --require-pass`（4695 steps、5/5、0 collisions）、`test_slam_experience_mission` 和 `test_terrain_mission`。工作区截图和临时文件已清理。
 
+### 当前恢复点（2026-10-28，发布前回归）
+
+- `c72aba9` 修复 Viewer 入口优先级：显式 `--experience`、`--chapter` 或
+  `--map` 不会再被 `--play` 静默替换为 First Contact；`15ec297` 让没有必看
+  walkaround 部件的章节按 Enter 直接进入预测，避免第二关看起来“点不动”。
+- `9484924` 将大地形的 Viewer 网格采样按地图范围有界化（每轴最多 160 个
+  可视单元，小地形仍保持 0.5 m 细节），不改变 MuJoCo/测量/ROBOT 地形；
+  `2af9dbf` 修复高度场米制高度被二次缩放的问题，并用 raycast 回归锁定接触
+  面；`d89e0a8`/`f73ba9e` 修复阴影 FBO 完整性和 depth attachment 重复释放。
+- `a89893f` 统一记录 transition 的一基 step 序号，使首个 Episode 记录与
+  score/truth 的完成步一致；`0251d98` 明确 Coordinator 对 mapper 的唯一所有权，
+  并为 RobotApplication 的证据接口补齐 `override`，没有改变 ROBOT/SIM 边界。
+- `ddb135c` 保留高不确定度终端的 chassis-derived 观测动作；`32f97d6` 删除
+  发布路径中的 DWA 临时 stderr 诊断。该修复复测 `dwa`、`slam_experience_mission`
+  和 `terrain_mission` 均通过；任何会让冰面坡道失败的额外终端阈值实验均已撤回。
+- `signal_town_big_mission` 的五目标任务实际在 6329 步完成；测试预算已改为
+  直接复用章节的 `time_limit_steps=12000`，任务仍在全部目标完成时提前退出，
+  不放宽到达条件。当前 Debug 定向回归（MuJoCo、DWA、SLAM、terrain、Viewer、
+  assets、scene、catalog、boundary）通过，85 项非工业全量回归中仅旧的 20 万
+  平方米长测需要单独串行采集。
+- 每个 catalog world 的 Xvfb 3D smoke 已通过；`industrial_200k`、
+  `orchard_hillside`、`proving_ground_map`、`slope_lab`、`stormglass_station`
+  和 `washout_canyon` 无专属装饰场景时仍使用合法的 `lab_default` fallback，
+  其碰撞/地形/粒子/物理模型路径不被省略。下一步只补发布门禁记录和必要的
+  authored scene 资产，不改变 fallback 的物理权威。
+
 下一步从这里继续：先完成本工作区的 Release/全量 CTest 记录，再对每个 catalog world 做一次 3D 启动 smoke test；随后补齐场景资产的 authored scene（当前 fallback 仍是合法但简化的工程视图），并把 Blender 资产检查、四底盘和手动 sandbox 作为发布门禁，而不是只依赖 `signal_town`。

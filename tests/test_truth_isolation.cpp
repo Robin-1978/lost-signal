@@ -81,7 +81,10 @@ int main() {
  assert(streaming.episode().steps().empty());
  assert(streaming.score().steps == 100);
  assert(streaming.last_eval_step() != nullptr);
- assert(streaming.last_eval_step()->step == 99);
+ // EvalStep ordinals are one-based completed transitions.  The world truth
+ // clock remains zero-based at construction, but the public replay ordinal
+ // starts at one so exported episodes and score completion steps agree.
+ assert(streaming.last_eval_step()->step == 100);
 
  // Interactive recent-history mode is a bounded deque, not a repeatedly
  // reallocating vector. Dropping old presentation frames cannot change the
@@ -94,11 +97,11 @@ int main() {
  assert(recent.episode().total_recorded() == 100);
  assert(recent.episode().dropped_steps() == 92);
  assert(!recent.episode().complete());
- assert(recent.episode().steps().front().step == 92);
- assert(recent.episode().steps().back().step == 99);
+ assert(recent.episode().steps().front().step == 93);
+ assert(recent.episode().steps().back().step == 100);
  assert(recent.score().steps == 100);
  assert(recent.last_eval_step() != nullptr);
- assert(recent.last_eval_step()->step == 99);
+ assert(recent.last_eval_step()->step == 100);
 
   std::printf("truth_isolation ok: steps=%zu mean_pos_err=%f reward=%f\n",
               score.steps, score.mean_pos_err_m, r0);
