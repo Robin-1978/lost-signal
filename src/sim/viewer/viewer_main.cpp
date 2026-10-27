@@ -5079,8 +5079,7 @@ bool show_estimate = initial_show_robot_evidence;
  if (hotspot_clicked) {
  experience_flow->inspect(experience_flow->walkaround_index());
  } else if (IsKeyPressed(KEY_ENTER) &&
- !experience_flow->walkaround_visited(
- experience_flow->walkaround_index())) {
+ !experience_flow->walkaround_complete()) {
  // Keyboard/gamepad accessibility path for the same explicit inspection.
  experience_flow->inspect(experience_flow->walkaround_index());
  } else if (IsKeyPressed(KEY_ENTER) ||
