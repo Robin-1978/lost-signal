@@ -687,6 +687,22 @@ set_tests_properties(signal_town_mission PROPERTIES
  RUN_SERIAL TRUE
  TIMEOUT 300)
 
+# The enlarged town previously stopped after big_gate because dock_door was
+# authored inside the global footprint-inflated obstacle boundary. Exercise
+# the complete authored route so every approach pose remains compatible with
+# the configured robot safety contract and objective sequencing.
+add_test(NAME signal_town_big_mission
+ COMMAND lost_signal_sim
+ --robot ${CMAKE_SOURCE_DIR}/configs/robot/differential.json
+ --sim ${CMAKE_SOURCE_DIR}/configs/sim/default.json
+ --map ${CMAKE_SOURCE_DIR}/configs/worlds/signal_town_big.json
+ --objectives big_gate,dock_door,energy_core,grand_market,plaza
+ --steps 6000 --require-pass)
+set_tests_properties(signal_town_big_mission PROPERTIES
+ LABELS "physics"
+ RUN_SERIAL TRUE
+ TIMEOUT 180)
+
 add_executable(test_loop_closure
   tests/test_loop_closure.cpp
 )
