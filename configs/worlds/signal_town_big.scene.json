@@ -1,0 +1,45 @@
+{
+  "format": "lost-signal-scene/1",
+  "scene_id": "signal_town_big",
+  "surface_only_max_height_m": 0.10,
+  "camera": {
+    "distance_m": 7.4,
+    "yaw_deg": 38.0,
+    "pitch_deg": 29.0,
+    "target_height_m": 0.30,
+    "follow_smoothing_s": 0.34,
+    "lookahead_s": 0.90,
+    "speed_distance_gain_s": 0.72,
+    "minimum_distance_m": 3.0,
+    "maximum_distance_m": 20.0
+  },
+  "lighting": {
+    "direction_xyz": [-0.44, 0.22, -1.0],
+    "directional_rgba": [255, 221, 181, 255],
+    "ambient_rgba": [55, 72, 78, 255],
+    "fog_rgba": [14, 26, 32, 255],
+    "directional_intensity": 1.10,
+    "ambient_intensity": 0.82,
+    "fog_start_m": 24.0,
+    "fog_end_m": 58.0,
+    "exposure": 1.00,
+    "bloom_threshold": 0.80,
+    "bloom_strength": 0.22,
+    "vignette_strength": 0.10,
+    "shadow_map_resolution": 2048,
+    "shadow_extent_m": 38.0,
+    "shadow_strength": 0.60
+  },
+  "floor": {
+    "base_rgba": [43, 54, 57, 255],
+    "grid_rgba": [86, 108, 109, 96],
+    "grid_spacing_m": 2.0
+  },
+  "instances": [
+    {"instance_id":"dock_door_strip","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[5.0,8.75,0.004],"scale":[1.25,1.0,1.0],"yaw_deg":0.0},
+    {"instance_id":"energy_core_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[25.5,15.5,0.004],"scale":[1.18,1.18,1.0],"yaw_deg":0.0},
+    {"instance_id":"grand_market_strip","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[42.2,7.0,0.004],"scale":[1.2,1.2,1.0],"yaw_deg":90.0},
+    {"instance_id":"plaza_strip","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[22.5,13.5,0.004],"scale":[1.2,1.2,1.0],"yaw_deg":0.0},
+    {"instance_id":"east_warning_lane","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[45.8,12.0,0.004],"scale":[1.0,1.5,1.0],"yaw_deg":90.0}
+  ]
+}

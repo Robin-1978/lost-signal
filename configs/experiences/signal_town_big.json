@@ -6,7 +6,7 @@
  "subtitle": "A complete multi-goal route with moving carts and pedestrians.",
  "files": {
  "map": "../worlds/signal_town_big.json",
- "scene": "../worlds/lab_default.scene.json",
+ "scene": "../worlds/signal_town_big.scene.json",
  "robot": "../robot/differential.json",
  "sim": "../sim/default.json"
  },

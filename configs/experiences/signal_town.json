@@ -6,7 +6,7 @@
  "subtitle": "A compact five-stop route that teaches live tracking, yielding, and safe arrival.",
  "files": {
   "map": "../worlds/signal_town.json",
-  "scene": "../worlds/lab_default.scene.json",
+ "scene": "../worlds/signal_town.scene.json",
   "robot": "../robot/differential.json",
   "sim": "../sim/default.json"
  },
