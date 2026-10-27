@@ -154,11 +154,11 @@
 - 2026-10-27 的 Release 基线复测（当前 HEAD、无额外实验改动）为 71640 步、5/5、0 碰撞、最大定位误差 3.755 m；五个目标 truth miss 为 0.060/0.081/0.181/0.168/0.199 m，最终 `goal_hold/arrived/stop`。此前 71223 步的 4/5 结果没有在这次复测中重现，不能把一次通过当作算法证明；后续仍要保留重复长测和结构化定位证据。
 - 下一恢复点：先在当前干净工作区重复工业长测并保留定位候选/时序证据，再继续 worker 动画、forklift link 拆分、Blender 环境资产和碰撞验收；每个修复独立提交。
 
-### 持续恢复锚点（2026-10-27，`ba93779`）
+### 持续恢复锚点（2026-10-27，`d9cebd6`）
 
 - 当前分支为 `refactor/clean-rebuild`，工作区在本锚点应保持干净；恢复时先执行
   `git status --short --branch` 与 `git log -5 --oneline`，确认 HEAD 至少包含
-  `ba93779 docs: record industrial release rerun`。
+ `d9cebd6 feat: drive worker animation from sim motion`。
 - 已完成的机械臂配置、MuJoCo link/joint pose、effort/encoder feedback、回放 v4、动态 actor mocap、GLB link binding、COM/contact/joint-axis overlay 和物理音频均视为已验收边界。恢复工作不得回退这些契约，也不得把 SIM-only 字段加入 `src/robot/`。
 - 第 7 阶段第一个未完成子任务是“模型与场景升级”：先让 worker 行人和 forklift 的分部件视觉绑定消费真实 MuJoCo body/joint pose，再补 Blender/GLB 场景资产 manifest；每个子任务都必须有对应的 backend/frame/viewer 单测或截图验收，并单独提交。
 - 工业长测的 `4/5` 结果曾在干净工作区复测为 `5/5`，因此只能作为需重复的稳定性证据；后续长测必须保留定位候选、协方差、恢复动作和时序记录，不能用放宽到达条件、读取真值或关卡专用常量掩盖波动。
@@ -211,4 +211,4 @@
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
-| 7. 模型与场景升级 | 进行中 | `525116c`, `53bd9cf` | 机械臂配置、MuJoCo effort/feedback 和回放契约已完成；工业末目标分叉、worker 步态、叉车 link 拆分、Blender 环境资产和最终视觉/Release 验收待完成 |
+| 7. 模型与场景升级 | 进行中 | `525116c`, `53bd9cf`, `d9cebd6` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk` 和回放契约已完成；叉车 link 拆分、Blender 环境资产和最终视觉/Release 验收待完成 |
