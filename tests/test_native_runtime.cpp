@@ -11,7 +11,7 @@
 namespace {
 using namespace lost_signal::robot;
 
-class FakeNativeAdapter final : public app::INativeAdapter {
+class FakeNativeAdapter : public app::INativeAdapter {
  public:
  FakeNativeAdapter() {
  endpoints_ = {
@@ -75,6 +75,43 @@ class FakeNativeAdapter final : public app::INativeAdapter {
  bool fail_writes_ = false;
 };
 
+class FakeChassisMcu final : public iface::IChassisMcuTransport {
+ public:
+ FakeChassisMcu() {
+ caps_.control_owner = iface::ChassisControlOwner::kHostMotionLoop;
+ caps_.chassis_mode = iface::ActuatorMode::kDiffDuty;
+ caps_.drive_count = 2;
+ caps_.control_period_ns = 1'000'000;
+ caps_.feedback_period_ns = 1'000'000;
+ caps_.maximum_command_age_ns = 200'000'000;
+ caps_.profile_id = "native.test";
+ caps_.profile_revision = 1;
+ }
+ const iface::ChassisCapabilities& capabilities() const override {
+ return caps_;
+ }
+ bool send(const iface::ChassisSetpoint& setpoint) override {
+ last = setpoint;
+ ++sends;
+ return true;
+ }
+ bool poll_feedback(iface::MotionFeedback&) override { return false; }
+ void mechanical_safe_stop(core::MonotonicNs) noexcept override {
+ ++stops;
+ }
+
+ iface::ChassisCapabilities caps_{};
+ iface::ChassisSetpoint last{};
+ int sends = 0;
+ int stops = 0;
+};
+
+class FakeMcuAdapter final : public FakeNativeAdapter {
+ public:
+ iface::IChassisMcuTransport* chassis_mcu() override { return &mcu; }
+ FakeChassisMcu mcu;
+};
+
 iface::ObservationFrame lidar(core::MonotonicNs now_ns) {
  iface::ObservationFrame out;
  out.sequence = 1;
@@ -130,6 +167,22 @@ int main() {
  assert(first.actuator_writes == 1);
  assert(adapter.writes() == 1);
  assert(adapter.last_write().is_safe_stop());
+
+ // The same deployment runtime can target a typed chassis transport. It
+ // validates ownership during bring-up and sends an expiry-bounded typed
+ // setpoint instead of a legacy actuator frame.
+ app::RobotApplication mcu_application(nullptr);
+ FakeMcuAdapter mcu_adapter;
+ app::NativeRuntime mcu_runtime(
+ mcu_application, mcu_adapter, {.decision_period_ns = 1'000'000});
+ assert(mcu_runtime.start());
+ const core::MonotonicNs mcu_now_ns = app::native_monotonic_now_ns();
+ assert(mcu_runtime.cycle(mcu_now_ns));
+ assert(mcu_adapter.mcu.sends == 1);
+ assert(mcu_adapter.mcu.last.kind == iface::ChassisSetpointKind::kActuatorDuty);
+ assert(mcu_adapter.mcu.last.sequence == 1);
+ assert(mcu_adapter.mcu.last.stamp_ns == mcu_now_ns);
+ mcu_runtime.shutdown();
 
  // Stop enforcement is independent of the decision thread. Once its
  // published command expires, the watchdog invokes the adapter's separate

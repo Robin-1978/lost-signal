@@ -147,6 +147,19 @@ struct MotionSetpoint {
 
 using ChassisSetpoint = MotionSetpoint;
 
+// Remote MCU transport seam. Unlike IMotionEndpoint, this is not a provider:
+// it has no ROBOT endpoint descriptor and does not publish truth. A native
+// hardware package implements this interface for CAN/EtherCAT/serial and
+// translates the typed setpoint to its wire protocol.
+class IChassisMcuTransport {
+ public:
+ virtual ~IChassisMcuTransport() = default;
+ virtual const ChassisCapabilities& capabilities() const = 0;
+ virtual bool send(const ChassisSetpoint& setpoint) = 0;
+ virtual bool poll_feedback(MotionFeedback& out) = 0;
+ virtual void mechanical_safe_stop(core::MonotonicNs now_ns) noexcept = 0;
+};
+
 struct ActuatorCommand {
   ActuatorMode mode = ActuatorMode::kDiffDuty;
   core::MonotonicNs stamp_ns = core::kInvalidTime;

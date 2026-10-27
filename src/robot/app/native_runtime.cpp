@@ -29,6 +29,13 @@ NativeRuntime::~NativeRuntime() { shutdown(); }
 
 bool NativeRuntime::start() {
  if (active_.load() || config_.decision_period_ns <= 0) return false;
+ if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
+  if (!iface::valid_chassis_capabilities(mcu->capabilities()) ||
+      mcu->capabilities().control_owner !=
+          iface::ChassisControlOwner::kHostMotionLoop) {
+   return false;
+  }
+ }
  for (const auto& endpoint : adapter_.endpoints()) {
  if (endpoint.backend != iface::ProviderBackend::kNative ||
  !application_.register_provider(endpoint)) {
@@ -115,7 +122,22 @@ bool NativeRuntime::publish_output(const iface::ActuatorCommand& command,
  bool ok = false;
  {
  std::lock_guard<std::mutex> io_lock(io_mutex_);
- ok = adapter_.write_actuator(output);
+  if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
+   iface::ChassisSetpoint setpoint;
+   setpoint.kind = iface::ChassisSetpointKind::kActuatorDuty;
+   setpoint.chassis_mode = output.mode;
+   setpoint.sequence = ++chassis_sequence_;
+   setpoint.stamp_ns = output.stamp_ns;
+   setpoint.expiry_ns = output.expiry_ns;
+   setpoint.drive_duty = output.drive;
+   setpoint.steer_duty = output.steer;
+   setpoint.service_brake = output.service_brake;
+   ok = iface::valid_chassis_setpoint(setpoint, mcu->capabilities(),
+                                      now_ns) &&
+        mcu->send(setpoint);
+  } else {
+   ok = adapter_.write_actuator(output);
+  }
  if (!ok) adapter_.mechanical_safe_stop(actuator_mode_, now_ns);
  }
  {

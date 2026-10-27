@@ -15,7 +15,7 @@ MCU 是独立的确定性控制时钟域，不是 ROBOT 中普通的 IProvider�
 
 ## 边界
 
-IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、encoder 或 actuator）。远端 MCU 固件不是 C++ 进程中的 provider。主机硬件包实现 INativeAdapter，负责注册 endpoint、翻译标准消息、轮询测量、写入标准命令和独立机械停车。必要时，适配器内部的单个设备 wrapper 才实现 ISensorProvider 或 IMotionEndpoint。
+IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、encoder 或 actuator）。远端 MCU 固件不是 C++ 进程中的 provider。主机硬件包实现 INativeAdapter，负责注册 endpoint、翻译标准消息、轮询测量、写入标准命令和独立机械停车。需要 typed MCU 协议时，适配器实现 `IChassisMcuTransport`；它提供 capability、发送 chassis setpoint、轮询 MotionFeedback 和独立机械停车，但不是 IProvider。`NativeRuntime` 已支持这条可选 transport：未提供时保持现有 duty adapter 路径，提供时发送 sequence/expiry 完整的 typed setpoint，并在 bring-up 拒绝非 host-motion ownership，避免未来 body/joint 转换未完成时重复闭环。
 
 固件不能接触 RobotApplication、estimator、planner、SIM truth、actor identity、score 或渲染状态。它只处理已经定义的 setpoint、编码器/IMU/执行反馈、故障和本地安全状态。
 
@@ -108,7 +108,7 @@ SIM 的执行顺序固定为：完成一个物理 quantum，推进 sim time，�
  回退和本地 watchdog 都在 MCU 边界拒绝或停车，物理引擎只消费已接受的命令。
  `test_virtual_mcu` 和 `signal_town_mission` 已通过。下一步再增加 joint/body
  ownership 的转换 adapter 以及同线程/独立线程一致性测试。
-3. Native fake transport：用 fake board 跑 bring-up、过期、乱序、断线、重连和独立停车。
+3. Native fake transport：用 fake board 跑 bring-up、过期、乱序、断线、重连和独立停车。主机侧 `IChassisMcuTransport` seam 与 native fake board 单测已在 `test_native_runtime` 中建立。
 4. HIL：将固定周期、延迟、丢包和 MCU watchdog 对应到真实板卡。
 5. Hardware profile：用实测 step response 填入能力参数；未测量时保持 safe hold，不能用猜测的默认数字上线。
 

@@ -29,6 +29,11 @@ class INativeAdapter {
  virtual bool poll_observation(iface::ObservationFrame& out) = 0;
  virtual bool write_actuator(const iface::ActuatorCommand& command) = 0;
 
+ // Optional typed chassis-MCU transport. Returning nullptr keeps the
+ // compatibility duty adapter path. A non-null transport must advertise
+ // host-motion ownership until body/joint conversion is explicitly enabled.
+ virtual iface::IChassisMcuTransport* chassis_mcu() { return nullptr; }
+
  // Independent mechanical stop path. Implementations must make this
  // idempotent and must not depend on the ordinary command queue succeeding.
  virtual void mechanical_safe_stop(iface::ActuatorMode mode,
@@ -80,6 +85,7 @@ class NativeRuntime {
  INativeAdapter& adapter_;
  NativeRuntimeConfig config_;
  iface::ActuatorMode actuator_mode_ = iface::ActuatorMode::kDiffDuty;
+ std::uint64_t chassis_sequence_ = 0;
 
  std::atomic_bool active_{false};
  std::atomic_bool watchdog_exit_{false};
