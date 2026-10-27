@@ -68,6 +68,21 @@
  sim-time deadline 调度、transport queue 与本地 watchdog；`virtual_mcu`、
  `signal_town_mission` 回归通过。8.3 已增加 `IChassisMcuTransport` 真机 seam
  和 `examples/stm32_chassis_mcu` 的固定周期 PID reference/CMake host test。
+
+### Release 运行门禁（2026-10-27）
+
+- Release headless `signal_town` 两次完整运行产生字节一致的 artifact：5673
+ steps、113.460 s sim time、5/5、0 collisions、distance 2.483 m、最大估计误差
+ 0.213 m；`sha256sum` 两次均为
+ `72c0a8d76856fcb759e55b92af3b062896fd85716459b6e10e087350acb106af`。
+- Release headless profiling：physics p99 2.163 ms，ROBOT tick p99 6.620 ms、
+ max 14.113 ms，total p99 8.044 ms，RTF 5.10×。wall time 只用于报告，不进入
+ 仿真事件或结果。
+- Xvfb Viewer 固定 120 帧：高质量 1×实际 1.16×；请求 8×/64×时 CPU/渲染
+ 吞吐实际约 0.75×；Turbo/FAST 实际 1.69×，显式 `--quality fast` 在 8×/64×
+ 约 2.7×。因此倍率一致性已通过，8×/64×交互 RTF 门禁尚未达标，不能把请求倍率
+ 当作实际 RTF；后续优化目标是拆分渲染与 sim tick、降低 tick p99，并保留这组
+ 基线作为回归。
 - 第 1 项已经完成：候选预算先覆盖不同历史模式，入选候选全部完成 coarse/refine/reverse 验证后统一比较双向 score 与 overlap；相同 correction mode 内只有同一个历史锚点 ID 才能完成跨时序确认。
 - `test_loop_closure` 首次回环发生在完成 east、north、west 三个目标后；SIM 真值距起点 0.305 m 只写入失败诊断。`slam` 与 `loop_closure` 均连续通过 3 次，`truth_isolation` 与 `robot_boundary` 通过。
 - 第 2 项已经完成：2.5 m 教学路线完成 4/4 目标且零碰撞；终端捕获按底盘运动能力修复，没有放宽到达阈值或延长任务时间。`slam_experience_mission` 连续重复三次通过，相关 14 项定位、SLAM、Experience、truth-isolation 和 boundary 回归通过。
