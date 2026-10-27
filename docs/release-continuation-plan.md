@@ -318,6 +318,16 @@
 | 1. 无图 SLAM 回环可信度 | 已完成 | `a66d644` | 首次回环前已完成 3 个目标；SLAM/回环重复回归与 truth isolation 通过 |
 | 2. SLAM 教学体验与文档 | 已完成 | `4711d91` | 4/4 目标、零碰撞；任务连续三次通过；14 项相关回归通过；文档明确 SLAM Toolbox/REP-105 能力边界 |
 | 3. 算法与系统回归 | 已完成 | `2c13308` | 完整构建；定向 14/14；全量 75/75；20 万平方米、signal_town、四底盘、SLAM/回环、truth isolation 均通过 |
+
+### 当前恢复点（2026-10-28）
+
+- 第 1 项的当前验收已重复确认：`loop_closure` 与 `slam_experience_mission` 各自通过；首次回环仍发生在真实重访阶段，跨历史候选比较和同一 causal anchor 时序确认保持启用。
+- Release 工业长测已重新构建并通过：`build-release/test_industrial_200k_mission`，75997 步、5/5、0 碰撞、464.95 m；五个目标的 SIM truth miss 为 0.143/0.193/0.079/0.176/0.146 m，最终 ROBOT estimate 与物理真值只用于离线报告。
+- Release 场景回归：`signal_town_big` 五目标 4695 步、5/5、0 碰撞、最大估计误差 0.237 m；`ice_lab` 两目标 1653 步、5/5、0 碰撞、最大估计误差 0.128 m。
+- `0752b1a fix: stabilize shadow camera basis` 修正了阴影 texel snapping 与实际阴影相机 up basis 不一致造成的投影漂移；Xvfb 3D evidence 截图和 `viewer_frame`、`scene_manifest`、`experience_manifest`、`playback_controller` 回归通过。
+- `dc47513 feat: author town presentation scenes` 为 `signal_town` 与 `signal_town_big` 增加同名 authored scene。世界文件仍是唯一碰撞/物理来源；scene 中无碰撞的装饰只使用 `surface_only`，高度约束由 scene loader 强制检查。Viewer catalog 现在将两个世界标为 `scene=authored`。
+- 直接 `sim_viewer --map` 会执行该地图的全部 named places；当前 big town 运行到第 3/5 个目标时仍持续推进，未复现“第一目标后停住”。若 UI 处于 briefing/prediction，必须先完成首屏 walkaround 和 prediction 选择，暂停是教学流程状态，不是仿真卡死。
+- 当前下一步仍是第 7 项：继续把坡面、连续地形、工业和手动 sandbox 的 world 同名 scene 与可验证 GLB 环境资产补齐；随后完成 Release 1x/8x/64x/Turbo/headless 统一性能报告、代码重复清理和全量 CTest 串行门禁。
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
