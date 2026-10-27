@@ -698,7 +698,9 @@ add_test(NAME signal_town_big_mission
  --sim ${CMAKE_SOURCE_DIR}/configs/sim/default.json
  --map ${CMAKE_SOURCE_DIR}/configs/worlds/signal_town_big.json
  --objectives big_gate,dock_door,energy_core,grand_market,plaza
- --steps 6000 --require-pass)
+ # Keep the headless acceptance budget aligned with the authored chapter
+ # time_limit_steps; the mission still exits as soon as all five goals pass.
+ --steps 12000 --require-pass)
 set_tests_properties(signal_town_big_mission PROPERTIES
  LABELS "physics"
  RUN_SERIAL TRUE
