@@ -4116,9 +4116,10 @@ bool render_shadow_map(const Frame& frame,
  light_camera.position = Vector3Subtract(
  center, Vector3Scale(light_direction,
  static_cast<float>(lighting.shadow_extent_m)));
- light_camera.up = std::abs(Vector3DotProduct(
- light_direction, {0.0f, 1.0f, 0.0f})) > 0.96f
- ? Vector3{0.0f, 0.0f, -1.0f} : Vector3{0.0f, 1.0f, 0.0f};
+ // Use the same orthonormal basis that produced the snapped shadow center.
+ // Replacing it with world-up changes the light-camera roll and makes the
+ // depth lookup slide when the view follows a moving robot.
+ light_camera.up = light_up;
  light_camera.fovy = static_cast<float>(lighting.shadow_extent_m);
  light_camera.projection = CAMERA_ORTHOGRAPHIC;
 
