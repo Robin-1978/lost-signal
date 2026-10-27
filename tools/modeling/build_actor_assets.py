@@ -15,6 +15,7 @@ from pathlib import Path
 import math
 
 import bpy
+from mathutils import Matrix, Vector
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -92,11 +93,18 @@ def uv_sphere(name, location, scale, surface):
     return obj
 
 
-def export_glb(filename):
+def export_glb(filename, selected=None, origin=None):
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    if selected is not None: [obj.select_set(False) for obj in bpy.context.scene.objects]
+    if selected is not None: [obj.select_set(True) for obj in selected]
+    if selected: bpy.context.view_layer.objects.active = selected[0]
+    offset = Matrix.Translation(-Vector(origin)) if origin is not None else None
+    restore = [(obj, obj.matrix_world.copy()) for obj in selected or []]
+    if offset is not None: [setattr(obj, "matrix_world", offset @ obj.matrix_world) for obj in selected or []]
     bpy.ops.export_scene.gltf(
         filepath=str(OUTPUT / filename), export_format="GLB",
-        use_selection=False, export_apply=False, export_yup=False)
+        use_selection=selected is not None, export_apply=False, export_yup=False)
+    [setattr(obj, "matrix_world", matrix) for obj, matrix in restore]
 
 
 def build_forklift():
@@ -185,6 +193,28 @@ def build_forklift():
     box("forklift_beacon", (-0.02, 0.0, 1.165),
         (0.075, 0.075, 0.03), amber, 0.009)
     export_glb("forklift.glb")
+
+    # The complete actor remains a fallback, while these authored modules bind
+    # to MuJoCo child-body poses. Each export is translated into its link pivot
+    # once, so the renderer does not add draw-time offsets.
+    objects = list(bpy.context.scene.objects)
+    drive_all = [obj for obj in objects if obj.name.startswith("forklift_front_drive_")]
+    drive = [obj for obj in drive_all if obj.name.endswith("_left")]
+    steer_all = [obj for obj in objects if obj.name.startswith("forklift_rear_steer_")]
+    steer = [obj for obj in steer_all if obj.name.endswith("_left")]
+    mast = [obj for obj in objects if obj.name.startswith((
+        "forklift_mast_", "forklift_inner_mast_"))]
+    carriage = [obj for obj in objects if obj.name == "forklift_carriage"]
+    fork_all = [obj for obj in objects if obj.name.startswith("forklift_fork_")]
+    fork = [obj for obj in fork_all if obj.name.endswith("_left")]
+    modules = set(drive_all + steer_all + mast + carriage + fork_all)
+    base = [obj for obj in objects if obj not in modules]
+    export_glb("forklift_base.glb", base, (0.0, 0.0, 0.0))
+    export_glb("forklift_drive_wheel.glb", drive, (0.28, 0.304, 0.165))
+    export_glb("forklift_steer_wheel.glb", steer, (-0.30, 0.304, 0.135))
+    export_glb("forklift_mast.glb", mast, (0.47, 0.0, 0.0))
+    export_glb("forklift_carriage.glb", carriage, (0.57, 0.0, 0.40))
+    export_glb("forklift_fork.glb", fork, (0.875, 0.17, 0.075))
 
 
 def create_worker_rig():

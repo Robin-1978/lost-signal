@@ -39,17 +39,31 @@ void capture_presentation(const world::World& world,
  arm_links + std::max(0, arm_link_count));
  world::ActorPoseViz actor_poses[64];
  const int actor_pose_count = world.actor_poses(actor_poses, 64);
+ world::ActorLinkViz actor_links[512];
+ const int actor_link_count = world.actor_links(actor_links, 512);
  snapshot.com_x_m = world.system_com_relative_x_m();
  snapshot.com_y_m = world.system_com_relative_y_m();
  snapshot.com_z_m = world.system_com_relative_z_m();
  snapshot.actors.reserve(world.actors().size());
  std::size_t actor_index = 0;
  for (const auto& actor : world.actors()) {
- snapshot.actors.push_back({actor.x, actor.y, actor.vx_mps, actor.vy_mps,
- actor.radius_m, actor.height_m,
- actor.visual_kind == "pedestrian",
- actor_index < static_cast<std::size_t>(std::max(0, actor_pose_count))
- ? actor_poses[actor_index] : world::ActorPoseViz{}});
+ eval::ActorPresentationState presented;
+ presented.x_m = actor.x;
+ presented.y_m = actor.y;
+ presented.vx_mps = actor.vx_mps;
+ presented.vy_mps = actor.vy_mps;
+ presented.radius_m = actor.radius_m;
+ presented.height_m = actor.height_m;
+ presented.pedestrian = actor.visual_kind == "pedestrian";
+ presented.pose = actor_index <
+ static_cast<std::size_t>(std::max(0, actor_pose_count))
+ ? actor_poses[actor_index] : world::ActorPoseViz{};
+ for (int link_index = 0; link_index < actor_link_count; ++link_index) {
+ if (actor_links[link_index].actor_index == actor_index) {
+ presented.links.push_back(actor_links[link_index]);
+ }
+ }
+ snapshot.actors.push_back(std::move(presented));
  ++actor_index;
  }
  snapshot.impact = world.impact();

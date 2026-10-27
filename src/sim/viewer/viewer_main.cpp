@@ -45,10 +45,12 @@
 #include "sim/viewer/view_transform.hpp"
 #include "sim/viewer/viewer_audio.hpp"
 #include "sim/world/actor_behavior.hpp"
+#include "sim/world/mujoco_backend.hpp"
 #include "sim/world/terrain.hpp"
 
 namespace {
 using lost_signal::sim::viewer::Frame;
+using lost_signal::sim::viewer::FrameActor;
 using lost_signal::sim::viewer::FrameBody;
 using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::FramePlace;
@@ -73,6 +75,7 @@ using lost_signal::sim::viewer::SurfaceTraceSystem;
 using lost_signal::sim::viewer::ReviewKeyframe;
 using lost_signal::sim::viewer::SceneInstance;
 using lost_signal::sim::viewer::SceneManifest;
+using lost_signal::sim::world::ActorLinkKind;
 
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
@@ -270,6 +273,18 @@ struct VisualAssets {
  const AssetDefinition* track_definition = nullptr;
  Model forklift{};
  const AssetDefinition* forklift_definition = nullptr;
+ Model forklift_base{};
+ const AssetDefinition* forklift_base_definition = nullptr;
+ Model forklift_drive_wheel{};
+ const AssetDefinition* forklift_drive_wheel_definition = nullptr;
+ Model forklift_steer_wheel{};
+ const AssetDefinition* forklift_steer_wheel_definition = nullptr;
+ Model forklift_mast{};
+ const AssetDefinition* forklift_mast_definition = nullptr;
+ Model forklift_carriage{};
+ const AssetDefinition* forklift_carriage_definition = nullptr;
+ Model forklift_fork{};
+ const AssetDefinition* forklift_fork_definition = nullptr;
  Model worker{};
  const AssetDefinition* worker_definition = nullptr;
  ModelAnimation* worker_animations = nullptr;
@@ -602,6 +617,21 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  "robots.ro3.track", assets.track_definition);
  assets.forklift = load_manifest_model(models_root, assets.manifest,
  "actors.forklift", assets.forklift_definition);
+ assets.forklift_base = load_manifest_model(models_root, assets.manifest,
+ "actors.forklift_base", assets.forklift_base_definition);
+ assets.forklift_drive_wheel = load_manifest_model(
+ models_root, assets.manifest, "actors.forklift_drive_wheel",
+ assets.forklift_drive_wheel_definition);
+ assets.forklift_steer_wheel = load_manifest_model(
+ models_root, assets.manifest, "actors.forklift_steer_wheel",
+ assets.forklift_steer_wheel_definition);
+ assets.forklift_mast = load_manifest_model(models_root, assets.manifest,
+ "actors.forklift_mast", assets.forklift_mast_definition);
+ assets.forklift_carriage = load_manifest_model(
+ models_root, assets.manifest, "actors.forklift_carriage",
+ assets.forklift_carriage_definition);
+ assets.forklift_fork = load_manifest_model(models_root, assets.manifest,
+ "actors.forklift_fork", assets.forklift_fork_definition);
  assets.worker = load_manifest_model(models_root, assets.manifest,
  "actors.worker", assets.worker_definition);
  if (model_ready(assets.worker) && assets.worker_definition != nullptr &&
@@ -647,6 +677,12 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  log_model_bounds("caster_wheel", assets.caster_wheel);
  log_model_bounds("track", assets.track);
  log_model_bounds("forklift", assets.forklift);
+ log_model_bounds("forklift_base", assets.forklift_base);
+ log_model_bounds("forklift_drive_wheel", assets.forklift_drive_wheel);
+ log_model_bounds("forklift_steer_wheel", assets.forklift_steer_wheel);
+ log_model_bounds("forklift_mast", assets.forklift_mast);
+ log_model_bounds("forklift_carriage", assets.forklift_carriage);
+ log_model_bounds("forklift_fork", assets.forklift_fork);
  log_model_bounds("worker", assets.worker);
  const auto shader_root = base / "shaders";
  if (std::filesystem::is_regular_file(shader_root / "scene_lighting.vs") &&
@@ -763,6 +799,12 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  bind_lighting(assets.caster_wheel, assets.lighting);
  bind_lighting(assets.track, assets.lighting);
  bind_lighting(assets.forklift, assets.lighting);
+ bind_lighting(assets.forklift_base, assets.lighting);
+ bind_lighting(assets.forklift_drive_wheel, assets.lighting);
+ bind_lighting(assets.forklift_steer_wheel, assets.lighting);
+ bind_lighting(assets.forklift_mast, assets.lighting);
+ bind_lighting(assets.forklift_carriage, assets.lighting);
+ bind_lighting(assets.forklift_fork, assets.lighting);
  bind_lighting(assets.worker, assets.lighting);
  for (auto& environment : assets.environment) {
  bind_lighting(environment.model, assets.lighting);
@@ -776,6 +818,12 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  model_ready(assets.lidar) || model_ready(assets.caster_fork) ||
  model_ready(assets.caster_wheel) ||
  model_ready(assets.track) || model_ready(assets.forklift) ||
+ model_ready(assets.forklift_base) ||
+ model_ready(assets.forklift_drive_wheel) ||
+ model_ready(assets.forklift_steer_wheel) ||
+ model_ready(assets.forklift_mast) ||
+ model_ready(assets.forklift_carriage) ||
+ model_ready(assets.forklift_fork) ||
  model_ready(assets.worker) || !assets.environment.empty();
 }
 
@@ -797,6 +845,15 @@ void unload_visual_assets(VisualAssets& assets) {
  if (model_ready(assets.caster_wheel)) UnloadModel(assets.caster_wheel);
  if (model_ready(assets.track)) UnloadModel(assets.track);
  if (model_ready(assets.forklift)) UnloadModel(assets.forklift);
+ if (model_ready(assets.forklift_base)) UnloadModel(assets.forklift_base);
+ if (model_ready(assets.forklift_drive_wheel))
+ UnloadModel(assets.forklift_drive_wheel);
+ if (model_ready(assets.forklift_steer_wheel))
+ UnloadModel(assets.forklift_steer_wheel);
+ if (model_ready(assets.forklift_mast)) UnloadModel(assets.forklift_mast);
+ if (model_ready(assets.forklift_carriage))
+ UnloadModel(assets.forklift_carriage);
+ if (model_ready(assets.forklift_fork)) UnloadModel(assets.forklift_fork);
  if (model_ready(assets.worker)) UnloadModel(assets.worker);
  if (assets.worker_animations != nullptr) {
  UnloadModelAnimations(assets.worker_animations,
@@ -1063,6 +1120,104 @@ void draw_actor_model_physical(const Model& model,
  static_cast<float>(-world_pose.y_m)};
  draw_model_quaternion(model, position, link_rotation(world_pose, true),
  {scale, scale, scale}, WHITE);
+}
+
+// Component assets are authored in their MuJoCo link frame. Unlike a whole
+// actor asset, their lowest vertex is not necessarily the ground contact, so
+// grounding them by mesh bounds would move a chassis or mast by its visual
+// clearance. The manifest pivot/translation and the live link pose are the
+// complete placement contract.
+void draw_component_model_physical(const Model& model,
+ const AssetDefinition& definition, const FrameLinkPose& link_pose,
+ double actor_radius_m) {
+ if (!model_ready(model) || !link_pose.valid ||
+ !(definition.reference_radius_m > 0.0)) return;
+ const float scale = static_cast<float>(actor_radius_m /
+ std::max(1e-3, definition.reference_radius_m));
+ draw_model_quaternion(model, link_position(link_pose),
+ link_rotation(link_pose, true), {scale, scale, scale}, WHITE);
+}
+
+struct ForkliftRenderParts {
+ const Model* base = nullptr;
+ const AssetDefinition* base_definition = nullptr;
+ const Model* drive_wheel = nullptr;
+ const AssetDefinition* drive_wheel_definition = nullptr;
+ const Model* steer_wheel = nullptr;
+ const AssetDefinition* steer_wheel_definition = nullptr;
+ const Model* mast = nullptr;
+ const AssetDefinition* mast_definition = nullptr;
+ const Model* carriage = nullptr;
+ const AssetDefinition* carriage_definition = nullptr;
+ const Model* fork = nullptr;
+ const AssetDefinition* fork_definition = nullptr;
+};
+
+ForkliftRenderParts forklift_render_parts(const VisualAssets& assets) {
+ return {&assets.forklift_base, assets.forklift_base_definition,
+  &assets.forklift_drive_wheel, assets.forklift_drive_wheel_definition,
+  &assets.forklift_steer_wheel, assets.forklift_steer_wheel_definition,
+  &assets.forklift_mast, assets.forklift_mast_definition,
+  &assets.forklift_carriage, assets.forklift_carriage_definition,
+  &assets.forklift_fork, assets.forklift_fork_definition};
+}
+
+std::pair<const Model*, const AssetDefinition*>
+forklift_link_asset(const ForkliftRenderParts& parts, std::uint8_t raw_kind) {
+ const std::pair<const Model*, const AssetDefinition*> kMissing{
+ nullptr, nullptr};
+ const ActorLinkKind kind = static_cast<ActorLinkKind>(raw_kind);
+ switch (kind) {
+ case ActorLinkKind::kForkliftDriveWheelLeft:
+ case ActorLinkKind::kForkliftDriveWheelRight: {
+ return {parts.drive_wheel, parts.drive_wheel_definition};
+ }
+ case ActorLinkKind::kForkliftSteerWheelLeft:
+ case ActorLinkKind::kForkliftSteerWheelRight: {
+ return {parts.steer_wheel, parts.steer_wheel_definition};
+ }
+ case ActorLinkKind::kForkliftMast: {
+ return {parts.mast, parts.mast_definition};
+ }
+ case ActorLinkKind::kForkliftCarriage: {
+ return {parts.carriage, parts.carriage_definition};
+ }
+ case ActorLinkKind::kForkliftForkLeft:
+ case ActorLinkKind::kForkliftForkRight: {
+ return {parts.fork, parts.fork_definition};
+ }
+ }
+ return kMissing;
+}
+
+bool forklift_parts_ready(const ForkliftRenderParts& parts) {
+ const auto ready = [](const Model* model,
+  const AssetDefinition* definition) {
+ return model != nullptr && definition != nullptr && model_ready(*model);
+ };
+ return ready(parts.base, parts.base_definition) &&
+ ready(parts.drive_wheel, parts.drive_wheel_definition) &&
+ ready(parts.steer_wheel, parts.steer_wheel_definition) &&
+ ready(parts.mast, parts.mast_definition) &&
+ ready(parts.carriage, parts.carriage_definition) &&
+ ready(parts.fork, parts.fork_definition);
+}
+
+void draw_forklift_parts(const FrameActor& actor,
+ const ForkliftRenderParts& parts, double ground_z_m) {
+ if (!forklift_parts_ready(parts) || !actor.world_pose.valid ||
+ actor.links.empty()) return;
+ draw_component_model_physical(*parts.base, *parts.base_definition,
+ actor.world_pose, actor.radius_m);
+ for (const auto& link : actor.links) {
+ if (!link.valid || !link.pose.valid) continue;
+ const auto& asset = forklift_link_asset(parts, link.kind);
+ if (asset.first == nullptr || asset.second == nullptr ||
+ !model_ready(*asset.first)) continue;
+ draw_component_model_physical(*asset.first, *asset.second, link.pose,
+ actor.radius_m);
+ }
+ (void)ground_z_m;
 }
 
 // Wheel GLBs are authored at a reference size (RO-1 uses a 100 mm radius
@@ -2993,7 +3148,16 @@ void draw_frame_3d(const Frame& f,
  actor_definition = a.pedestrian ? assets->worker_definition
  : assets->forklift_definition;
  }
- if (actor_model != nullptr && model_ready(*actor_model) &&
+ bool drew_modular_forklift = false;
+ if (!a.pedestrian && assets != nullptr && a.world_pose.valid) {
+ const ForkliftRenderParts parts = forklift_render_parts(*assets);
+ if (forklift_parts_ready(parts) && !a.links.empty()) {
+ draw_forklift_parts(a, parts, ground_z);
+ drew_modular_forklift = true;
+ }
+ }
+ if (!drew_modular_forklift && actor_model != nullptr &&
+ model_ready(*actor_model) &&
  actor_definition != nullptr) {
  if (a.pedestrian && assets != nullptr &&
  assets->worker_animations != nullptr &&

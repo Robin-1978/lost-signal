@@ -34,7 +34,7 @@
         ]
       },
       "reference_radius_m": 0.45,
-      "content_hash": "fnv1a64:c0a983dcdc853336",
+      "content_hash": "fnv1a64:11627db598361cae",
       "license": "CC0-1.0",
       "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
       "pivot_semantic": "actor_root",
@@ -101,7 +101,7 @@
         ]
       },
       "reference_radius_m": 0.25,
-      "content_hash": "fnv1a64:0378d57727c1f042",
+      "content_hash": "fnv1a64:75a4159790bc267a",
       "license": "CC0-1.0",
       "source_artifact": "tools/modeling/build_actor_assets.py:build_worker",
       "pivot_semantic": "actor_root",
@@ -133,10 +133,401 @@
       "triangle_budget": 3000,
       "material_budget": 9,
       "skeleton_root": "worker_rig",
- "animation_stride_m": 0.72,
+      "animation_stride_m": 0.72,
       "animation_clips": [
         "WorkerWalk"
       ]
+    },
+    {
+      "asset_id": "actors.forklift_base",
+      "version": 1,
+      "kind": "actor_link",
+      "path": "actors/forklift_base.glb",
+      "source": "modular forklift actor authored by tools/modeling/build_actor_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0.1
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.56,
+          -0.322,
+          0.1
+        ],
+        "max": [
+          0.42,
+          0.31,
+          1.18
+        ]
+      },
+      "reference_radius_m": 0.65,
+      "content_hash": "fnv1a64:9cf0d49cf2b5d991",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
+      "pivot_semantic": "actor_root",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0.1
+      ],
+      "link_binding": "forklift_base_link",
+      "grounding_points_m": [
+        [
+          0,
+          0,
+          0.1
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "rubber",
+        "glass",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "actors/forklift_base.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 2200,
+      "material_budget": 8,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "actors.forklift_drive_wheel",
+      "version": 1,
+      "kind": "actor_link",
+      "path": "actors/forklift_drive_wheel.glb",
+      "source": "modular forklift actor authored by tools/modeling/build_actor_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "+Y",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.165,
+          -0.05,
+          -0.165
+        ],
+        "max": [
+          0.165,
+          0.046,
+          0.165
+        ]
+      },
+      "reference_radius_m": 0.65,
+      "content_hash": "fnv1a64:7d060c634d527b94",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
+      "pivot_semantic": "forklift_drive_wheel_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "forklift_drive_wheel_link",
+      "grounding_points_m": [
+        [
+          0,
+          0,
+          -0.165
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "actors/forklift_drive_wheel.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 500,
+      "material_budget": 3,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "actors.forklift_steer_wheel",
+      "version": 1,
+      "kind": "actor_link",
+      "path": "actors/forklift_steer_wheel.glb",
+      "source": "modular forklift actor authored by tools/modeling/build_actor_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "+Y",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.135,
+          -0.05,
+          -0.135
+        ],
+        "max": [
+          0.135,
+          0.046,
+          0.135
+        ]
+      },
+      "reference_radius_m": 0.65,
+      "content_hash": "fnv1a64:1ca2a1dde7d1a0e6",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
+      "pivot_semantic": "forklift_steer_wheel_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "forklift_steer_wheel_link",
+      "grounding_points_m": [
+        [
+          0,
+          0,
+          -0.135
+        ]
+      ],
+      "material_roles": [
+        "rubber",
+        "metal"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "actors/forklift_steer_wheel.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 500,
+      "material_budget": 3,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "actors.forklift_mast",
+      "version": 1,
+      "kind": "actor_link",
+      "path": "actors/forklift_mast.glb",
+      "source": "modular forklift actor authored by tools/modeling/build_actor_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0.1
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.0375,
+          -0.255,
+          0.1
+        ],
+        "max": [
+          0.08,
+          0.255,
+          1.16
+        ]
+      },
+      "reference_radius_m": 0.65,
+      "content_hash": "fnv1a64:c781808592005d22",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
+      "pivot_semantic": "forklift_mast_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0.1
+      ],
+      "link_binding": "forklift_mast_link",
+      "grounding_points_m": [
+        [
+          0,
+          0,
+          0.1
+        ]
+      ],
+      "material_roles": [
+        "painted_metal",
+        "glass",
+        "emissive"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "actors/forklift_mast.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 700,
+      "material_budget": 4,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "actors.forklift_carriage",
+      "version": 1,
+      "kind": "actor_link",
+      "path": "actors/forklift_carriage.glb",
+      "source": "modular forklift actor authored by tools/modeling/build_actor_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.04,
+          -0.25,
+          -0.11
+        ],
+        "max": [
+          0.04,
+          0.25,
+          0.11
+        ]
+      },
+      "reference_radius_m": 0.65,
+      "content_hash": "fnv1a64:25428af92e6c929e",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
+      "pivot_semantic": "forklift_carriage_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "forklift_carriage_link",
+      "grounding_points_m": [
+        [
+          0,
+          0,
+          -0.11
+        ]
+      ],
+      "material_roles": [
+        "painted_metal"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "actors/forklift_carriage.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 150,
+      "material_budget": 2,
+      "animation_clips": []
+    },
+    {
+      "asset_id": "actors.forklift_fork",
+      "version": 1,
+      "kind": "actor_link",
+      "path": "actors/forklift_fork.glb",
+      "source": "modular forklift actor authored by tools/modeling/build_actor_assets.py",
+      "meters_per_unit": 1,
+      "up_axis": "+Z",
+      "forward_axis": "+X",
+      "axle_axis": "",
+      "pivot_m": [
+        0,
+        0,
+        0
+      ],
+      "asset_to_link_rpy_rad": [
+        0,
+        0,
+        0
+      ],
+      "expected_bounds_m": {
+        "min": [
+          -0.3225,
+          -0.0375,
+          -0.0375
+        ],
+        "max": [
+          0.3,
+          0.0375,
+          0.35
+        ]
+      },
+      "reference_radius_m": 0.65,
+      "content_hash": "fnv1a64:03bd016234a6cc5b",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
+      "pivot_semantic": "forklift_fork_link",
+      "asset_to_link_translation_m": [
+        0,
+        0,
+        0
+      ],
+      "link_binding": "forklift_fork_link",
+      "grounding_points_m": [
+        [
+          0,
+          0,
+          -0.0375
+        ]
+      ],
+      "material_roles": [
+        "painted_metal"
+      ],
+      "lods": [
+        {
+          "level": 0,
+          "path": "actors/forklift_fork.glb",
+          "maximum_distance_m": 0
+        }
+      ],
+      "triangle_budget": 300,
+      "material_budget": 2,
+      "animation_clips": []
     },
     {
       "asset_id": "environment.research_base.cable_reel",

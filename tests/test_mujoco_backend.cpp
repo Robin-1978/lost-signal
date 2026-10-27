@@ -157,6 +157,39 @@ int main() {
  assert(std::abs(poses[0].z_m) < 1e-9);
  }
 
+ // Vehicle/forklift presentation modules are fixed child bodies in the
+ // compiled MuJoCo actor tree. Their poses follow the mocap root, while the
+ // root cylinder remains the only collision proxy and ROBOT sees none of this
+ // SIM-only table. "vehicle" is the legacy sidecar spelling used by the
+ // teaching worlds; "forklift" is accepted as the explicit spelling too.
+ {
+ sim::world::World w = make_mujoco_diff();
+ sim::world::Actor actor;
+ actor.x = -1.2;
+ actor.y = 0.7;
+ actor.height_m = 2.2;
+ actor.radius_m = 0.65;
+ actor.visual_kind = "vehicle";
+ w.add_actor(actor);
+ set_diff_duty(w, 0.0);
+ w.prepare();
+ sim::world::ActorLinkViz links[16];
+ assert(w.actor_links(links, 16) == 8);
+ for (int i = 0; i < 8; ++i) {
+ assert(links[i].valid && links[i].pose.valid);
+ assert(links[i].actor_index == 0);
+ assert(std::isfinite(links[i].pose.x_m));
+ assert(std::isfinite(links[i].pose.y_m));
+ assert(std::isfinite(links[i].pose.z_m));
+ }
+ // The left/right drive pair is authored symmetrically around the actor
+ // root, so a yaw-zero spawn keeps their world x coordinate equal and
+ // separates them by the declared 0.608 m track.
+ assert(std::abs(links[0].pose.x_m - links[1].pose.x_m) < 1e-9);
+ assert(std::abs(std::abs(links[0].pose.y_m - links[1].pose.y_m) - 0.608) <
+ 1e-9);
+ }
+
  // A configured arm is a real MuJoCo articulated chain. The presentation
  // table exposes each link body and joint axis without adding arm truth to
  // the robot-facing chassis contract.

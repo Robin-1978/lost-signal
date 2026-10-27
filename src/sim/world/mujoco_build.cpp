@@ -388,7 +388,9 @@ void MujocoBackend::sync(const MotorParams& motor,
   ready_ = false;
  actor_body_.clear();
  actor_mocap_.clear();
+ actor_link_binding_.clear();
  actor_pose_count_ = 0;
+ actor_link_pose_count_ = 0;
  arm_link_count_ = 0;
  for (int i = 0; i < 4; ++i) {
  arm_link_body_[i] = -1;
@@ -1186,6 +1188,17 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
  // Dynamic actors are kinematic MuJoCo bodies. Their geometry participates
  // in contact resolution, while World owns the deterministic behaviour and
  // updates the mocap poses between fixed quanta.
+ const auto add_actor_visual_link = [&](mjsBody* parent,
+ const std::string& name, double x, double y, double z,
+ mjtGeom type, double sx, double sy, double sz) {
+ mjsBody* link = add_body(parent, name, x, y, z);
+ mjsGeom* visual = add_geom(link, name + "_visual", type, sx, sy, sz, 3);
+ visual->mass = 0.0;
+ visual->density = 0.0;
+ visual->contype = 0;
+ visual->conaffinity = 0;
+ return link;
+ };
  for (std::size_t ai = 0; ai < actors.size(); ++ai) {
  const Actor& actor = actors[ai];
  mjsBody* body = add_body(world, "actor" + std::to_string(ai), 0.0, 0.0,
@@ -1204,6 +1217,33 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
  geom->friction[0] = kFloorSlidingFriction;
  geom->friction[1] = 0.01;
  geom->friction[2] = 0.001;
+ const bool forklift_actor = actor.visual_kind == "forklift" ||
+ actor.visual_kind == "vehicle";
+ if (forklift_actor) {
+ // These link frames are the canonical forklift asset contract: the root
+ // remains the actor collision proxy, while every visible module is a real
+ // child body whose world pose follows the mocap root in MuJoCo.
+ const std::string prefix = "actor" + std::to_string(ai) + "_forklift_";
+ add_actor_visual_link(body, prefix + "drive_left", 0.28, 0.304, 0.165,
+ mjGEOM_CYLINDER, 0.165, 0.045, 0.0);
+ add_actor_visual_link(body, prefix + "drive_right", 0.28, -0.304, 0.165,
+ mjGEOM_CYLINDER, 0.165, 0.045, 0.0);
+ add_actor_visual_link(body, prefix + "steer_left", -0.30, 0.304, 0.135,
+ mjGEOM_CYLINDER, 0.135, 0.045, 0.0);
+ add_actor_visual_link(body, prefix + "steer_right", -0.30, -0.304, 0.135,
+ mjGEOM_CYLINDER, 0.135, 0.045, 0.0);
+ mjsBody* mast = add_actor_visual_link(body, prefix + "mast",
+ 0.47, 0.0, 0.0, mjGEOM_BOX, 0.075, 0.27, 0.63);
+ // A fixed child frame is still engine state; later lift/tilt joints can be
+ // added without changing the renderer's link-binding contract.
+ (void)mast;
+ add_actor_visual_link(body, prefix + "carriage", 0.57, 0.0, 0.40,
+ mjGEOM_BOX, 0.04, 0.25, 0.11);
+ add_actor_visual_link(body, prefix + "fork_left", 0.875, 0.17, 0.075,
+ mjGEOM_BOX, 0.30, 0.0375, 0.0375);
+ add_actor_visual_link(body, prefix + "fork_right", 0.875, -0.17, 0.075,
+ mjGEOM_BOX, 0.30, 0.0375, 0.0375);
+ }
  }
 
   mjModel* model = mj_compile(spec, nullptr);
@@ -1230,12 +1270,35 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
   impl_->data = data;
  actor_body_.reserve(actors.size());
  actor_mocap_.reserve(actors.size());
+ actor_link_binding_.clear();
  for (std::size_t ai = 0; ai < actors.size(); ++ai) {
  const std::string body_name = "actor" + std::to_string(ai);
  const int body_id = mj_name2id(model, mjOBJ_BODY, body_name.c_str());
  if (body_id < 0) continue;
  actor_body_.push_back(body_id);
  actor_mocap_.push_back(model->body_mocapid[body_id]);
+ const bool forklift_actor = actors[ai].visual_kind == "forklift" ||
+ actors[ai].visual_kind == "vehicle";
+ if (forklift_actor) {
+ const std::pair<const char*, ActorLinkKind> links[] = {
+ {"drive_left", ActorLinkKind::kForkliftDriveWheelLeft},
+ {"drive_right", ActorLinkKind::kForkliftDriveWheelRight},
+ {"steer_left", ActorLinkKind::kForkliftSteerWheelLeft},
+ {"steer_right", ActorLinkKind::kForkliftSteerWheelRight},
+ {"mast", ActorLinkKind::kForkliftMast},
+ {"carriage", ActorLinkKind::kForkliftCarriage},
+ {"fork_left", ActorLinkKind::kForkliftForkLeft},
+ {"fork_right", ActorLinkKind::kForkliftForkRight},
+ };
+ for (const auto& link : links) {
+ const std::string link_name = body_name + "_forklift_" + link.first;
+ const int link_body = mj_name2id(model, mjOBJ_BODY, link_name.c_str());
+ if (link_body >= 0) {
+ actor_link_binding_.push_back(
+ {static_cast<std::uint16_t>(ai), link.second, link_body});
+ }
+ }
+ }
  }
  if (motor.arm.enabled) {
  arm_link_count_ = 4;

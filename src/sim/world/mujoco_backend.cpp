@@ -76,6 +76,7 @@ void MujocoBackend::set_actor_poses(
  }
  mj_forward(impl_->model, impl_->data);
  read_actor_poses();
+ read_actor_links();
 }
 
 void MujocoBackend::read_back() {
@@ -283,6 +284,7 @@ void MujocoBackend::read_back() {
  }
  read_contacts();
  read_actor_poses();
+ read_actor_links();
 }
 
 void MujocoBackend::read_actor_poses() {
@@ -306,6 +308,34 @@ void MujocoBackend::read_actor_poses() {
  pose.qy = q[2];
  pose.qz = q[3];
  actor_pose_[actor_pose_count_++] = pose;
+ }
+}
+
+void MujocoBackend::read_actor_links() {
+ if (!valid()) return;
+ const mjModel* model = impl_->model;
+ const mjData* data = impl_->data;
+ actor_link_pose_count_ = 0;
+ for (const auto& binding : actor_link_binding_) {
+ if (actor_link_pose_count_ >= static_cast<int>(actor_link_pose_.size())) {
+ break;
+ }
+ if (binding.body_id < 0 || binding.body_id >= model->nbody) continue;
+ const mjtNum* p = data->xpos + 3 * binding.body_id;
+ const mjtNum* q = data->xquat + 4 * binding.body_id;
+ ActorLinkViz link;
+ link.valid = true;
+ link.actor_index = binding.actor_index;
+ link.kind = binding.kind;
+ link.pose.valid = true;
+ link.pose.x_m = p[0];
+ link.pose.y_m = p[1];
+ link.pose.z_m = p[2];
+ link.pose.qw = q[0];
+ link.pose.qx = q[1];
+ link.pose.qy = q[2];
+ link.pose.qz = q[3];
+ actor_link_pose_[actor_link_pose_count_++] = link;
  }
 }
 

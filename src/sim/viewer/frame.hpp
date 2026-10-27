@@ -267,6 +267,12 @@ struct FrameActor {
  FrameLinkPose world_pose;
   double height_m = 1.5;  // sensor cylinder height (vehicle 1.5, pedestrian 1.8)
   bool pedestrian = false;  // explicit SIM visual kind, never inferred by size
+ struct FrameActorLink {
+ bool valid = false;
+ std::uint8_t kind = 0;
+ FrameLinkPose pose;
+ };
+ std::vector<FrameActorLink> links;
 };
 
 // Anonymous ROBOT-side perception and prediction. These points are rebuilt

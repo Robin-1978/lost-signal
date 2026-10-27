@@ -40,6 +40,7 @@ struct ActorPresentationState {
  double height_m = 1.5;
  bool pedestrian = false;
  world::ActorPoseViz pose;
+ std::vector<world::ActorLinkViz> links;
 };
 
 struct PresentationSnapshot {

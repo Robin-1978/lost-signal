@@ -604,6 +604,15 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  fa.pedestrian = a.pedestrian;
  fa.world_pose = {a.pose.valid, a.pose.x_m, a.pose.y_m, a.pose.z_m,
  a.pose.qw, a.pose.qx, a.pose.qy, a.pose.qz};
+ for (const auto& physical : a.links) {
+ FrameActor::FrameActorLink link;
+ link.valid = physical.valid;
+ link.kind = static_cast<std::uint8_t>(physical.kind);
+ link.pose = {physical.pose.valid, physical.pose.x_m, physical.pose.y_m,
+ physical.pose.z_m, physical.pose.qw, physical.pose.qx,
+ physical.pose.qy, physical.pose.qz};
+ fa.links.push_back(link);
+ }
  if (a.pose.valid) {
  fa.heading_rad = std::atan2(2.0 * (a.pose.qw * a.pose.qz +
  a.pose.qx * a.pose.qy), 1.0 - 2.0 * (a.pose.qy * a.pose.qy +
@@ -614,6 +623,8 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  } else {
  world::ActorPoseViz actor_poses[64];
  const int actor_pose_count = world.actor_poses(actor_poses, 64);
+ world::ActorLinkViz actor_links[512];
+ const int actor_link_count = world.actor_links(actor_links, 512);
  std::size_t actor_index = 0;
  for (const auto& a : world.actors()) {
  FrameActor fa;
@@ -635,6 +646,16 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  pose.qx * pose.qy), 1.0 - 2.0 * (pose.qy * pose.qy +
  pose.qz * pose.qz));
  }
+ }
+ for (int link_index = 0; link_index < actor_link_count; ++link_index) {
+ if (actor_links[link_index].actor_index != actor_index) continue;
+ FrameActor::FrameActorLink link;
+ link.valid = actor_links[link_index].valid;
+ link.kind = static_cast<std::uint8_t>(actor_links[link_index].kind);
+ const auto& pose = actor_links[link_index].pose;
+ link.pose = {pose.valid, pose.x_m, pose.y_m, pose.z_m,
+ pose.qw, pose.qx, pose.qy, pose.qz};
+ fa.links.push_back(link);
  }
  f.actors.push_back(fa);
  ++actor_index;

@@ -90,6 +90,27 @@ struct ActorPoseViz {
  double qw = 1.0, qx = 0.0, qy = 0.0, qz = 0.0;
 };
 
+// SIM-only articulated presentation links for dynamic actors. The root actor
+// geometry remains the collision proxy; these fixed visual bodies expose the
+// authored forklift part frames directly from MuJoCo for later GLB binding.
+enum class ActorLinkKind : std::uint8_t {
+ kForkliftDriveWheelLeft,
+ kForkliftDriveWheelRight,
+ kForkliftSteerWheelLeft,
+ kForkliftSteerWheelRight,
+ kForkliftMast,
+ kForkliftCarriage,
+ kForkliftForkLeft,
+ kForkliftForkRight,
+};
+
+struct ActorLinkViz {
+ bool valid = false;
+ std::uint16_t actor_index = 0;
+ ActorLinkKind kind = ActorLinkKind::kForkliftMast;
+ LinkPoseViz pose;
+};
+
 struct ArmLinkViz {
  bool valid = false;
  LinkPoseViz pose;
@@ -359,6 +380,12 @@ class MujocoBackend {
  for (int i = 0; i < n; ++i) out[i] = actor_pose_[i];
  return n;
  }
+ int actor_links(ActorLinkViz* out, int cap) const {
+ if (out == nullptr || cap <= 0) return 0;
+ const int n = std::min(cap, actor_link_pose_count_);
+ for (int i = 0; i < n; ++i) out[i] = actor_link_pose_[i];
+ return n;
+ }
  int arm_links(ArmLinkViz* out, int cap) const {
  if (out == nullptr || cap <= 0) return 0;
  const int n = std::min(cap, arm_link_count_);
@@ -401,6 +428,7 @@ class MujocoBackend {
   void read_back();
  void read_contacts();
  void read_actor_poses();
+ void read_actor_links();
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
@@ -479,6 +507,12 @@ class MujocoBackend {
  int arm_link_count_ = 0;
  std::vector<int> actor_body_;
  std::vector<int> actor_mocap_;
+ struct ActorLinkBinding {
+  std::uint16_t actor_index = 0;
+  ActorLinkKind kind = ActorLinkKind::kForkliftMast;
+  int body_id = -1;
+ };
+ std::vector<ActorLinkBinding> actor_link_binding_;
   // Tire geom ids per drive wheel (per-step friction writes, -1 unset).
   int tire_geom_[4] = {-1, -1, -1, -1};
   // Idler tire geom ids (per-step zone follow, same doctrine as drives —
@@ -552,6 +586,8 @@ class MujocoBackend {
  int contact_viz_count_ = 0;
  std::array<ActorPoseViz, 64> actor_pose_{};
  int actor_pose_count_ = 0;
+ std::array<ActorLinkViz, 512> actor_link_pose_{};
+ int actor_link_pose_count_ = 0;
 };
 
 #else  // !LOST_SIGNAL_WITH_MUJOCO
@@ -604,6 +640,7 @@ class MujocoBackend {
  int joint_axes(JointAxisViz*, int) const { return 0; }
  int contacts(ContactViz*, int) const { return 0; }
  int actor_poses(ActorPoseViz*, int) const { return 0; }
+ int actor_links(ActorLinkViz*, int) const { return 0; }
  int arm_links(ArmLinkViz*, int) const { return 0; }
  double arm_angle(int) const { return 0.0; }
  double arm_radps(int) const { return 0.0; }

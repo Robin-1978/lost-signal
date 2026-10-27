@@ -211,4 +211,24 @@
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
-| 7. 模型与场景升级 | 进行中 | `525116c`, `53bd9cf`, `d9cebd6` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk` 和回放契约已完成；叉车 link 拆分、Blender 环境资产和最终视觉/Release 验收待完成 |
+| 7. 模型与场景升级 | 进行中 | `525116c`, `53bd9cf`, `d9cebd6` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk` 和回放契约已完成；叉车 link 拆分已完成于工作区，Blender 环境资产和最终视觉/Release 验收待完成 |
+
+### 阶段 7 叉车 link 子阶段（工作区验收，待提交）
+
+- Blender 5.2.2 重新导出了完整叉车和六个可复用分部件 GLB：base、drive
+  wheel、steer wheel、mast、carriage、fork。每个文件的单位、轴、pivot、
+  grounding point、bounds、材质/三角形预算和 FNV-1a 内容哈希均进入 manifest；
+  `inspect_assets.py` 在 50 个资产上通过。
+- MuJoCo 将 `vehicle`（兼容既有 sidecar）和显式 `forklift` actor 的可视
+  部件作为 root 的 SIM-only child body，`World::actor_links()` 读取真实 body
+  pose。root collision proxy 不变，actor link 表没有进入 ROBOT observation、
+  decision 或 actuation。
+- Frame/episode 保存 link pose，Viewer 加载分部件并按各自 manifest 的
+  `asset_to_link` 变换和 MuJoCo link quaternion 绘制；只有缺少完整分部件时才
+  回退到完整 forklift GLB。component 不再用最低顶点自动落地，避免 chassis/mast
+  clearance 被错误压低；整体 actor 仍由真实 root pose 和 terrain anchor 放置。
+- 定向验收：`test_mujoco_backend`、`test_viewer_frame`、`test_asset_manifest`
+  和 Blender 资产检查通过；`sim_viewer --3d --map
+  configs/worlds/signal_town.json --mute --shot 120 ...` 成功加载全部分部件、
+  WorkerWalk 和 3D 渲染。下一步是提交该子阶段，然后扩展环境资产和最终 Release
+  视觉/碰撞验收。

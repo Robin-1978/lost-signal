@@ -344,6 +344,9 @@ class World {
  int actor_poses(ActorPoseViz* out, int cap) const {
  return mujoco_.actor_poses(out, cap);
  }
+ int actor_links(ActorLinkViz* out, int cap) const {
+ return mujoco_.actor_links(out, cap);
+ }
  int arm_links(ArmLinkViz* out, int cap) const {
  return mujoco_.arm_links(out, cap);
  }
