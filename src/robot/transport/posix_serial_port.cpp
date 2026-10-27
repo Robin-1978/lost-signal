@@ -1,11 +1,11 @@
-#include "posix_serial_port.hpp"
+#include "robot/transport/posix_serial_port.hpp"
 
 #include <cerrno>
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
 
-namespace lost_signal::examples::serial_sensor {
+namespace lost_signal::robot::transport::serial_sensor {
 namespace {
 
 speed_t to_speed(int baud) {
@@ -70,4 +70,4 @@ int PosixSerialPort::read(std::uint8_t* destination, std::size_t capacity) {
  return -1;
 }
 
-} // namespace lost_signal::examples::serial_sensor
+} // namespace lost_signal::robot::transport::serial_sensor

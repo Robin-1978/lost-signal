@@ -7,7 +7,7 @@
 
 #include "robot/transport/ring_buffer.hpp"
 
-namespace lost_signal::examples::serial_sensor {
+namespace lost_signal::robot::transport::serial_sensor {
 
 inline constexpr std::uint16_t kWireVersion = 1;
 inline constexpr std::size_t kMaxPayloadBytes = 4096;
@@ -89,7 +89,7 @@ class SerialFrameDecoder {
  std::size_t buffered_bytes() const { return rx_.size(); }
 
  private:
- lost_signal::robot::transport::RingBuffer rx_;
+ RingBuffer rx_;
  std::array<std::uint8_t, kMaxFrameBytes> frame_{};
  std::uint32_t boot_ids_[3] = {};
  std::uint64_t last_sequences_[3] = {};
@@ -103,4 +103,4 @@ DecodeStatus decode_joints(const SerialPacket& packet,
  const SerialSensorConfig& config,
  JointsMeasurement& out);
 
-} // namespace lost_signal::examples::serial_sensor
+} // namespace lost_signal::robot::transport::serial_sensor

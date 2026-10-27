@@ -1,9 +1,9 @@
-#include "serial_protocol.hpp"
+#include "robot/transport/serial_sensor_protocol.hpp"
 
 #include <cmath>
 #include <cstring>
 
-namespace lost_signal::examples::serial_sensor {
+namespace lost_signal::robot::transport::serial_sensor {
 namespace {
 
 constexpr std::uint8_t kMagic[3] = {0x16, 0x4e, 0x54};
@@ -239,4 +239,4 @@ DecodeStatus decode_joints(const SerialPacket& packet,
  return DecodeStatus::kAccepted;
 }
 
-} // namespace lost_signal::examples::serial_sensor
+} // namespace lost_signal::robot::transport::serial_sensor

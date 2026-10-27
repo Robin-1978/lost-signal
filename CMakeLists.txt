@@ -25,6 +25,17 @@ add_library(lost_signal_robot_iface STATIC
 target_include_directories(lost_signal_robot_iface PUBLIC src)
 target_link_libraries(lost_signal_robot_iface PUBLIC lost_signal_robot_core)
 
+# Reusable native transport boundary. It contains no SIM or rendering code;
+# board-specific firmware and wiring stay under examples/.
+add_library(lost_signal_robot_transport STATIC
+ src/robot/transport/ring_buffer.cpp
+ src/robot/transport/serial_sensor_protocol.cpp
+ src/robot/transport/serial_observation_adapter.cpp
+ src/robot/transport/posix_serial_port.cpp
+)
+target_include_directories(lost_signal_robot_transport PUBLIC src)
+target_link_libraries(lost_signal_robot_transport PUBLIC lost_signal_robot_iface)
+
 add_library(lost_signal_robot_control STATIC
   src/robot/control/pid.cpp
   src/robot/control/feedforward.cpp
@@ -154,6 +165,7 @@ target_link_libraries(lost_signal_robot_stack INTERFACE
   lost_signal_robot_robots
   lost_signal_robot_providers
   lost_signal_robot_control
+ lost_signal_robot_transport
 )
 
 # Native robot binary: provider-neutral, links only the robot stack.

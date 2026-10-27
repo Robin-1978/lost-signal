@@ -1,6 +1,6 @@
-#include "observation_adapter.hpp"
+#include "robot/transport/serial_observation_adapter.hpp"
 
-namespace lost_signal::examples::serial_sensor {
+namespace lost_signal::robot::transport::serial_sensor {
 
 bool ObservationAdapter::make(const SerialPacket& packet,
  const SerialSensorConfig& sensor_config,
@@ -67,4 +67,4 @@ bool ObservationAdapter::make(const SerialPacket& packet,
  return false;
 }
 
-} // namespace lost_signal::examples::serial_sensor
+} // namespace lost_signal::robot::transport::serial_sensor

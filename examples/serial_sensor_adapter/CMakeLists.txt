@@ -8,9 +8,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(BUILD_HOST_TEST "Build the deterministic serial decoder test" ON)
 
 add_library(serial_sensor_adapter STATIC
- serial_protocol.cpp
- observation_adapter.cpp
- posix_serial_port.cpp
+ ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/serial_sensor_protocol.cpp
+ ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/serial_observation_adapter.cpp
+ ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/posix_serial_port.cpp
  ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/ring_buffer.cpp
 )
 target_include_directories(serial_sensor_adapter PUBLIC

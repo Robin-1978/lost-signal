@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace lost_signal::examples::serial_sensor {
+namespace lost_signal::robot::transport::serial_sensor {
 
 // Minimal host-side serial boundary. It never parses a sensor message; the
 // frame decoder owns that contract. Reads are non-blocking so NativeRuntime's
@@ -27,4 +27,4 @@ class PosixSerialPort {
  int fd_ = -1;
 };
 
-} // namespace lost_signal::examples::serial_sensor
+} // namespace lost_signal::robot::transport::serial_sensor

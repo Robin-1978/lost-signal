@@ -4,9 +4,9 @@
 #include <utility>
 
 #include "robot/iface/observation.hpp"
-#include "serial_protocol.hpp"
+#include "robot/transport/serial_sensor_protocol.hpp"
 
-namespace lost_signal::examples::serial_sensor {
+namespace lost_signal::robot::transport::serial_sensor {
 
 struct ObservationAdapterConfig {
  std::string lidar_source = "ro1.lidar.serial";
@@ -30,4 +30,4 @@ class ObservationAdapter {
  ObservationAdapterConfig config_;
 };
 
-} // namespace lost_signal::examples::serial_sensor
+} // namespace lost_signal::robot::transport::serial_sensor

@@ -5,10 +5,10 @@
 #include <cstring>
 #include <vector>
 
-#include "observation_adapter.hpp"
-#include "serial_protocol.hpp"
+#include "robot/transport/serial_observation_adapter.hpp"
+#include "robot/transport/serial_sensor_protocol.hpp"
 
-using namespace lost_signal::examples::serial_sensor;
+using namespace lost_signal::robot::transport::serial_sensor;
 
 namespace {
 
