@@ -208,6 +208,16 @@ struct FrameContact {
  double normal_force_N = 0.0;
 };
 
+// Engine collision-geom wireframe (SIM presentation only). The engineering
+// view draws it over the visual mesh so proxy size and offset are auditable.
+struct FrameGeom {
+ bool valid = false;
+ int shape = 0;
+ double size_x_m = 0.0, size_y_m = 0.0, size_z_m = 0.0;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double qw = 1.0, qx = 0.0, qy = 0.0, qz = 0.0;
+};
+
 struct FrameArmLink {
  bool valid = false;
  FrameLinkPose pose;
@@ -242,6 +252,7 @@ struct FrameBody {
  std::vector<FrameCaster> casters;
  std::vector<FrameJointAxis> joint_axes;
  std::vector<FrameContact> contacts;
+ std::vector<FrameGeom> collision_geoms;
  std::vector<FrameArmLink> arm_links;
  // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
  // chassis params. Traction flags are visible only in SIM truth debug.

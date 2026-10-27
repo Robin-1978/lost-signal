@@ -126,6 +126,18 @@ int main() {
  assert(std::isfinite(w.system_com_relative_x_m()));
  assert(std::isfinite(w.system_com_relative_y_m()));
  assert(std::isfinite(w.system_com_relative_z_m()));
+ const int geom_count = w.collision_geom_count();
+ assert(geom_count > 0);
+ std::vector<sim::world::GeomViz> geoms(
+ static_cast<std::size_t>(geom_count));
+ assert(w.collision_geoms(geoms.data(), geom_count) == geom_count);
+ for (const auto& geom : geoms) {
+ assert(geom.valid);
+ assert(std::isfinite(geom.x_m));
+ assert(std::isfinite(geom.y_m));
+ assert(std::isfinite(geom.z_m));
+ assert(std::isfinite(geom.qw));
+ }
 
  sim::scenario::ScenarioSession session;
  session.prepare_world();

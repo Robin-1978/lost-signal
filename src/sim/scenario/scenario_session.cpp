@@ -33,6 +33,13 @@ void capture_presentation(const world::World& world,
  const int contact_count = world.contacts(contacts, 64);
  snapshot.contacts.assign(contacts,
  contacts + std::max(0, contact_count));
+ const int geom_count = world.collision_geom_count();
+ std::vector<world::GeomViz> geoms(static_cast<std::size_t>(
+ std::max(0, geom_count)));
+ const int copied_geoms = world.collision_geoms(
+ geoms.data(), static_cast<int>(geoms.size()));
+ snapshot.collision_geoms.assign(
+ geoms.begin(), geoms.begin() + std::max(0, copied_geoms));
  world::ArmLinkViz arm_links[4];
  const int arm_link_count = world.arm_links(arm_links, 4);
  snapshot.arm_links.assign(arm_links,

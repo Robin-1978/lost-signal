@@ -49,6 +49,7 @@ struct PresentationSnapshot {
  std::vector<world::CasterViz> casters;
  std::vector<world::JointAxisViz> joint_axes;
  std::vector<world::ContactViz> contacts;
+ std::vector<world::GeomViz> collision_geoms;
  std::vector<world::ArmLinkViz> arm_links;
  double com_x_m = 0.0;
  double com_y_m = 0.0;

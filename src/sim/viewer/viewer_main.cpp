@@ -52,6 +52,7 @@ namespace {
 using lost_signal::sim::viewer::Frame;
 using lost_signal::sim::viewer::FrameActor;
 using lost_signal::sim::viewer::FrameBody;
+using lost_signal::sim::viewer::FrameGeom;
 using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::FramePlace;
 using lost_signal::sim::viewer::FrameWheel;
@@ -2950,6 +2951,70 @@ void draw_goal_beacon_3d(
  EndBlendMode();
 }
 
+// Engine collision geom drawn as a wireframe in the same world basis as the
+// contact overlay. Shape ids follow mjtGeom (sphere 2, capsule 3, ellipsoid
+// 4, cylinder 5, box 6); anything else falls back to its bounding sphere so
+// an unexpected proxy is still visible during engineering review.
+void draw_collision_geom_wireframe(const FrameGeom& geom) {
+ const Color tint{226, 74, 210, 200};
+ const Vector3 center = to_raylib(geom.x_m, geom.y_m, geom.z_m);
+ const Quaternion rotation{
+ static_cast<float>(geom.qx), static_cast<float>(geom.qy),
+ static_cast<float>(geom.qz), static_cast<float>(geom.qw)};
+ const Vector3 local_z = Vector3RotateByQuaternion({0.0f, 0.0f, 1.0f},
+ rotation);
+ const auto extent = [](double value) {
+ return static_cast<float>(std::max(0.0, value));
+ };
+ switch (geom.shape) {
+ case 6: { // box: geom_size holds half extents
+ const Vector3 half{extent(geom.size_x_m), extent(geom.size_y_m),
+ extent(geom.size_z_m)};
+ const Vector3 local_x = Vector3RotateByQuaternion(
+ {1.0f, 0.0f, 0.0f}, rotation);
+ const Vector3 local_y = Vector3RotateByQuaternion(
+ {0.0f, 1.0f, 0.0f}, rotation);
+ const Vector3 x = Vector3Scale(local_x, half.x);
+ const Vector3 y = Vector3Scale(local_y, half.y);
+ const Vector3 z = Vector3Scale(local_z, half.z);
+ for (int sx = -1; sx <= 1; sx += 2) {
+ for (int sy = -1; sy <= 1; sy += 2) {
+ for (int sz = -1; sz <= 1; sz += 2) {
+ const Vector3 corner = Vector3Add(center, Vector3Add(
+ Vector3Add(Vector3Scale(x, static_cast<float>(sx)),
+ Vector3Scale(y, static_cast<float>(sy))),
+ Vector3Scale(z, static_cast<float>(sz))));
+ DrawCubeWiresV(corner, {0.006f, 0.006f, 0.006f}, tint);
+ }
+ }
+ }
+ break;
+ }
+ case 3: // capsule: radius, half segment length
+ case 5: { // cylinder: radius, half length
+ const float radius = extent(geom.size_x_m);
+ const float half = extent(geom.size_y_m);
+ const Vector3 start = Vector3Subtract(center,
+ Vector3Scale(local_z, half));
+ const Vector3 end = Vector3Add(center, Vector3Scale(local_z, half));
+ if (geom.shape == 3) {
+ DrawSphereWires(start, radius, 6, 6, tint);
+ DrawSphereWires(end, radius, 6, 6, tint);
+ }
+ if (half > 0.0f) {
+ DrawCylinderWiresEx(start, end, radius, radius, 12, tint);
+ }
+ break;
+ }
+ default: { // sphere, ellipsoid, mesh and unknown fallbacks
+ const float radius = extent(std::max({geom.size_x_m, geom.size_y_m,
+ geom.size_z_m}));
+ DrawSphereWires(center, std::max(radius, 0.002f), 8, 8, tint);
+ break;
+ }
+ }
+}
+
 void draw_frame_3d(const Frame& f,
                    const lost_signal::sim::world::World& world,
  const Camera3D& camera, const ParticleSystem& particles,
@@ -3971,6 +4036,9 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  DrawSphere(point, 0.018f, LIME);
  DrawLine3D(point, Vector3Add(point, Vector3Scale(normal, 0.08f)), LIME);
  }
+ for (const auto& geom : f.body.collision_geoms) {
+ if (geom.valid) draw_collision_geom_wireframe(geom);
+ }
  }
   // Particle positions are already in world coordinates. Draw only after
   // leaving the robot transform so moving/turning cannot transform them
@@ -4209,6 +4277,10 @@ int main(int argc, char** argv) {
  bool mute_audio = false;
  bool initial_show_lidar = false;
  bool initial_show_robot_evidence = false;
+ // Reproducible engineering overlay for screenshots: COM, joint axes,
+ // contact evidence and collision-proxy wireframes. It shares the SIM
+ // debug gate with the K toggle and is refused during experience runs.
+ bool initial_physics_overlay = false;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
  if (a == "--help" || a == "-h") {
@@ -4217,6 +4289,7 @@ int main(int argc, char** argv) {
  " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
  " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
  " [--lidar] [--robot-evidence] [--shot N FILE]\n"
+" [--physics-overlay]\n"
  " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
  " [--experiment-out REPORT.json]\n"
  "\n"
@@ -4230,6 +4303,7 @@ int main(int argc, char** argv) {
  if (a == "--mute") mute_audio = true;
  if (a == "--lidar") initial_show_lidar = true;
  if (a == "--robot-evidence") initial_show_robot_evidence = true;
+ if (a == "--physics-overlay") initial_physics_overlay = true;
  if (a == "--robot" && i + 1 < argc) {
  robot_path = argv[++i];
  source_requested = true;
@@ -4963,6 +5037,9 @@ bool show_estimate = initial_show_robot_evidence;
  const bool sim_truth_debug_allowed = !experience_loaded ||
  experience_flow->phase() == ExperiencePhase::kDebrief;
  if (!sim_truth_debug_allowed) show_actor_routes = false;
+ if (initial_physics_overlay && sim_truth_debug_allowed) {
+ show_actor_routes = true;
+ }
  if (IsKeyPressed(KEY_K) && sim_truth_debug_allowed) {
  show_actor_routes = !show_actor_routes;
  }

@@ -194,6 +194,22 @@ struct ContactViz {
  double normal_force_N = 0.0;
 };
 
+// One engine collision geom in world frame. Presentation draws these
+// wireframes next to the visual mesh so a proxy that is too large, too
+// narrow or offset from its link is visible instead of hidden inside the
+// plant. SIM-only: no geom enters a ROBOT observation or decision.
+struct GeomViz {
+ bool valid = false;
+ // MuJoCo mjtGeom value (sphere 2, capsule 3, ellipsoid 4, cylinder 5,
+ // box 6, mesh 7, ...). Kept numeric so the viewer does not link the
+ // engine headers.
+ int shape = 0;
+ double size_x_m = 0.0, size_y_m = 0.0, size_z_m = 0.0;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double qw = 1.0, qx = 0.0, qy = 0.0, qz = 0.0;
+ int body_id = 0;
+};
+
 #ifdef LOST_SIGNAL_WITH_MUJOCO
 
 class MujocoBackend {
@@ -374,6 +390,15 @@ class MujocoBackend {
  for (int i = 0; i < n; ++i) out[i] = contact_viz_[i];
  return n;
  }
+ int collision_geoms(GeomViz* out, int cap) const {
+ if (out == nullptr || cap <= 0) return 0;
+ const int n = std::min(cap, static_cast<int>(geom_viz_.size()));
+ for (int i = 0; i < n; ++i) out[i] = geom_viz_[i];
+ return n;
+ }
+ int collision_geom_count() const {
+ return static_cast<int>(geom_viz_.size());
+ }
  int actor_poses(ActorPoseViz* out, int cap) const {
  if (out == nullptr || cap <= 0) return 0;
  const int n = std::min(cap, actor_pose_count_);
@@ -427,6 +452,7 @@ class MujocoBackend {
  private:
   void read_back();
  void read_contacts();
+ void read_collision_geoms();
  void read_actor_poses();
  void read_actor_links();
 
@@ -584,6 +610,7 @@ class MujocoBackend {
  ImpactViz impact_;
  std::array<ContactViz, 64> contact_viz_{};
  int contact_viz_count_ = 0;
+ std::vector<GeomViz> geom_viz_;
  std::array<ActorPoseViz, 64> actor_pose_{};
  int actor_pose_count_ = 0;
  std::array<ActorLinkViz, 512> actor_link_pose_{};
@@ -639,6 +666,8 @@ class MujocoBackend {
  int casters(CasterViz*, int) const { return 0; }
  int joint_axes(JointAxisViz*, int) const { return 0; }
  int contacts(ContactViz*, int) const { return 0; }
+ int collision_geoms(GeomViz*, int) const { return 0; }
+ int collision_geom_count() const { return 0; }
  int actor_poses(ActorPoseViz*, int) const { return 0; }
  int actor_links(ActorLinkViz*, int) const { return 0; }
  int arm_links(ArmLinkViz*, int) const { return 0; }

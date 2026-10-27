@@ -379,6 +379,34 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  }
  }
  {
+ std::vector<world::GeomViz> live_geoms;
+ if (!step.presentation.captured) {
+ const int geom_count = world.collision_geom_count();
+ live_geoms.resize(static_cast<std::size_t>(std::max(0, geom_count)));
+ const int count = world.collision_geoms(
+ live_geoms.data(), static_cast<int>(live_geoms.size()));
+ live_geoms.resize(static_cast<std::size_t>(std::max(0, count)));
+ }
+ const auto& geoms = step.presentation.captured
+ ? step.presentation.collision_geoms : live_geoms;
+ for (const auto& physical : geoms) {
+ FrameGeom geom;
+ geom.valid = physical.valid;
+ geom.shape = physical.shape;
+ geom.size_x_m = physical.size_x_m;
+ geom.size_y_m = physical.size_y_m;
+ geom.size_z_m = physical.size_z_m;
+ geom.x_m = physical.x_m;
+ geom.y_m = physical.y_m;
+ geom.z_m = physical.z_m;
+ geom.qw = physical.qw;
+ geom.qx = physical.qx;
+ geom.qy = physical.qy;
+ geom.qz = physical.qz;
+ f.body.collision_geoms.push_back(geom);
+ }
+ }
+ {
  std::vector<world::ArmLinkViz> live_arm_links;
  if (!step.presentation.captured) {
  world::ArmLinkViz table[4];

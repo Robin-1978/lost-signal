@@ -341,6 +341,14 @@ class World {
  int contacts(ContactViz* out, int cap) const {
  return mujoco_.contacts(out, cap);
  }
+ // Engine collision geoms for the SIM engineering overlay. Presentation
+ // only; this is never part of a ROBOT observation or decision.
+ int collision_geoms(GeomViz* out, int cap) const {
+ return mujoco_.collision_geoms(out, cap);
+ }
+ int collision_geom_count() const {
+ return mujoco_.collision_geom_count();
+ }
  int actor_poses(ActorPoseViz* out, int cap) const {
  return mujoco_.actor_poses(out, cap);
  }

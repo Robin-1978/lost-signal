@@ -283,6 +283,7 @@ void MujocoBackend::read_back() {
  arm_link_[i].joint.valid;
  }
  read_contacts();
+ read_collision_geoms();
  read_actor_poses();
  read_actor_links();
 }
@@ -520,6 +521,60 @@ void MujocoBackend::read_contacts() {
  idler_contact_slip_y_mps_[j], idler_contact_slip_z_mps_[j],
  idler_contact_normal_N_[j],
  idler_contact_friction_utilization_[j]);
+ }
+}
+
+void MujocoBackend::read_collision_geoms() {
+ if (!valid()) return;
+ const mjModel* model = impl_->model;
+ const mjData* data = impl_->data;
+ geom_viz_.clear();
+ geom_viz_.reserve(static_cast<std::size_t>(model->ngeom));
+ for (int geom = 0; geom < model->ngeom; ++geom) {
+ const int body = model->geom_bodyid[geom];
+ // World-static geometry has its own map rendering. Keep this overlay on
+ // moving collision links so proxy offsets are visible beside the mesh.
+ if (body <= 0) continue;
+ if (model->geom_contype[geom] == 0 &&
+ model->geom_conaffinity[geom] == 0) continue;
+ GeomViz viz;
+ viz.valid = true;
+ viz.shape = model->geom_type[geom];
+ viz.body_id = body;
+ viz.size_x_m = model->geom_size[3 * geom + 0];
+ viz.size_y_m = model->geom_size[3 * geom + 1];
+ viz.size_z_m = model->geom_size[3 * geom + 2];
+ viz.x_m = data->geom_xpos[3 * geom + 0];
+ viz.y_m = data->geom_xpos[3 * geom + 1];
+ viz.z_m = data->geom_xpos[3 * geom + 2];
+ const mjtNum* matrix = data->geom_xmat + 9 * geom;
+ const double trace = matrix[0] + matrix[4] + matrix[8];
+ if (trace > 0.0) {
+ const double scale = std::sqrt(trace + 1.0) * 2.0;
+ viz.qw = 0.25 * scale;
+ viz.qx = (matrix[7] - matrix[5]) / scale;
+ viz.qy = (matrix[2] - matrix[6]) / scale;
+ viz.qz = (matrix[3] - matrix[1]) / scale;
+ } else if (matrix[0] > matrix[4] && matrix[0] > matrix[8]) {
+ const double scale = std::sqrt(1.0 + matrix[0] - matrix[4] - matrix[8]) * 2.0;
+ viz.qw = (matrix[7] - matrix[5]) / scale;
+ viz.qx = 0.25 * scale;
+ viz.qy = (matrix[1] + matrix[3]) / scale;
+ viz.qz = (matrix[2] + matrix[6]) / scale;
+ } else if (matrix[4] > matrix[8]) {
+ const double scale = std::sqrt(1.0 + matrix[4] - matrix[0] - matrix[8]) * 2.0;
+ viz.qw = (matrix[2] - matrix[6]) / scale;
+ viz.qx = (matrix[1] + matrix[3]) / scale;
+ viz.qy = 0.25 * scale;
+ viz.qz = (matrix[5] + matrix[7]) / scale;
+ } else {
+ const double scale = std::sqrt(1.0 + matrix[8] - matrix[0] - matrix[4]) * 2.0;
+ viz.qw = (matrix[3] - matrix[1]) / scale;
+ viz.qx = (matrix[2] + matrix[6]) / scale;
+ viz.qy = (matrix[5] + matrix[7]) / scale;
+ viz.qz = 0.25 * scale;
+ }
+ geom_viz_.push_back(viz);
  }
 }
 

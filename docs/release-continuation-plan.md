@@ -247,6 +247,18 @@
  `test_asset_manifest`、`test_scene_manifest` 通过。Xvfb 下 3D viewer 成功加载
  三个新 GLB，临时截图已删除；提交前仍需完成 Release 视觉和碰撞代理一致性验收。
 
+### 阶段 7 碰撞几何可视化（工作区，待提交）
+
+- MuJoCo backend 现在导出每个活动 link 的碰撞 geom（shape、size、world pose、
+  body id），容量来自 `model->ngeom`，按实际数量动态分配，没有任何固定上限或
+  魔法数字；world 静态几何仍由地图自身渲染，不重复绘制。
+- `PresentationSnapshot` 保存该表，回放帧和实时帧走同一条 `FrameBody` 路径；
+  engineering overlay 用洋红线框绘制 box/capsule/cylinder/sphere 代理，与 COM、
+  joint axis、contact 点/法向同屏，可直接核对“碰撞体是否包住视觉模型”。
+- 新增 `--physics-overlay` 作为可复现验收开关，与 K 键共用 `sim_truth_debug_allowed`
+  门禁，experience 运行期仍禁止显示 SIM 证据。`test_mujoco_backend` 断言导出非空
+  且位姿有限；`robot_boundary` 通过，未新增 ROBOT 入口。
+
 ### 工业动态 actor 回归修复（已完成，`0d3cfec`）
 
 - 20 万平方米全量回归曾在 `central_gate` 发生双方等待：让行行人在机器人
