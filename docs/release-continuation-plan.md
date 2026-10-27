@@ -53,7 +53,7 @@
 
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
 - `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
-- 当前阶段：第 6 项；第 1–5 项均已独立提交，不得重新实现或回退已经验收的边界。
+- 当前阶段：第 7 项；第 1–6 项均已独立提交，不得重新实现或回退已经验收的边界。
 - 第 1 项已经完成：候选预算先覆盖不同历史模式，入选候选全部完成 coarse/refine/reverse 验证后统一比较双向 score 与 overlap；相同 correction mode 内只有同一个历史锚点 ID 才能完成跨时序确认。
 - `test_loop_closure` 首次回环发生在完成 east、north、west 三个目标后；SIM 真值距起点 0.305 m 只写入失败诊断。`slam` 与 `loop_closure` 均连续通过 3 次，`truth_isolation` 与 `robot_boundary` 通过。
 - 第 2 项已经完成：2.5 m 教学路线完成 4/4 目标且零碰撞；终端捕获按底盘运动能力修复，没有放宽到达阈值或延长任务时间。`slam_experience_mission` 连续重复三次通过，相关 14 项定位、SLAM、Experience、truth-isolation 和 boundary 回归通过。
@@ -146,6 +146,13 @@
 - Debug/Release `industrial_200k_mission` 完整五目标均通过；Release 长测为 70593 步、5/5、0 碰撞、最大定位误差 1.073 m。`signal_town` Release 为 5826 步、5/5、0 碰撞。
 - 当前尚未提交的算法回归文件包括 `dwa_planner.cpp`、`goal_arrival.hpp/.cpp`、`coordinator.cpp`、`lidar_perception.cpp` 及对应 DWA、terrain、autonomy、perception、dynamic-crossing 测试。不得把这些修改与 Viewer/音频提交混为同一阶段提交，也不得丢弃。
 
+### 阶段 7 配置与控制检查点（2026-10-27）
+
+- `525116c feat: load articulated arm geometry from robot config` 已把机械臂从只能程序化设置改为正式机器人配置契约。`arm.enabled`、`base_xyz_m`、四段连杆的长度/质量/半径、关节轴、初始角度、扭矩上限和阻尼均严格解析；数量、有限性、正几何、非零轴和 actuator 参数错误会 fail-closed。示例配置为 `configs/robot/ro6_arm.json`。
+- `53bd9cf feat: add articulated arm actuator feedback contract` 已把四关节 arm effort `[−1,1]` 通道加入 `ActuatorCommand`，把 encoder 角度/角速度加入 `MotionFeedback`/`ObservationFrame`，并贯穿 envelope、同步器、回放 v4 和 native boundary。MuJoCo 通过配置的每关节扭矩上限和阻尼施加真实 effort，反馈来自引擎 qpos/qvel；没有 draw-time 姿态或 SIM 真值入口。`mujoco_backend`、`replay`、`robot_config`、`robot_config_native`、`robot_cycle`、`truth_isolation`、`viewer_frame`、`actuation` 定向回归通过。
+- 去掉上述 arm 改动后，`industrial_200k_mission --steps=1000` 与当前短轨迹一致；该任务完整 71223 步在 fac57d0 基线也稳定复现第 5 个目标 SIM truth miss 2.820 m（4/5、零碰撞），归因尚未完成，不能以放宽到达条件掩盖。
+- 下一恢复点：先定位 `industrial_200k_mission` 第五目标的估计/真值分叉，再继续 worker 动画、forklift link 拆分、Blender 环境资产和碰撞验收；每个修复独立提交。
+
 ### 阶段 1 回环修订检查点（2026-10-27）
 
 - 回环异步搜索的 pending proposal 不再按墙钟超时清理；proposal 绑定同一历史 keyframe anchor，只有该 anchor 被有界 keyframe ring 丢弃时才失效。这样不会在 coarse/refine/reverse 分片执行期间丢失第一次真实重访证据。
@@ -180,4 +187,4 @@
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
-| 7. 模型与场景升级 | 待开始 | - | 待完成 |
+| 7. 模型与场景升级 | 进行中 | `525116c`, `53bd9cf` | 机械臂配置、MuJoCo effort/feedback 和回放契约已完成；工业末目标分叉、worker 步态、叉车 link 拆分、Blender 环境资产和最终视觉/Release 验收待完成 |
