@@ -276,6 +276,12 @@ link poses and simulation events. Playback never changes physics, sensor
 stamps, or ROBOT control periods. The HUD and exit summary report requested
 rate, measured real-time factor, steps/s, sliding-window tick p99/max, active
 quality, and `LIMIT` when the rendering budget throttles simulation work.
+In an open sandbox (`--sandbox` or `--map`), press `H` to enable manual
+driving; `W/S` or Up/Down command forward/reverse and `A/D` or Left/Right
+command yaw. Manual input remains a typed ROBOT body command and still passes
+the validator, raw-scan Safety monitor, command limits, watchdog, and MuJoCo
+actuator path. Press `H` again to clear it. Authored experiences keep manual
+input disabled so their evidence remains reproducible.
 The window is resizable (minimum 960×640); use the title-bar maximize control,
 `F10` to maximize/restore, or `F11` for fullscreen. `--maximized` starts the
 Viewer maximized. The 200K industrial map can be inspected in the same 3D

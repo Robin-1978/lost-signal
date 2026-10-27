@@ -101,6 +101,12 @@
  下一步仍需把真实记录文件和硬件启动 handshake 接到 native profile；在此之前任何
  硬件 profile 仍保持实测/手工配置，不用运行时猜测值替代标定结果。
 
+ - Sandbox 手动控制已接入同一 RobotApplication/ScenarioSession seam：Viewer 的
+ `H` + `WASD`/方向键只发布限幅的 body command，仍经过 ROBOT validator、raw-scan
+ Safety、watchdog 与 MuJoCo/VirtualMcu；experience 运行期禁用。新增场景回归证明
+ 没有 map-frame prior 时也能安全驱动，清除输入后会减速停车。后续手动控制的输入
+ 录制仍必须保持为 observation/command 证据，不能写入 SIM 真值。
+
 ### Release 运行门禁（2026-10-27）
 
 - Release headless `signal_town` 两次完整运行产生字节一致的 artifact：5673

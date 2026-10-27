@@ -60,6 +60,13 @@ class ScenarioSession {
  return app_.last_evidence();
  }
   bool cancel_goal(robot::iface::GoalHandle h);
+ // Open sandbox operator input. The command still flows through ROBOT's
+ // validator and safety monitor; this seam only replaces task routing with a
+ // typed body command and never exposes SIM truth.
+ void set_operator_command(double forward_mps, double yaw_rate_radps) {
+ app_.set_operator_command(forward_mps, yaw_rate_radps);
+ }
+ void clear_operator_command() { app_.clear_operator_command(); }
   void step_once();
  // Build the safe-zero plant and expose its initial SIM pose for a pre-run
  // viewer without advancing physics time or publishing observations.

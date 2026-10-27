@@ -108,6 +108,11 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  }
 
  void set_goal(const RoutePoint& goal);
+ // Operator/manual motion is still passed through the independent Safety
+ // monitor. It bypasses task routing only; it never bypasses fresh raw-scan
+ // evidence, command limits, or watchdog expiry.
+ void set_operator_command(double forward_mps, double yaw_rate_radps);
+ void clear_operator_command();
   const Route& active_route() const { return active_route_; }
   // Withdraws the active route (executive cancel path). Drops the goal and
   // invalidates the route so update() holds instead of driving a dead
@@ -224,6 +229,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::uint64_t last_map_revision_ = 0;
   bool replan_requested_ = false;
  bool local_plan_reset_requested_ = false;
+ bool operator_command_active_ = false;
+ double operator_forward_mps_ = 0.0;
+ double operator_yaw_rate_radps_ = 0.0;
   iface::MotionCommand last_cmd_ = iface::MotionCommand::SafeStop(0);
   std::string last_constraint_ = "none";
   std::string last_reason_ = "init";

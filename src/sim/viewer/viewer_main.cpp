@@ -4341,7 +4341,7 @@ int main(int argc, char** argv) {
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
  "open engineering demo. During a run: Space pause, N step, F follow,\n"
  "Q quality, +/- rate, T turbo, F10 maximize, F11 fullscreen, V 2D/3D,\n"
- "right-drag orbit, wheel zoom.");
+ "right-drag orbit, wheel zoom. Sandbox: H manual, WASD/arrows drive.");
  return 0;
  }
  if (a == "--play") play_requested = true;
@@ -4601,6 +4601,11 @@ bool show_estimate = initial_show_robot_evidence;
  ExperienceViewLayer view_layer = experience_loaded
  ? ExperienceViewLayer::kPlayer : ExperienceViewLayer::kEngineering;
   bool follow = true;
+ // Manual control is an explicit sandbox mode. It is deliberately kept out
+ // of authored experiences so a teaching episode remains reproducible. Keys
+ // are sampled before each deterministic step and the resulting body command
+ // still passes through ROBOT validation and Safety.
+ bool manual_control = false;
  // Drive deterministic 20 ms simulation time from elapsed wall time. The
  // old fixed four-steps-per-frame loop demanded 4.8x real time at 60 FPS and
  // stacked periodic localization/planning work into the window thread.
@@ -5049,6 +5054,10 @@ bool show_estimate = initial_show_robot_evidence;
         editor.apply(session->setup_world());
       }
     }
+ if (!experience_loaded && IsKeyPressed(KEY_H)) {
+ manual_control = !manual_control;
+ if (!manual_control) session->clear_operator_command();
+ }
     if (edit_mode) {
       if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && on_map) {
         editor.press(pick_x, pick_y);
@@ -5081,6 +5090,21 @@ bool show_estimate = initial_show_robot_evidence;
  (!experience_loaded ||
  experience_flow->phase() == ExperiencePhase::kRunning)) {
  session->step_once();
+ }
+ if (!experience_loaded && manual_control) {
+ const double forward =
+ (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) ? 1.0 : 0.0) -
+ (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN) ? 1.0 : 0.0);
+ const double yaw =
+ (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT) ? 1.0 : 0.0) -
+ (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT) ? 1.0 : 0.0);
+ const double max_forward = robot_config.has_value()
+ ? robot_config->limits.max_forward_mps : 2.0;
+ const double max_yaw = robot_config.has_value()
+ ? robot_config->limits.max_yaw_rate_radps : 2.0;
+ session->set_operator_command(forward * max_forward, yaw * max_yaw);
+ } else if (!experience_loaded) {
+ session->clear_operator_command();
  }
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
@@ -5700,6 +5724,9 @@ playback.turbo() || paused || !live_audio);
  : sim_truth_debug_allowed
  ? "space pause  N step  L lidar  E ROBOT AI  K SIM truth debug  U view  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom"
  : "space pause  N step  L lidar  E ROBOT AI  U view  F follow  Q quality  0 fit  +/- speed  V 2D/3D  right-drag pan/orbit  wheel zoom";
+ if (!experience_loaded && manual_control) {
+ control_help = "space pause N step H manual ON WASD/arrows drive L lidar E ROBOT AI K SIM truth U view F follow Q quality +/- speed V 2D/3D M edit";
+ }
  DrawText(control_help, 10, GetScreenHeight() - 24, 12, DARKGRAY);
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);

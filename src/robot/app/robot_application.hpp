@@ -78,6 +78,13 @@ class RobotApplication : public IRobot {
   void set_startup_mode(autonomy::StartupMode mode) {
     coordinator_.set_startup_mode(mode);
   }
+ // Operator/manual motion remains inside the ROBOT safety pipeline. It is a
+ // temporary command source for calibration and teaching labs, not a second
+ // planner or a truth shortcut.
+ void set_operator_command(double forward_mps, double yaw_rate_radps) {
+  coordinator_.set_operator_command(forward_mps, yaw_rate_radps);
+ }
+ void clear_operator_command() { coordinator_.clear_operator_command(); }
 
   // Task / map intent (typed, no coordinates from SIM truth).
   // Async: returns a handle immediately; poll goal_status, cancel_goal.

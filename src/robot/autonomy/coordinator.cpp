@@ -140,6 +140,7 @@ core::Status AutonomyCoordinator::configure() {
   last_map_revision_ = 0;
   replan_requested_ = false;
  local_plan_reset_requested_ = false;
+ clear_operator_command();
   last_cmd_ = iface::MotionCommand::SafeStop(0);
   last_constraint_ = "none";
   last_reason_ = "init";
@@ -204,6 +205,7 @@ core::Status AutonomyCoordinator::cleanup() {
   last_map_revision_ = 0;
   replan_requested_ = false;
  local_plan_reset_requested_ = false;
+ clear_operator_command();
   last_cmd_ = iface::MotionCommand::SafeStop(0);
   last_constraint_ = "none";
   last_reason_ = "init";
@@ -282,6 +284,23 @@ void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
   has_goal_ = true;
   active_route_ = Route{};  // force refresh on the next update
   replan_requested_ = true;
+}
+
+void AutonomyCoordinator::set_operator_command(double forward_mps,
+ double yaw_rate_radps) {
+ if (!std::isfinite(forward_mps) || !std::isfinite(yaw_rate_radps)) return;
+ operator_command_active_ = true;
+ operator_forward_mps_ = std::clamp(
+ forward_mps, -limits_.max_forward_mps, limits_.max_forward_mps);
+ operator_yaw_rate_radps_ = std::clamp(
+ yaw_rate_radps, -limits_.max_yaw_rate_radps,
+ limits_.max_yaw_rate_radps);
+}
+
+void AutonomyCoordinator::clear_operator_command() {
+ operator_command_active_ = false;
+ operator_forward_mps_ = 0.0;
+ operator_yaw_rate_radps_ = 0.0;
 }
 
 void AutonomyCoordinator::clear_goal() {
@@ -424,6 +443,15 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  iface::MotionCommand decided = motion.command;
  std::string reason = motion.reason;
  std::string constraint = motion.constraint;
+ if (operator_command_active_) {
+ decided.space = iface::CommandSpace::kYawRate;
+ decided.forward_mps = operator_forward_mps_;
+ decided.yaw_rate_radps = operator_yaw_rate_radps_;
+ decided.steer_angle_rad = 0.0;
+ decided.lateral_mps = 0.0;
+ reason = "operator-command";
+ constraint = "manual";
+ }
  last_prediction_horizon_s_ = motion.prediction_horizon_s;
  last_prediction_hypotheses_ = motion.prediction_hypotheses;
  if (!iface::valid_motion_command(decided, now_ns)) {
@@ -449,6 +477,17 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  last_gear_change_endpoint_distance_m_ =
  motion.gear_change_endpoint_distance_m;
  }
+ if (operator_command_active_) {
+ last_cmd_.space = iface::CommandSpace::kYawRate;
+ last_cmd_.stamp_ns = now_ns;
+ last_cmd_.expiry_ns = now_ns + iface::kDefaultCommandWatchdogNs;
+ last_cmd_.forward_mps = operator_forward_mps_;
+ last_cmd_.yaw_rate_radps = operator_yaw_rate_radps_;
+ last_cmd_.steer_angle_rad = 0.0;
+ last_cmd_.lateral_mps = 0.0;
+ last_constraint_ = "manual";
+ last_reason_ = "operator-command";
+ }
  // Goal completion is an autonomy policy, not coordinator arithmetic. The
  // coordinator supplies the latest estimated state and active route, then
  // applies the policy's hold while the measured chassis settles.
@@ -464,7 +503,7 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  // The localization subsystem owns map-frame authority. Until a surveyed
  // startup establishes that frame, a route expressed in map coordinates
  // cannot safely command motion. The coordinator only applies its verdict.
- if (!loc.motion_authorized) {
+ if (!loc.motion_authorized && !operator_command_active_) {
  last_cmd_ = iface::MotionCommand::SafeStop(now_ns);
  last_constraint_ = "localization_hold";
  last_reason_ = "map-frame-unresolved";

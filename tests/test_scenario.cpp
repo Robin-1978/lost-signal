@@ -140,8 +140,23 @@ int main() {
         {"deck", 1.0, 0.0, 1.0, 1.0, 0.0, 0.14, 0.0}};
     auto deck_hit = assess_terrain_contact(1.0, 0.0, 0.15, 0.4, flat, deck,
                                            0.05);
-    assert(deck_hit.terrain_collision);
-  }
+ assert(deck_hit.terrain_collision);
+ }
+
+ // Sandbox manual control uses the same ROBOT command and Safety path as an
+ // autonomous goal. It can move without a map-frame prior, but clearing the
+ // operator input must produce a stop instead of leaving a latched command.
+ {
+ sim::scenario::ScenarioSession session;
+ session.set_operator_command(0.6, 0.0);
+ for (int i = 0; i < 40; ++i) session.step_once();
+ const auto moving = session.setup_world().truth();
+ assert(moving.body_x_m > 0.01);
+ session.clear_operator_command();
+ for (int i = 0; i < 20; ++i) session.step_once();
+ const auto stopped = session.setup_world().truth();
+ assert(stopped.forward_mps < moving.forward_mps);
+ }
 
   // Full mission: two docks, a crosser, an off-path box. Headless to
   // completion, judged every step, scored at the end.
