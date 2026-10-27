@@ -60,6 +60,14 @@ class IEstimator {
  double /*yaw_rad*/, double /*pos_sigma_m*/,
  double /*yaw_sigma_rad*/,
  core::MonotonicNs /*stamp_ns*/) {}
+ // A rejected absolute scan match is still information about the current
+ // belief: the proposed innovation was outside its declared covariance.
+ // Estimators may fold that innovation into their uncertainty without
+ // moving the pose. This keeps REP-105 odom continuous while allowing a
+ // later recovery search to widen from evidence instead of a fixed retry
+ // radius. The default is a no-op for lightweight test estimators.
+ virtual void note_absolute_rejection(double /*dx_m*/, double /*dy_m*/,
+ double /*dyaw_rad*/, core::MonotonicNs /*stamp_ns*/) {}
   // Deliberate deployment seeding (known dock, operator initialpose).
   // Default ignores; only estimators with a seed path override it.
   virtual void seed_pose(double /*x_m*/, double /*y_m*/, double /*yaw_rad*/,
@@ -145,6 +153,8 @@ class FusedOdometryEstimator : public IEstimator {
  core::MonotonicNs stamp_ns) override;
  void correct_relative_pose(double x_m, double y_m, double yaw_rad,
  double pos_sigma_m, double yaw_sigma_rad,
+ core::MonotonicNs stamp_ns) override;
+ void note_absolute_rejection(double dx_m, double dy_m, double dyaw_rad,
  core::MonotonicNs stamp_ns) override;
   const EstimatedState& estimate() const override { return estimate_; }
  const EstimatedState& odometry_estimate() const override {

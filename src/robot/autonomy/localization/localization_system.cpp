@@ -321,6 +321,9 @@ bool LocalizationSystem::run_localization(
  return true;
  }
  recovery_hyps_.reset();
+ estimator.note_absolute_rejection(
+ tracked.x_m - est.x_m, tracked.y_m - est.y_m,
+ core::wrap_angle(tracked.yaw_rad - est.yaw_rad), obs.stamp_ns);
  action = "recovery-promotion rejected by pose covariance";
  return false;
  }
@@ -536,6 +539,16 @@ global.heading_sigma_rad, correction_stamp_ns);
 global.heading_sigma_rad, correction_stamp_ns);
       }
     }
+ // A geometrically supported candidate that fails the covariance innovation
+ // gate is evidence that the current belief is over-confident. Widen only
+ // from the measured residual; do not move the estimate or expose any SIM
+ // state. The next bounded search then grows continuously with the actual
+ // rejected evidence and can recover from an underestimated prior.
+ if (!accept_global && global.accepted && supervisor_.localized()) {
+ estimator.note_absolute_rejection(
+ global.x_m - est.x_m, global.y_m - est.y_m,
+ core::wrap_angle(global.yaw_rad - est.yaw_rad), correction_stamp_ns);
+ }
  supervisor_.record_global(accept_global, ScanMatchResult{});
  if (accept_global) {
  action = std::string("global_relocalization:accepted score=") +
