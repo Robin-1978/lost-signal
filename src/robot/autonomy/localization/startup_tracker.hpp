@@ -81,6 +81,12 @@ struct StartupTrackResult {
  double heading_sigma_rad = 0.02;
   double score = 0.0;
   std::size_t hypotheses = 0;
+ // A known-map recovery candidate may be the sole survivor while its scan
+ // still constrains only a wall normal or another lower-rank subspace.  The
+ // caller must not promote that candidate to an absolute map pose; it can
+ // use this bit to hand control back to the covariance-gated whole-map
+ // search when the fused belief is already outside its trusted envelope.
+ bool full_observation_confirmed = false;
 };
 
 class StartupHypotheses {
@@ -118,14 +124,23 @@ class StartupHypotheses {
  // while confirmations are accumulating must not reinterpret prior scans.
  promotion_requires_full_observation_ =
  config_.require_full_observation_for_promotion;
-    hyps_.push_back(
- Hyp{ambiguous.x_m, ambiguous.y_m, ambiguous.yaw_rad,
- ambiguous.position_sigma_m, ambiguous.heading_sigma_rad,
- ambiguous.score, 0, 0});
+ Hyp seed;
+ seed.x = ambiguous.x_m;
+ seed.y = ambiguous.y_m;
+ seed.yaw = ambiguous.yaw_rad;
+ seed.position_sigma_m = ambiguous.position_sigma_m;
+ seed.heading_sigma_rad = ambiguous.heading_sigma_rad;
+ seed.score = ambiguous.score;
+ hyps_.push_back(seed);
     for (const auto& ru : ambiguous.runner_ups) {
- hyps_.push_back(Hyp{ru.x_m, ru.y_m, ru.yaw_rad,
- ambiguous.position_sigma_m, ambiguous.heading_sigma_rad,
- ru.score, 0, 0});
+ Hyp candidate;
+ candidate.x = ru.x_m;
+ candidate.y = ru.y_m;
+ candidate.yaw = ru.yaw_rad;
+ candidate.position_sigma_m = ambiguous.position_sigma_m;
+ candidate.heading_sigma_rad = ambiguous.heading_sigma_rad;
+ candidate.score = ru.score;
+ hyps_.push_back(candidate);
     }
  require_motion_ = require_motion;
  last_stamp_ns_ = stamp_ns;
@@ -168,6 +183,7 @@ class StartupHypotheses {
  h.yaw = core::wrap_angle(h.yaw + delta_yaw);
  }
  }
+ const bool independent_view = motion_dt_s > 0.0 || !require_motion_;
  last_stamp_ns_ = stamp_ns;
  for (auto& h : hyps_) {
       ++h.age;
@@ -178,8 +194,16 @@ class StartupHypotheses {
  !m.accepted && m.partial_observation_valid &&
  m.rejection_reason == "map match is geometrically ambiguous";
  if (m.accepted || partial_observation) {
- const bool full_observation = m.accepted &&
- m.pose_information_valid && fully_observable(m.pose_information);
+ if (m.pose_information_valid &&
+ (independent_view || !h.has_information)) {
+ if (!h.has_information) h.information = {};
+ for (std::size_t i = 0; i < h.information.size(); ++i) {
+ h.information[i] += m.pose_information[i];
+ }
+ h.has_information = true;
+ }
+ const bool full_observation = h.has_information &&
+ fully_observable(h.information);
  if (partial_observation) {
  apply_partial_observation(h, m);
  } else {
@@ -258,6 +282,8 @@ class StartupHypotheses {
  const bool observation_confirmed =
  !promotion_requires_full_observation_ ||
  best.full_observation_confirms >= required_confirms;
+ out.full_observation_confirmed =
+ best.full_observation_confirms >= required_confirms;
  if (hyps_.size() == 1 &&
  best.confirms >= required_confirms && motion_confirmed &&
  observation_confirmed) {
@@ -287,6 +313,8 @@ class StartupHypotheses {
  double x = 0.0, y = 0.0, yaw = 0.0;
  double position_sigma_m = 0.05, heading_sigma_rad = 0.02;
  double score = 0.0;
+ std::array<double, 9> information{};
+ bool has_information = false;
  int confirms = 0, full_observation_confirms = 0, rejects = 0, age = 0;
   };
  static bool fully_observable(const std::array<double, 9>& information) {
@@ -345,6 +373,8 @@ class StartupHypotheses {
  out.heading_sigma_rad = best.heading_sigma_rad;
     out.score = best.score;
     out.hypotheses = hyps_.size();
+ out.full_observation_confirmed =
+ best.full_observation_confirms >= std::max(1, config_.promotion_confirms);
     reset();
     return out;
   }

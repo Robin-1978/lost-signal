@@ -529,8 +529,6 @@ add_executable(test_ackermann_planner
 target_link_libraries(test_ackermann_planner PRIVATE lost_signal_robot_autonomy)
 add_test(NAME ackermann_planner COMMAND test_ackermann_planner)
 
-
-
 add_executable(test_sim_nav
   tests/test_sim_nav.cpp
 )

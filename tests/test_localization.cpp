@@ -270,6 +270,7 @@ int main() {
  moved_ranges, -M_PI, increment, map, 40'000'000, 1.0, 0.0, true);
  assert(guarded_first.status == StartupTrackStatus::kTracking);
  assert(guarded_second.status == StartupTrackStatus::kTracking);
+ assert(!guarded_second.full_observation_confirmed);
  assert(guarded_recovery.size() == 1);
 
  // Once the same tracker receives a geometrically complete observation, the
@@ -295,6 +296,7 @@ int main() {
  if (full_result.status == StartupTrackStatus::kPromoted) break;
  }
  assert(full_result.status == StartupTrackStatus::kPromoted);
+ assert(full_result.full_observation_confirmed);
  assert(std::abs(full_result.x_m - 1.0) < 0.6);
   }
 

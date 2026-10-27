@@ -279,6 +279,24 @@
 2. 将算法、物理求解选择和相关测试单独提交；不得把这些修改与 Viewer/音频提交混为同一阶段提交。
 3. 再单独提交 Viewer、物理音频、WAV、文档及其测试；随后立即进入阶段 7。
 
+### 当前修复阶段（2026-10-28）
+
+- surveyed-map recovery 的候选不再把重复的秩亏墙面扫描当成独立绝对证据。每个候选在
+  有实际运动视角时累加 `[x,y,yaw]` information；只有累计观测达到 full-rank 并满足既有
+  covariance/confirmation 合同才允许 promotion。静止重复扫描不会增加信息。
+- 若唯一候选仍只有 rank-deficient 证据且 ROBOT covariance 已越过
+  `LocalizationSupervisor` 的既有 recovery 门限，tracker 会释放并交回 covariance-gated
+  whole-map search；没有新增关卡阈值，也没有读取 SIM truth。
+- `test_localization` 已覆盖 guarded partial promotion 与 full-observation promotion；
+  `industrial_200k_mission` 的离线诊断现在同时打印 ROBOT continuous odom estimate，
+  但真值仍只在 SIM 诊断/评分侧。
+- Debug 最新复测：`industrial_200k_mission --steps=60000 west_hub north_depot central_gate`
+  完成 `3/3`、零碰撞；实际在第 44405 步完成第三目标，最终 ROBOT estimate 与物理目标相差
+  约 0.1 m。Release 需用本次改动重新构建后再做同样长测，五目标完整结果仍是下一道门禁。
+- 本阶段工作区包含 `docs/source-layout.md`，用于固定 `src/robot`、`src/sim`、provider、
+  transport、MCU 和 Viewer 的依赖边界；公共 adapter seam 不因静态分析的 unusedFunction
+  提示而删除。
+
 恢复后按以下顺序继续：
 
 1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认 HEAD 至少包含阶段 5 提交 `f22acc9`。

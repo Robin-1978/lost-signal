@@ -64,6 +64,7 @@ int main(int argc, char** argv) {
  int mission_step_budget = 100'000;
  int trace_interval = 1000;
  std::vector<std::string> requested_places;
+ std::string previous_localization_action;
  for (int index = 1; index < argc; ++index) {
  const std::string argument = argv[index];
  if (argument == "--trace") {
@@ -92,10 +93,11 @@ int main(int argc, char** argv) {
  if (trace && steps % trace_interval == 0) {
  if (const auto* sample = session.last_eval_step()) {
  const auto& estimate = sample->diag.estimate;
+ const auto& odom = sample->diag.odometry_estimate;
  const auto& evidence = sample->diag.evidence;
  std::fprintf(stderr,
  " step=%d objective=%s truth=(%.2f,%.2f,%.2f) "
- "estimate=(%.2f,%.2f,%.2f) "
+ "estimate=(%.2f,%.2f,%.2f) odom=(%.2f,%.2f,%.2f) "
         "v=%.2f sigma=(%.3f,%.3f) loc=%s slip=%s/%.2f grip=%.2f "
  "track=(%.3f,%.3f,%s) cmd=(%.3f,%.3f)->(%.3f,%.3f) "
  "clear=(validator=%.3f,dynamic=%.3f,safety=%.3f/%.3f/%.3f) "
@@ -105,7 +107,8 @@ int main(int argc, char** argv) {
  steps, session.objectives().active_place().c_str(),
  sample->truth_after.body_x_m, sample->truth_after.body_y_m,
  sample->truth_after.body_yaw_rad, estimate.x_m, estimate.y_m,
- estimate.yaw_rad, sample->cmd.forward_mps,
+ estimate.yaw_rad, odom.x_m, odom.y_m, odom.yaw_rad,
+ sample->cmd.forward_mps,
         estimate.position_sigma_m, estimate.heading_sigma_rad,
         sample->diag.localization_action.c_str(),
         sample->diag.slip_quality.c_str(), sample->diag.slip_confidence,
@@ -152,8 +155,9 @@ int main(int argc, char** argv) {
  if (trace) {
  if (const auto* sample = session.last_eval_step()) {
  const std::string& action = sample->diag.localization_action;
- if (action.find("recovery") != std::string::npos ||
- action.find("global_relocalization") != std::string::npos) {
+ if (action != previous_localization_action &&
+ (action.find("recovery") != std::string::npos ||
+ action.find("global_relocalization") != std::string::npos)) {
  const auto& estimate = sample->diag.estimate;
  std::fprintf(stderr,
  " localization_event step=%d objective=%s truth=(%.3f,%.3f,%.3f) "
@@ -164,6 +168,7 @@ int main(int argc, char** argv) {
  estimate.yaw_rad, estimate.position_sigma_m,
  estimate.heading_sigma_rad,
  sample->diag.localization_action.c_str());
+ previous_localization_action = action;
  }
  if (sample->diag.localization_action.rfind(
  "global_relocalization:accepted", 0) == 0) {

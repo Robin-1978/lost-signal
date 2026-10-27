@@ -330,6 +330,27 @@ bool LocalizationSystem::run_localization(
  return false;
  }
  if (tracked.status == StartupTrackStatus::kTracking) {
+ // A single survivor is still not an absolute fix when every supporting
+ // scan is rank deficient. Once the fused estimate has crossed the same
+ // covariance loss envelope used by LocalizationSupervisor, keeping this
+ // candidate alive would block the only recovery path that can search for a
+ // different map place. Release the deferred tracker and let the supervisor
+ // start a fresh, bounded global search on the next measurement. The
+ // condition uses observation rank plus the existing covariance contract;
+ // it does not add a scenario-specific timeout or distance threshold.
+ const EstimatedState& current = estimator.estimate();
+ const auto& config = supervisor_.config();
+ const bool uncertainty_outside =
+ !std::isfinite(current.position_sigma_m) ||
+ !std::isfinite(current.heading_sigma_rad) ||
+ current.position_sigma_m >= config.lost_position_sigma_m ||
+ current.heading_sigma_rad >= config.lost_heading_sigma_rad;
+ if (tracked.hypotheses == 1 &&
+ !tracked.full_observation_confirmed && uncertainty_outside) {
+ recovery_hyps_.reset();
+ action = "recovery-tracking:rank-deficient belief; global retry";
+ return false;
+ }
  action = std::string("recovery-tracking hypotheses=") +
  std::to_string(tracked.hypotheses);
  return false;
