@@ -190,7 +190,7 @@ void ObjectiveDriver::update(robot::app::RobotApplication& app,
  } else {
   truth_stable_steps_ = 0;
  }
- measure_truth(sampled, place, world, acceptance_, truth_stable_steps_);
+ sampled.truth_stable_steps = truth_stable_steps_;
  sampled.truth_arrived = place != nullptr &&
   truth_stable_steps_ >= acceptance_.stable_steps;
 
