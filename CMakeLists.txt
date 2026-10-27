@@ -32,6 +32,7 @@ add_library(lost_signal_robot_transport STATIC
  src/robot/transport/serial_sensor_protocol.cpp
  src/robot/transport/serial_observation_adapter.cpp
  src/robot/transport/posix_serial_port.cpp
+ src/robot/transport/native_links.cpp
 )
 target_include_directories(lost_signal_robot_transport PUBLIC src)
 target_link_libraries(lost_signal_robot_transport PUBLIC lost_signal_robot_iface)
@@ -668,6 +669,10 @@ add_executable(test_ring_buffer
 )
 target_link_libraries(test_ring_buffer PRIVATE lost_signal_robot_iface)
 add_test(NAME ring_buffer COMMAND test_ring_buffer)
+
+add_executable(test_native_links tests/test_native_links.cpp)
+target_link_libraries(test_native_links PRIVATE lost_signal_robot_transport)
+add_test(NAME native_links COMMAND test_native_links)
 
 add_test(NAME signal_town_mission
  COMMAND lost_signal_sim

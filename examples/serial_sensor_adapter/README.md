@@ -54,3 +54,17 @@ The board-side STM32 chassis example uses a separate, chassis-owned UART
 codec in `examples/stm32_chassis_mcu/serial_codec.*`; sensor transport and
 actuator transport may share a physical UART only when the board profile
 provides independent framing and bandwidth guarantees.
+
+Other native links live in `src/robot/transport/native_links.*` and share the
+same byte/frame boundary:
+
+* `UdpLink` is a bounded POSIX datagram socket for Ethernet sensors and remote
+  controllers;
+* `SocketCanLink` uses Linux SocketCAN and `CanSegmenter` reassembles bounded
+  multi-frame transfers without exposing partial measurements;
+* `SpiLink` wraps Linux `spidev` for board-local devices; the device tree, chip
+  select and IRQ still belong to the machine profile;
+* `UsbCdcLink` aliases the same non-blocking byte stream for `/dev/ttyACM*`.
+
+All four are production transport boundaries under `src`; this directory
+contains the serial sensor walkthrough and deterministic tests only.

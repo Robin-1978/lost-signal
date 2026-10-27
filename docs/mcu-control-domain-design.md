@@ -143,6 +143,12 @@ SIM 的执行顺序固定为：完成一个物理 quantum，推进 sim time，�
 经过测量的底盘/传感器 profile。没有这些实测参数时，启动保持 safe hold；不能把示例
 里的轮径、PID、串口波特率或量程当成通用魔法默认值。
 
+主机侧常用链路也已集中在 `src/robot/transport/native_links.*`：UDP、Linux
+SocketCAN（含有界分片重组）、Linux spidev 和 USB CDC 都只负责可靠的字节/帧边界，
+不把 transport 细节带进 ROBOT 算法。UDP 适合高带宽网络传感器，CAN 适合确定性低带宽
+底盘/IO，SPI 适合板内设备，USB CDC 复用串口帧协议；具体设备仍要声明它的 profile、
+带宽、超时、硬件同步和安全行为。
+
 ## 验收
 
 - 1x、8x、64x、Turbo、headless 的 MCU 事件序列和结果一致。

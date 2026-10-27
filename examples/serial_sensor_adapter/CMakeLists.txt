@@ -11,6 +11,7 @@ add_library(serial_sensor_adapter STATIC
  ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/serial_sensor_protocol.cpp
  ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/serial_observation_adapter.cpp
  ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/posix_serial_port.cpp
+ ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/native_links.cpp
  ${CMAKE_CURRENT_SOURCE_DIR}/../../src/robot/transport/ring_buffer.cpp
 )
 target_include_directories(serial_sensor_adapter PUBLIC
