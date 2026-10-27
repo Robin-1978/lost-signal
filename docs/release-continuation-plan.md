@@ -72,6 +72,9 @@
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
 - `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
 - 当前阶段：第 8 项契约子阶段；第 1–7 项的主要交付已独立提交，不得重新实现或回退已经验收的边界。
+  `signal_town_big` 的地图目标安全契约已修复并在完整五目标回归中验收：
+  `bb87c91`，5286 步、5/5、0 碰撞。直接使用 `sim_viewer --map` 会运行该地图
+  的全部 named places，不再只验证首个目标。
 - 第 8.1 项已加入 chassis 专属 `ChassisControlOwner`、`ChassisCapabilities`、
  typed `ChassisSetpoint` 及边界校验（保留 Motion* 源兼容别名）；
  `test_motion_contract` 覆盖三种 ownership 与 duty/joint/body 单位隔离，
@@ -274,7 +277,7 @@
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
-| 7. 模型与场景升级 | 进行中 | `525116c`, `53bd9cf`, `d9cebd6`, `f2e3a5b` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk`、回放契约和叉车六分部件 link 绑定已完成；Blender 环境资产和最终视觉/Release 验收待完成 |
+| 7. 模型与场景升级 | 已完成 | `525116c`, `53bd9cf`, `d9cebd6`, `f2e3a5b`, `e6e17fd`, `904f0cb`, `4e3a75a`, `8fa94cb`, `62d741a` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk`、叉车六分部件 link 绑定、Blender 环境资产、碰撞几何/COM/joint/contact 工程视图和姿态回归均已完成；当前只保留发布后的场景体验扩展 |
 
 ### 阶段 7 叉车 link 子阶段（已完成，`f2e3a5b`）
 
@@ -297,7 +300,7 @@
  to MuJoCo actor links`；下一步是扩展 Blender 环境资产和最终 Release 视觉/碰撞
  验收。
 
-### 阶段 7 环境资产子阶段（工作区，待提交）
+### 阶段 7 环境资产子阶段（已提交，`e6e17fd`）
 
 - 在现有米制、`+Z` up、`+X` forward 和 world-fixture manifest 契约下新增三类
  可复用 Blender 资产：`traffic_signal`（红黄绿信号灯）、`safety_bollards`
@@ -308,7 +311,8 @@
  仍只由 world JSON 的 proxy 负责，ROBOT 不读取这些渲染资产。
 - Blender `inspect_assets.py` 报 `ASSET_MANIFEST_OK assets=53`；
  `test_asset_manifest`、`test_scene_manifest` 通过。Xvfb 下 3D viewer 成功加载
- 三个新 GLB，临时截图已删除；提交前仍需完成 Release 视觉和碰撞代理一致性验收。
+ 三个新 GLB，临时截图已删除；后续新增资产继续使用同一 manifest 和
+ collision-proxy 契约。
 
 ### 阶段 7 碰撞几何可视化（已修复姿态）
 

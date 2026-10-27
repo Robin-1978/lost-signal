@@ -86,6 +86,11 @@ constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
 constexpr int kMinimumScreenW = 960;
 constexpr int kMinimumScreenH = 640;
+// Presentation text is intentionally larger than the simulation HUD. It
+// grows with the window so a maximized 1080p/ultrawide view remains legible
+// without changing any ROBOT or SIM timing.
+constexpr float kMinimumUiTextScale = 1.15f;
+constexpr float kMaximumUiTextScale = 1.45f;
 // Open-ended sandbox runs retain a local replay window. Authored experiences
 // keep their complete, independently scored episode for debrief and A/B.
 constexpr double kDefaultSandboxHistorySeconds = 120.0;
@@ -111,14 +116,24 @@ Font ui_font() {
  return g_owns_ui_font ? g_ui_font : GetFontDefault();
 }
 
+float ui_text_scale() {
+ const float width_scale = static_cast<float>(GetScreenWidth()) /
+ static_cast<float>(kScreenW);
+ const float height_scale = static_cast<float>(GetScreenHeight()) /
+ static_cast<float>(kScreenH);
+ return std::clamp(kMinimumUiTextScale *
+ std::min(width_scale, height_scale),
+ kMinimumUiTextScale, kMaximumUiTextScale);
+}
+
 void draw_ui_text(const char* text, int x, int y, int font_size,
  Color color) {
  DrawTextEx(ui_font(), text, {static_cast<float>(x), static_cast<float>(y)},
- static_cast<float>(font_size), 0.5f, color);
+ static_cast<float>(font_size) * ui_text_scale(), 0.5f, color);
 }
 
 float measure_ui_text(const char* text, float font_size) {
- return MeasureTextEx(ui_font(), text, font_size, 0.5f).x;
+ return MeasureTextEx(ui_font(), text, font_size * ui_text_scale(), 0.5f).x;
 }
 
 void unload_ui_font();
@@ -1459,10 +1474,11 @@ void draw_panel_button(Rectangle bounds, const char* label, bool primary,
  : (hovered ? Color{49, 72, 71, 255} : Color{29, 48, 48, 255});
  DrawRectangleRounded(bounds, 0.16f, 8, fill);
  if (!primary) DrawRectangleRoundedLinesEx(bounds, 0.16f, 8, 1.0f, accent);
+ const float text_size = 14.0f * ui_text_scale();
  const float width = measure_ui_text(label, 14.0f);
  draw_ui_text(label,
  static_cast<int>(bounds.x + (bounds.width - width) * 0.5f),
- static_cast<int>(bounds.y + (bounds.height - 14.0f) * 0.5f), 14,
+ static_cast<int>(bounds.y + (bounds.height - text_size) * 0.5f), 14,
  primary ? Color{7, 18, 18, 255} : text);
 }
 
@@ -1485,6 +1501,9 @@ void draw_playback_controls(const PlaybackHitRegions& regions,
 float draw_wrapped_text(const std::string& text, float x, float y,
  float width, float font_size, float line_gap, Color color) {
  const Font font = ui_font();
+ const float text_scale = ui_text_scale();
+ font_size *= text_scale;
+ line_gap *= text_scale;
  if (std::any_of(text.begin(), text.end(), [](unsigned char value) {
  return value >= 0x80;
  })) {
@@ -1833,6 +1852,15 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  ? kCyan : kAmber);
  }
 
+ const bool final_chapter = experience.next_experience_path.empty();
+ if (final_chapter && gate_verdict != nullptr &&
+ gate_verdict->can_advance) {
+ draw_ui_text(tr("CAMPAIGN COMPLETE", "全部关卡完成"),
+ static_cast<int>(x + 22), static_cast<int>(summary_y + 21.0f),
+ 13, kCyan);
+ summary_y += 28.0f;
+ }
+
  const float actions_y = y0 + drawer_height - 58.0f;
  float primary_width = 0.0f;
  if (!experience.experiments.empty() && experiment_ui != nullptr &&
@@ -1862,7 +1890,9 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  }
  const Rectangle retry_button{x + 20.0f + primary_width, actions_y,
  104.0f, 34.0f};
- draw_panel_button(retry_button, tr("RETRY", "重试"), false, kCyan,
+ draw_panel_button(retry_button,
+ final_chapter && gate_verdict != nullptr && gate_verdict->can_advance
+ ? tr("REPLAY FINAL", "重玩本关") : tr("RETRY", "重试"), false, kCyan,
  kText, actions_enabled);
  if (hit_regions != nullptr && actions_enabled) {
  hit_regions->retry = retry_button;
@@ -2109,15 +2139,16 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  view_layer == ExperienceViewLayer::kPlayer;
  const float screen_width = static_cast<float>(GetScreenWidth());
  const float screen_height = static_cast<float>(GetScreenHeight());
+ const float presentation_scale = ui_text_scale();
  const float panel_width = briefing
- ? std::min(400.0f, screen_width - 48.0f)
- : std::min(720.0f, screen_width - 100.0f);
+ ? std::min(400.0f * presentation_scale, screen_width - 48.0f)
+ : std::min(720.0f * presentation_scale, screen_width - 100.0f);
  const float panel_height = briefing
- ? std::min(compact_briefing ? 430.0f : 700.0f,
+ ? std::min((compact_briefing ? 430.0f : 700.0f) * presentation_scale,
  screen_height - 48.0f)
  : phase == ExperiencePhase::kPrediction
- ? 610.0f
- : std::min(700.0f, screen_height - 48.0f);
+ ? std::min(610.0f * presentation_scale, screen_height - 48.0f)
+ : std::min(700.0f * presentation_scale, screen_height - 48.0f);
  const float x = briefing ? 24.0f : (screen_width - panel_width) * 0.5f;
  const float y0 = (static_cast<float>(GetScreenHeight()) - panel_height) * 0.5f;
  DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
@@ -4035,7 +4066,8 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
 bool render_shadow_map(const Frame& frame,
  const lost_signal::sim::world::World& world, VisualAssets& assets,
  const SceneManifest* scene,
- const lost_signal::sim::viewer::LidarMount* lidar_mount) {
+ const lost_signal::sim::viewer::LidarMount* lidar_mount,
+ const Camera3D& view_camera) {
  const lost_signal::sim::viewer::SceneLighting defaults;
  const auto& lighting = scene != nullptr ? scene->lighting : defaults;
  if (!ensure_shadow_map(assets, lighting.shadow_map_resolution)) {
@@ -4047,8 +4079,34 @@ bool render_shadow_map(const Frame& frame,
  static_cast<float>(-lighting.direction_xyz[1])};
  if (Vector3Length(light_direction) <= 1e-6f) return false;
  light_direction = Vector3Normalize(light_direction);
- const Vector3 center{static_cast<float>(frame.body.x_m), 0.4f,
- static_cast<float>(-frame.body.y_m)};
+ // Anchor the directional shadow camera to the rendered view rather than to
+ // the robot body. Following the body makes the orthographic projection move
+ // by sub-texel amounts every tick, which is the classic shadow shimmer seen
+ // while driving. Snap the anchor in light-camera texel units so a world
+ // point keeps the same shadow texel until a full texel is crossed.
+ const Vector3 view_center = view_camera.target;
+ const Vector3 light_forward = Vector3Normalize(light_direction);
+ Vector3 light_up = {0.0f, 1.0f, 0.0f};
+ if (std::abs(Vector3DotProduct(light_forward, light_up)) > 0.96f) {
+ light_up = {0.0f, 0.0f, -1.0f};
+ }
+ const Vector3 light_right = Vector3Normalize(
+ Vector3CrossProduct(light_forward, light_up));
+ light_up = Vector3Normalize(
+ Vector3CrossProduct(light_right, light_forward));
+ const float shadow_texel = static_cast<float>(lighting.shadow_extent_m) /
+ static_cast<float>(std::max(1, lighting.shadow_map_resolution));
+ const auto snap_axis = [shadow_texel](float value) {
+ return shadow_texel > 0.0f
+ ? std::round(value / shadow_texel) * shadow_texel : value;
+ };
+ const float center_right = Vector3DotProduct(view_center, light_right);
+ const float center_up = Vector3DotProduct(view_center, light_up);
+ const Vector3 center = Vector3Add(
+ Vector3Add(Vector3Scale(light_right, snap_axis(center_right)),
+ Vector3Scale(light_up, snap_axis(center_up))),
+ Vector3Scale(light_forward,
+ Vector3DotProduct(view_center, light_forward)));
  Camera3D light_camera{};
  light_camera.target = center;
  light_camera.position = Vector3Subtract(
@@ -4102,7 +4160,7 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
  const lost_signal::sim::viewer::SceneLighting defaults;
  const auto& lighting = scene != nullptr ? scene->lighting : defaults;
  const bool shadows_ready = render_shadow_map(
- frame, world, assets, scene, lidar_mount);
+ frame, world, assets, scene, lidar_mount, camera);
  configure_scene_lighting(assets, scene, frame, camera);
  if (shadows_ready) {
  const int shadow_texture_slot = 10;
@@ -4488,6 +4546,7 @@ int main(int argc, char** argv) {
  ? tr("Robot Simu - First Contact", "Robot Simu - 初次接触")
  : tr("Robot Simu - Simulation Lab", "Robot Simu - 仿真实验室"));
  SetWindowMinSize(kMinimumScreenW, kMinimumScreenH);
+ if (initial_maximized) MaximizeWindow();
  load_ui_font(experience_loaded ? &experience : nullptr);
  sim::viewer::ViewerAudio viewer_audio(assets_path, !mute_audio);
  VisualAssets visual_assets;
