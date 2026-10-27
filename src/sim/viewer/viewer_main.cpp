@@ -324,6 +324,16 @@ RenderTexture2D load_shadow_map(int width, int height) {
  target.texture.height = height;
  if (target.id == 0) return target;
  rlEnableFramebuffer(target.id);
+ // Keep a real color attachment even though the lighting pass samples only
+ // depth. BeginTextureMode() and several OpenGL drivers require a complete
+ // draw/read framebuffer; a depth-only target was intermittently reported as
+ // incomplete and produced missing or shimmering shadows.
+ target.texture.id = rlLoadTexture(
+  nullptr, width, height, RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
+ target.texture.format = RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+ target.texture.mipmaps = 1;
+ rlFramebufferAttach(target.id, target.texture.id, RL_ATTACHMENT_COLOR_CHANNEL0,
+  RL_ATTACHMENT_TEXTURE2D, 0);
  target.depth.id = rlLoadTextureDepth(width, height, false);
  target.depth.width = width;
  target.depth.height = height;
@@ -332,15 +342,24 @@ RenderTexture2D load_shadow_map(int width, int height) {
  rlFramebufferAttach(target.id, target.depth.id, RL_ATTACHMENT_DEPTH,
  RL_ATTACHMENT_TEXTURE2D, 0);
  if (!rlFramebufferComplete(target.id)) {
+ rlDisableFramebuffer();
  rlUnloadFramebuffer(target.id);
+ rlUnloadTexture(target.texture.id);
  rlUnloadTexture(target.depth.id);
  return {};
  }
+ // rlLoadFramebuffer leaves the new target bound.  Keep render-target
+ // ownership local to this helper: callers may fall back to the direct
+ // renderer before the first post-process pass, and an accidentally bound
+ // shadow FBO would make the window appear blank until EndTextureMode().
+ rlDisableFramebuffer();
  return target;
 }
 
 void release_shadow_map(VisualAssets& assets) {
  if (assets.shadow_map.id > 0) rlUnloadFramebuffer(assets.shadow_map.id);
+ if (assets.shadow_map.texture.id > 0)
+ rlUnloadTexture(assets.shadow_map.texture.id);
  if (assets.shadow_map.depth.id > 0)
  rlUnloadTexture(assets.shadow_map.depth.id);
  assets.shadow_map = {};
