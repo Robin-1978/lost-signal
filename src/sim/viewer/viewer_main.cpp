@@ -272,6 +272,8 @@ struct VisualAssets {
  const AssetDefinition* forklift_definition = nullptr;
  Model worker{};
  const AssetDefinition* worker_definition = nullptr;
+ ModelAnimation* worker_animations = nullptr;
+ int worker_animation_count = 0;
  std::vector<EnvironmentModel> environment;
  bool loaded = false;
 };
@@ -602,6 +604,25 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  "actors.forklift", assets.forklift_definition);
  assets.worker = load_manifest_model(models_root, assets.manifest,
  "actors.worker", assets.worker_definition);
+ if (model_ready(assets.worker) && assets.worker_definition != nullptr &&
+ !assets.worker_definition->animation_clips.empty()) {
+ const std::filesystem::path worker_path =
+ models_root / assets.worker_definition->relative_path;
+ assets.worker_animations = LoadModelAnimations(
+ worker_path.string().c_str(), &assets.worker_animation_count);
+ if (assets.worker_animations == nullptr ||
+ assets.worker_animation_count <= 0) {
+ std::fprintf(stderr,
+ "[viewer] worker animation clips declared but none could be loaded: %s\n",
+ worker_path.string().c_str());
+ if (assets.worker_animations != nullptr) {
+ UnloadModelAnimations(assets.worker_animations,
+ assets.worker_animation_count);
+ }
+ assets.worker_animations = nullptr;
+ assets.worker_animation_count = 0;
+ }
+ }
  for (const auto& definition : assets.manifest.assets()) {
  if (definition.kind != "environment") continue;
  const AssetDefinition* loaded_definition = nullptr;
@@ -777,6 +798,10 @@ void unload_visual_assets(VisualAssets& assets) {
  if (model_ready(assets.track)) UnloadModel(assets.track);
  if (model_ready(assets.forklift)) UnloadModel(assets.forklift);
  if (model_ready(assets.worker)) UnloadModel(assets.worker);
+ if (assets.worker_animations != nullptr) {
+ UnloadModelAnimations(assets.worker_animations,
+ assets.worker_animation_count);
+ }
  for (auto& environment : assets.environment) {
  if (model_ready(environment.model)) UnloadModel(environment.model);
  }
@@ -2970,6 +2995,29 @@ void draw_frame_3d(const Frame& f,
  }
  if (actor_model != nullptr && model_ready(*actor_model) &&
  actor_definition != nullptr) {
+ if (a.pedestrian && assets != nullptr &&
+ assets->worker_animations != nullptr &&
+ assets->worker_animation_count > 0 &&
+ assets->worker_definition != nullptr &&
+ assets->worker_definition->animation_stride_m > 0.0) {
+ const double speed = std::hypot(a.vx_mps, a.vy_mps);
+ const int frame_count = std::max(1,
+ assets->worker_animations[0].frameCount);
+ int animation_frame = 0;
+ if (speed > 1e-6) {
+ // Distance based phase is deterministic across pause, replay and Turbo;
+ // the actor root pose remains the MuJoCo body pose below.
+ const double cycles = f.sim_time_s * speed /
+ assets->worker_definition->animation_stride_m;
+ const double wrapped = cycles - std::floor(cycles);
+ animation_frame = std::min(
+ frame_count - 1, static_cast<int>(wrapped * frame_count));
+ }
+ // The shared raylib Model is updated immediately before each actor draw,
+ // so multiple workers can have independent phases without wall-clock state.
+ UpdateModelAnimationBones(*actor_model,
+ assets->worker_animations[0], animation_frame);
+ }
  if (a.world_pose.valid) {
  draw_actor_model_physical(*actor_model, *actor_definition,
  a.world_pose, a.radius_m);

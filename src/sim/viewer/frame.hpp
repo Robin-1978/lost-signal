@@ -359,6 +359,9 @@ struct Frame {
   std::vector<std::pair<double, double>> truth_lidar_hits;
  std::vector<float> truth_lidar_time_offsets_s;
   bool truth_lidar_valid = false;
+ // Canonical SIM time for deterministic presentation playback. This never
+ // enters ROBOT observations or decisions.
+ double sim_time_s = 0.0;
   bool static_collision = false;
   bool dynamic_collision = false;
   double static_clearance_m = 999.0;

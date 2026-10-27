@@ -133,6 +133,7 @@
       "triangle_budget": 3000,
       "material_budget": 9,
       "skeleton_root": "worker_rig",
+ "animation_stride_m": 0.72,
       "animation_clips": [
         "WorkerWalk"
       ]

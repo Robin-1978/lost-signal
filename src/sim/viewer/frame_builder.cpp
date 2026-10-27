@@ -134,6 +134,9 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
                   const EditorSelection& sel, const LidarMount& mount) {
   Frame f;
   f.step = step.step;
+ // Scenario transitions are fixed at 20 ms. Historical frames use the
+ // recorded step index rather than viewer wall-clock time.
+ f.sim_time_s = static_cast<double>(step.step) * 0.02;
   const world::WorldTruth& t = step.truth_after;
   f.body.x_m = t.body_x_m;
   f.body.y_m = t.body_y_m;

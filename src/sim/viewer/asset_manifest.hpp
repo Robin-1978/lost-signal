@@ -47,6 +47,9 @@ struct AssetDefinition {
  std::size_t material_budget = 0;
  std::string skeleton_root;
  std::vector<std::string> animation_clips;
+ // Distance travelled by the authored root for one animation cycle. This is
+ // a SIM presentation contract, never a robot or physics parameter.
+ double animation_stride_m = 0.0;
  AssetBounds expected_bounds_m;
  double reference_radius_m = 0.0;
  double reference_half_width_m = 0.0;

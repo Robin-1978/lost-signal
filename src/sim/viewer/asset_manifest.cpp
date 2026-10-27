@@ -261,6 +261,16 @@ bool parse_asset(const Json& node, AssetDefinition& asset,
  error, true)) {
  return false;
  }
+ const Json* animation_stride = node.find("animation_stride_m");
+ if (animation_stride != nullptr) {
+ if (!animation_stride->is_num() ||
+ !std::isfinite(animation_stride->as_num()) ||
+ animation_stride->as_num() < 0.0) {
+ error = "asset animation_stride_m must be finite non-negative";
+ return false;
+ }
+ asset.animation_stride_m = animation_stride->as_num();
+ }
  const Json* lods = node.find("lods");
  if (lods == nullptr || !lods->is_array() || lods->as_array().empty()) {
  error = "asset lods must be a non-empty array";

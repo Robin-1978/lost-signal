@@ -68,6 +68,11 @@ int main() {
  if (!real_loaded) std::cerr << error << '\n';
  assert(real_loaded);
   assert(!manifest.assets().empty());
+ const auto* worker = manifest.find("actors.worker");
+ assert(worker != nullptr);
+ assert(worker->animation_clips.size() == 1);
+ assert(worker->animation_clips.front() == "WorkerWalk");
+ assert(worker->animation_stride_m > 0.0);
 
   std::set<std::string> inventory;
   for (const auto& entry : fs::recursive_directory_iterator(models_root)) {
@@ -98,6 +103,7 @@ int main() {
  "fnv1a64:0e46fd16c3ae8b48");
  assert(valid.assets().front().pivot_semantic == "wheel_roll_joint");
  assert(valid.assets().front().link_binding == "wheel_link");
+ assert(valid.assets().front().animation_stride_m == 0.0);
  assert(valid.assets().front().lods.size() == 1);
  assert(valid.assets().front().triangle_budget == 100);
  const auto canonical = asset_frame_transform(valid.assets().front());

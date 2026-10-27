@@ -170,6 +170,13 @@
 3. 任何失败先记录可复现命令、输入 revision、SIM/ROBOT 边界和结构化证据，再修改代码。已撤销的动态回波过滤、无条件 prior-improvement、post-step velocity projection 等实验不得重新引入。
 4. 每次阶段性提交后立即更新本文件中的提交号、测试结果和剩余风险，确保下一次上下文压缩仍能从同一锚点恢复。
 
+### 第 7 阶段 worker 子阶段（2026-10-27）
+
+- worker GLB 的 `WorkerWalk` clip 已接入 Viewer；动画相位由记录帧的 SIM 时间、MuJoCo mocap 根位姿对应的实际速度和 manifest `animation_stride_m` 推导。暂停、回放、Turbo 和多 worker 不共享墙钟相位，停下时回到站立帧。
+- `AssetDefinition`/manifest 现在显式声明动画步长；Blender `inspect_assets.py` 对带 clip 的资产强制检查有限的正步长。资产仍保持 `actor_root` 地面 pivot，根位姿直接来自 MuJoCo read-back。
+- 验收：`test_asset_manifest`、`test_viewer_frame`、`test_mujoco_backend`、`test_sim_actor` 通过；Blender 5.2.2 `inspect_assets.py` 报 `ASSET_MANIFEST_OK assets=44`；Xvfb 下 `sim_viewer --3d --map configs/worlds/industrial_200k.json --mute` 成功加载 `WorkerWalk (50 frames, 0.833333s)`。
+- 本子阶段不改变 ROBOT observation/decision/actuation，也未把 SIM actor identity 或真值加入 `src/robot/`。下一子阶段：forklift 的车体、驱动轮、转向轮、门架、carriage 和货叉 link 绑定真实 MuJoCo body/joint pose。
+
 ### 阶段 1 回环修订检查点（2026-10-27）
 
 - 回环异步搜索的 pending proposal 不再按墙钟超时清理；proposal 绑定同一历史 keyframe anchor，只有该 anchor 被有界 keyframe ring 丢弃时才失效。这样不会在 coarse/refine/reverse 分片执行期间丢失第一次真实重访证据。

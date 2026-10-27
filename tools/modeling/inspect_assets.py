@@ -10,6 +10,7 @@ bounds, and wheel reference dimensions, then prints one deterministic record.
 """
 
 import json
+import math
 from pathlib import Path
 
 import bpy
@@ -104,6 +105,14 @@ def validate(entry, measured):
   raise RuntimeError(f"content hash changed for {entry['path']}")
  if entry.get("meters_per_unit") != 1:
   raise RuntimeError(f"asset is not authored in meters: {entry['path']}")
+ stride = entry.get("animation_stride_m", 0.0)
+ if (not isinstance(stride, (int, float)) or
+ not math.isfinite(float(stride)) or stride < 0.0):
+  raise RuntimeError(
+   f"animation_stride_m must be finite non-negative: {entry['path']}")
+ if entry.get("animation_clips") and stride <= 0.0:
+  raise RuntimeError(
+   f"animated asset needs animation_stride_m: {entry['path']}")
  expected = entry["expected_bounds_m"]
  if not close_vec(measured["min"], expected["min"]):
   raise RuntimeError(
