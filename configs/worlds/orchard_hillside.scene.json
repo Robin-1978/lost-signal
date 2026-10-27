@@ -1,0 +1,12 @@
+{
+  "format":"lost-signal-scene/1",
+  "scene_id":"orchard_hillside",
+  "surface_only_max_height_m":0.10,
+  "camera":{"distance_m":7.2,"yaw_deg":42.0,"pitch_deg":31.0,"target_height_m":0.35,"follow_smoothing_s":0.32,"lookahead_s":0.85,"speed_distance_gain_s":0.68,"minimum_distance_m":3.0,"maximum_distance_m":18.0},
+  "lighting":{"direction_xyz":[-0.52,0.26,-1.0],"directional_rgba":[255,241,201,255],"ambient_rgba":[68,85,70,255],"fog_rgba":[27,43,34,255],"directional_intensity":1.08,"ambient_intensity":0.88,"fog_start_m":18.0,"fog_end_m":45.0,"exposure":1.00,"bloom_threshold":0.82,"bloom_strength":0.18,"vignette_strength":0.09,"shadow_map_resolution":2048,"shadow_extent_m":28.0,"shadow_strength":0.58},
+  "floor":{"base_rgba":[70,91,61,255],"grid_rgba":[126,153,104,80],"grid_spacing_m":2.0},
+  "instances":[
+    {"instance_id":"packing_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[2.0,2.0,0.004],"scale":[1.2,1.2,1.0],"yaw_deg":0.0},
+    {"instance_id":"ridge_strip","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[10.0,10.0,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":35.0}
+  ]
+}

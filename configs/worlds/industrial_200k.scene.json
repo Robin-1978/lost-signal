@@ -1,0 +1,13 @@
+{
+  "format":"lost-signal-scene/1",
+  "scene_id":"industrial_200k",
+  "surface_only_max_height_m":0.10,
+  "camera":{"distance_m":8.0,"yaw_deg":38.0,"pitch_deg":28.0,"target_height_m":0.35,"follow_smoothing_s":0.38,"lookahead_s":0.95,"speed_distance_gain_s":0.75,"minimum_distance_m":3.5,"maximum_distance_m":24.0},
+  "lighting":{"direction_xyz":[-0.44,0.25,-1.0],"directional_rgba":[255,226,190,255],"ambient_rgba":[62,72,72,255],"fog_rgba":[21,29,31,255],"directional_intensity":1.08,"ambient_intensity":0.82,"fog_start_m":70.0,"fog_end_m":210.0,"exposure":0.98,"bloom_threshold":0.84,"bloom_strength":0.16,"vignette_strength":0.08,"shadow_map_resolution":2048,"shadow_extent_m":42.0,"shadow_strength":0.56},
+  "floor":{"base_rgba":[52,59,58,255],"grid_rgba":[91,105,101,72],"grid_spacing_m":5.0},
+  "instances":[
+    {"instance_id":"west_hub_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[42.0,-120.0,0.004],"scale":[1.5,1.5,1.0],"yaw_deg":0.0},
+    {"instance_id":"central_gate_strip","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[250.0,0.0,0.004],"scale":[2.0,1.0,1.0],"yaw_deg":0.0},
+    {"instance_id":"south_yard_strip","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[440.0,-150.0,0.004],"scale":[1.5,1.0,1.0],"yaw_deg":90.0}
+  ]
+}

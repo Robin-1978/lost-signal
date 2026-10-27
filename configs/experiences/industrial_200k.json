@@ -5,7 +5,7 @@
  "subtitle": "Measure route search, localization recovery, and throughput on a large world.",
  "files": {
  "map": "../worlds/industrial_200k.json",
- "scene": "../worlds/lab_default.scene.json",
+ "scene": "../worlds/industrial_200k.scene.json",
  "robot": "../robot/differential.json",
  "sim": "../sim/default.json"
  },

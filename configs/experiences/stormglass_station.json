@@ -5,7 +5,7 @@
  "subtitle": "A complex station with water, ridge transitions, and an anonymous moving actor.",
  "files": {
   "map": "../worlds/stormglass_station.json",
-  "scene": "../worlds/lab_default.scene.json",
+ "scene": "../worlds/stormglass_station.scene.json",
   "robot": "../robot/differential.json",
   "sim": "../sim/default.json"
  },

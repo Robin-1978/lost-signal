@@ -5,7 +5,7 @@
  "subtitle": "A narrow canyon for testing route recovery, unknown space, and controlled manual intervention.",
  "files": {
   "map": "../worlds/washout_canyon.json",
-  "scene": "../worlds/lab_default.scene.json",
+ "scene": "../worlds/washout_canyon.scene.json",
   "robot": "../robot/differential.json",
   "sim": "../sim/default.json"
  },

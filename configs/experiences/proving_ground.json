@@ -5,7 +5,7 @@
  "subtitle": "A repeatable engineering course for dry, gravel, mud, ice, ramps, and cross-slope tests.",
  "files": {
   "map": "../worlds/proving_ground_map.json",
-  "scene": "../worlds/lab_default.scene.json",
+ "scene": "../worlds/proving_ground_map.scene.json",
   "robot": "../robot/differential.json",
   "sim": "../sim/default.json"
  },

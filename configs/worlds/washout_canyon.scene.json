@@ -1,0 +1,12 @@
+{
+  "format":"lost-signal-scene/1",
+  "scene_id":"washout_canyon",
+  "surface_only_max_height_m":0.10,
+  "camera":{"distance_m":6.4,"yaw_deg":34.0,"pitch_deg":29.0,"target_height_m":0.25,"follow_smoothing_s":0.30,"lookahead_s":0.80,"speed_distance_gain_s":0.64,"minimum_distance_m":2.8,"maximum_distance_m":16.0},
+  "lighting":{"direction_xyz":[-0.54,0.32,-1.0],"directional_rgba":[255,217,171,255],"ambient_rgba":[76,69,60,255],"fog_rgba":[36,31,27,255],"directional_intensity":1.08,"ambient_intensity":0.84,"fog_start_m":14.0,"fog_end_m":38.0,"exposure":1.00,"bloom_threshold":0.82,"bloom_strength":0.18,"vignette_strength":0.12,"shadow_map_resolution":2048,"shadow_extent_m":24.0,"shadow_strength":0.62},
+  "floor":{"base_rgba":[75,66,57,255],"grid_rgba":[129,111,89,95],"grid_spacing_m":1.0},
+  "instances":[
+    {"instance_id":"washout_start_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[1.0,1.0,0.004],"scale":[1.1,1.1,1.0],"yaw_deg":0.0},
+    {"instance_id":"relay_strip","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[13.0,8.0,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":45.0}
+  ]
+}

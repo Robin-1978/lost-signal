@@ -6,7 +6,7 @@
  "subtitle": "Inspect the slope, contact, traction estimate, and honest failure modes.",
  "files": {
  "map": "../worlds/slope_lab.json",
- "scene": "../worlds/lab_default.scene.json",
+ "scene": "../worlds/slope_lab.scene.json",
  "robot": "../robot/differential.json",
  "sim": "../sim/default.json"
  },

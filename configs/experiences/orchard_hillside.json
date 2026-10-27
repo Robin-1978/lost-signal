@@ -5,7 +5,7 @@
  "subtitle": "Traverse a long row with changing grade, loose ground, and narrow clearances.",
  "files": {
   "map": "../worlds/orchard_hillside.json",
-  "scene": "../worlds/lab_default.scene.json",
+  "scene": "../worlds/orchard_hillside.scene.json",
   "robot": "../robot/differential.json",
   "sim": "../sim/default.json"
  },
