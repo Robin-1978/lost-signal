@@ -95,8 +95,9 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
 The authored campaign now runs through seven chapters in order: First
 Contact, Outdated Map Live Safety, Mapless Loop, Continuous Terrain, Signal
 Town, Signal Town Big, and Industrial Scale (200,000 m²). Four engineering
-courses are also catalogued for slope, low-grip, water, hillside, and recovery
-work. Use `--experience` for an authored lesson or `--map` for an open run
+courses plus an Ice Lab are also catalogued for slope, low-grip, water,
+hillside, recovery, and deterministic slip work. Use `--experience` for an
+authored lesson or `--map` for an open run
 that uses every named place in that world:
 
 ```sh
@@ -105,6 +106,7 @@ that uses every named place in that world:
 ./build/sim_viewer --map configs/worlds/proving_ground_map.json --3d
 ./build/sim_viewer --map configs/worlds/industrial_200k.json --3d --rate 8
 ./build/sim_viewer --map configs/worlds/signal_town_big.json --3d
+./build/sim_viewer --experience configs/experiences/ice_lab.json --3d
 ./build/sim_viewer --chapter proving_ground --3d --maximized
 ```
 
@@ -114,9 +116,10 @@ The complete Viewer catalog is discoverable without opening a window:
 ./build/sim_viewer --catalog
 ```
 
-The catalog includes the five-stop Signal Town, the 200,000 m² industrial
-route, continuous terrain, the proving ground, orchard hillside, stormglass
-station, and washout canyon. Every catalog world remains available with
+The catalog includes the five-stop Signal Town, the five-stop expanded town,
+the 200,000 m² industrial route, continuous terrain, the proving ground,
+Ice Lab, orchard hillside, stormglass station, and washout canyon. Every
+catalog world remains available with
 `--map`; when a world has no decorative scene manifest, the Viewer uses
 deterministic physical geometry fallback so a missing GLB never removes a
 physics test.
