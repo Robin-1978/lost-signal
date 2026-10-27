@@ -1,0 +1,38 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "signal_town",
+ "next_experience": "signal_town_big.json",
+ "title": "SIGNAL TOWN: ANONYMOUS TRAFFIC",
+ "subtitle": "A compact five-stop route that teaches live tracking, yielding, and safe arrival.",
+ "files": {
+  "map": "../worlds/signal_town.json",
+  "scene": "../worlds/lab_default.scene.json",
+  "robot": "../robot/differential.json",
+  "sim": "../sim/default.json"
+ },
+ "objectives": ["town_gate", "market_gate", "housing_door", "freight_yard", "energy_hub"],
+ "time_limit_steps": 9000,
+ "briefing": [
+  "Follow five named stops through a compact town with anonymous moving actors.",
+  "ROBOT receives timed measurements, its own tracks, and task intent; actor identity and routes remain in SIM.",
+  "Yielding is a valid decision. A physical collision is always a failure even when the route would be shorter."
+ ],
+ "prediction": {
+  "question": "How should the robot respond when live traffic approaches a planned route?",
+  "choices": [
+   {"choice_id":"yield", "label":"Slow or hold, then continue when the measured envelope is safe", "explanation":"The local planner and independent Safety gate use current anonymous observations and braking distance.", "evidence_rule":"independent_acceptance"},
+   {"choice_id":"script", "label":"Use the actor's authored route to pass first", "explanation":"Future scripts and actor identity never cross into ROBOT.", "evidence_rule":"sim_rejected"},
+   {"choice_id":"incomplete", "label":"Stop forever after the first traffic observation", "explanation":"A safe hold is temporary evidence gathering; the mission can resume after a validated continuation exists.", "evidence_rule":"incomplete"}
+  ]
+ },
+ "running_prompt": "Watch anonymous tracks, prediction, validation, and the final safety command at every stop.",
+ "debrief": {
+  "success_title": "TRAFFIC NEGOTIATION VERIFIED",
+  "failure_title": "ROUTE NEEDS REVIEW",
+  "lessons": [
+   "Task places express intent; they do not reveal a truth pose to the robot.",
+   "Dynamic prediction is built from measurements and remains subject to the validator and Safety monitor.",
+   "SIM independently records contact and physical arrival after ROBOT has made its decisions."
+  ]
+ }
+}

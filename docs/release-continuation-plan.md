@@ -400,3 +400,13 @@
   464.89 m；五目标 truth miss 为 0.100/0.154/0.121/0.106/0.061 m，最终
   `goal_hold/arrived/stop`，末端估计与真值差约 0.075 m。`test_localization`、
   `test_slam`、`test_loop_closure` 均通过。
+
+### 当前工作区检查点（2026-10-28）
+
+- Viewer/Experience 入口扩展已在工作区完成：新增 `signal_town` 五目标章节，主战役现在从 First Contact 经过未知障碍、无图闭环、连续地形、Signal Town、Signal Town Big 到 industrial 200k；另外保留 proving ground、orchard hillside、stormglass station 和 washout recovery 工程实验。新增章节仍只通过 `ExperienceRuntime` 建立 world/ROBOT/SIM，未增加关卡特化算法或真值入口。
+- `sim_viewer --catalog` 现在明确显示 world 类型、actor sidecar 和 `authored/fallback` scene。没有专属 scene 的 world 会加载 `lab_default.scene.json`，保证 3D 镜头、灯光、粒子和模型绑定不因缺少装饰文件而消失。
+- 修复 `test_scene_manifest` 对通用 fallback 误认为缺失 `lab_default.json` 的旧假设；真正成对的 scene/world 仍逐个严格解析。Experience manifest 回归新增章节图校验：所有边必须指向存在的 manifest，主战役不能成环且必须到达 industrial 200k。
+- Viewer 的模块化叉车路径不会再在真实 MuJoCo link GLB 外叠加旧程序化圆柱；程序化几何只在没有完整模型/绑定时使用。worker、叉车、轮、caster 和机械臂的渲染继续消费 SIM presentation snapshot 的 body/joint pose，ROBOT boundary 不变。
+- 已验证：`test_scene_manifest`、`test_experience_manifest`、`signal_town_mission`、`lost_signal_sim ... signal_town_big ... --require-pass`（4695 steps、5/5、0 collisions）、`test_slam_experience_mission` 和 `test_terrain_mission`。工作区截图和临时文件已清理。
+
+下一步从这里继续：先完成本工作区的 Release/全量 CTest 记录，再对每个 catalog world 做一次 3D 启动 smoke test；随后补齐场景资产的 authored scene（当前 fallback 仍是合法但简化的工程视图），并把 Blender 资产检查、四底盘和手动 sandbox 作为发布门禁，而不是只依赖 `signal_town`。

@@ -1,0 +1,38 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "orchard_hillside",
+ "title": "ORCHARD HILLSIDE: CONTINUOUS GROUND",
+ "subtitle": "Traverse a long row with changing grade, loose ground, and narrow clearances.",
+ "files": {
+  "map": "../worlds/orchard_hillside.json",
+  "scene": "../worlds/lab_default.scene.json",
+  "robot": "../robot/differential.json",
+  "sim": "../sim/default.json"
+ },
+ "startup_mode": "global_search",
+ "objectives": ["packing_pad"],
+ "time_limit_steps": 8000,
+ "briefing": [
+  "The orchard is an authored physical test world with continuous terrain and material zones.",
+  "ROBOT receives observations and its own estimate; the row geometry is not truth injected.",
+  "Use the 3D view to inspect tire contact and the estimate ghost separately."
+ ],
+ "prediction": {
+  "question": "What is the safe response to a changing grade and fresh slip evidence?",
+  "choices": [
+   {"choice_id":"adapt", "label":"Adapt speed from measured evidence and keep the safety envelope", "explanation":"The decision stack can reduce demand while preserving the configured footprint.", "correct":true},
+   {"choice_id":"teleport", "label":"Snap to the next row from SIM terrain", "explanation":"SIM truth cannot cross the ROBOT boundary.", "correct":false},
+   {"choice_id":"ignore", "label":"Ignore slip because the global route is valid", "explanation":"A valid global route still requires local validation and current contact evidence.", "correct":false}
+  ]
+ },
+ "running_prompt": "Observe the grade, scan timing, local costmap, and physical contact response as the robot approaches the packing pad.",
+ "debrief": {
+  "success_title": "HILLSIDE RESULT RECORDED",
+  "failure_title": "HILLSIDE NEEDS REVIEW",
+  "lessons": [
+   "Global intent does not replace local sensing and safety validation.",
+   "Terrain is visible to SIM and measurable through robot interfaces, never as a hidden scalar.",
+   "The same route pipeline is used for flat and changing ground."
+  ]
+ }
+}

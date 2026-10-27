@@ -3259,7 +3259,7 @@ void draw_frame_3d(const Frame& f,
  draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  ground_z, a.radius_m, a.heading_rad);
  }
- } else {
+ } else if (render_path == ActorRenderPath::kProceduralFallback) {
  // raylib's DrawCylinder position is the base center (not the geometric
  // center). Passing ground+h/2 made the procedural pedestrian float by half
  // its height; the SIM terrain sample is the sole contact anchor.
@@ -3708,13 +3708,9 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  const double caster_half_width = std::min(
  static_cast<double>(world.motor_params().tire_half_width_m),
  caster.radius_m * 0.75);
- Vector3 caster_wheel_scale = wheel_asset_scale(
+ const Vector3 caster_wheel_scale = wheel_asset_scale(
  assets != nullptr ? assets->caster_wheel_definition : nullptr,
  caster.radius_m, caster_half_width);
- if (assets != nullptr && model_ready(assets->caster_wheel)) {
- caster_wheel_scale = wheel_asset_scale(assets->caster_wheel_definition,
- caster.radius_m, caster_half_width);
- }
  const float caster_scale = assets != nullptr &&
  assets->caster_wheel_definition != nullptr &&
  assets->caster_wheel_definition->reference_radius_m > 0.0
@@ -3740,18 +3736,10 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  static_cast<float>(-caster.y_m)},
  QuaternionMultiply(swivel, spin),
  caster_wheel_scale, WHITE);
- // Keep the authored GLB detail and add the physical crowned centre rib so
- // the visible tire profile matches the compound contact geometry.
- rlPushMatrix();
- rlTranslatef(static_cast<float>(caster.x_m), axle + caster_lift,
- static_cast<float>(-caster.y_m));
- rlRotatef(static_cast<float>(caster.yaw_rad * RAD2DEG), 0.0f, 1.0f,
- 0.0f);
- rlRotatef(static_cast<float>(caster.spin_rad * RAD2DEG), 0.0f, 0.0f,
- 1.0f);
- draw_crowned_tire(caster.radius_m, caster_half_width,
- Color{36, 38, 43, 255});
- rlPopMatrix();
+ // The GLB already contains the crowned tread and rotation witness. Do not
+ // overlay an analytic cylinder: that duplicate used to create a second
+ // black contact patch which appeared embedded when the physical caster was
+ // compressed on a slope.
  continue;
  }
  rlPushMatrix();
@@ -3936,23 +3924,6 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
                      static_cast<float>(-w.y_m));
         rlRotatef(static_cast<float>(w.steer_rad * RAD2DEG), 0.0f, 1.0f,
                   0.0f);
- if (!w.mecanum_rollers && assets != nullptr && model_ready(assets->wheel)) {
- // The raw authored wheel link uses +Z as its axle. In raylib's mapped
- // vehicle frame that local Z is already the horizontal depth axis; the
- // fixed link mount above lays the wheel plane vertical. A second -90
- // degree conversion would make the axle vertical and is intentionally
- // absent.
- rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 0.0f, 1.0f);
- DrawModelEx(assets->wheel, {0.0f, 0.0f, 0.0f},
- {0.0f, 1.0f, 0.0f}, 0.0f,
- {1.0f, 1.0f, 1.0f}, show_actor_routes && w.slipping
- ? Color{210, 60, 48, 255} : WHITE);
- if (std::abs(w.steer_rad) > 1e-3 || std::abs(w.steer_rate_radps) > 1e-3) {
- DrawSphere({0.0f, 0.0f, 0.0f}, 0.035f, Color{210, 170, 70, 255});
- }
- rlPopMatrix();
- continue;
- }
         rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
         if (w.mecanum_rollers) {
  for (int k = -2; k <= 2; ++k) {
@@ -4307,8 +4278,8 @@ int main(int argc, char** argv) {
  // numbers), --map <world file> replaces the demo geometry. `--assets`
  // enables optional SIM-only GLB presentation models from the old content
  // tree; procedural parts remain the deterministic fallback.
- std::string robot_path, sim_path, map_path, assets_path, scene_path,
- experience_path, experiment_output_path;
+std::string robot_path, sim_path, map_path, assets_path, scene_path,
+ experience_path, experiment_output_path, chapter_id;
  std::string requested_locale = "auto";
  double initial_playback_rate = 1.0;
  double sandbox_history_seconds = kDefaultSandboxHistorySeconds;
@@ -4339,7 +4310,7 @@ int main(int argc, char** argv) {
  " [--maximized]\n"
  " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
  " [--experiment-out REPORT.json]\n"
- " [--list-worlds | --list-experiences]\n"
+ " [--chapter ID | --catalog | --list-worlds | --list-experiences]\n"
  "\n"
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
  "open engineering demo. During a run: Space pause, N step, F follow,\n"
@@ -4355,6 +4326,14 @@ int main(int argc, char** argv) {
  if (a == "--physics-overlay") initial_physics_overlay = true;
  if (a == "--list-worlds") list_worlds = true;
  if (a == "--list-experiences") list_experiences = true;
+ if (a == "--catalog") {
+ list_worlds = true;
+ list_experiences = true;
+ }
+ if (a == "--chapter" && i + 1 < argc) {
+ chapter_id = argv[++i];
+ source_requested = true;
+ }
  if (a == "--robot" && i + 1 < argc) {
  robot_path = argv[++i];
  source_requested = true;
@@ -4413,6 +4392,21 @@ int main(int argc, char** argv) {
  initial_playback_rate = parsed;
  }
   }
+ if (!chapter_id.empty()) {
+ std::filesystem::path chapter_path(chapter_id);
+ // The short form is deliberately resolved against the authored catalog;
+ // arbitrary paths remain available through --experience for engineering
+ // replay. This keeps the chapter picker discoverable and deterministic.
+ if (chapter_path.extension() != ".json") {
+ chapter_path = std::filesystem::path("configs/experiences") /
+ (chapter_id + ".json");
+ }
+ if (!std::filesystem::is_regular_file(chapter_path)) {
+ std::fprintf(stderr, "unknown chapter: %s\n", chapter_id.c_str());
+ return 1;
+ }
+ experience_path = chapter_path.string();
+ }
  if (list_worlds || list_experiences) {
  if (list_worlds) {
  std::vector<std::filesystem::path> worlds;
@@ -4436,13 +4430,23 @@ int main(int argc, char** argv) {
  path.string().c_str(), error.c_str());
  continue;
  }
- std::printf("WORLD %-24s places=%zu boxes=%zu terrain=%zu actors=%s scene=%s\n",
- path.stem().string().c_str(), world.places.size(), world.boxes.size(),
- world.patches.size(),
+	 const char* lab = !world.patches.empty() && !world.zones.empty()
+	 ? "terrain/material" : !world.patches.empty() ? "terrain"
+	 : !world.zones.empty() ? "material" : "geometry";
+	 const std::filesystem::path authored_scene =
+	 path.parent_path() / (path.stem().string() + ".scene.json");
+	 const bool has_authored_scene =
+	 std::filesystem::is_regular_file(authored_scene);
+	 const bool has_fallback_scene = std::filesystem::is_regular_file(
+	 path.parent_path() / "lab_default.scene.json");
+	 const char* scene_kind = has_authored_scene ? "authored"
+	 : has_fallback_scene ? "fallback" : "none";
+	 std::printf("WORLD %-24s kind=%-16s places=%zu boxes=%zu terrain=%zu actors=%s scene=%s\n",
+	 path.stem().string().c_str(), lab, world.places.size(), world.boxes.size(),
+	 world.patches.size(),
  std::filesystem::is_regular_file(path.parent_path() /
  (path.stem().string() + ".actors.json")) ? "yes" : "no",
- std::filesystem::is_regular_file(path.parent_path() /
- (path.stem().string() + ".scene.json")) ? "yes" : "no");
+	 scene_kind);
  }
  }
  if (list_experiences) {
@@ -4625,6 +4629,15 @@ int main(int argc, char** argv) {
  candidate.replace_extension(".scene.json");
  if (std::filesystem::is_regular_file(candidate)) {
  scene_path = candidate.string();
+	 } else {
+	 // Every authored world gets the same deterministic presentation fallback.
+	 // A missing decorative scene must not silently drop the 3D camera, floor,
+	 // lighting, particles, or physical model bindings.
+	 const std::filesystem::path fallback =
+	 std::filesystem::path("configs/worlds/lab_default.scene.json");
+	 if (std::filesystem::is_regular_file(fallback)) {
+	 scene_path = fallback.string();
+	 }
  }
  }
  if (!scene_path.empty()) {
@@ -5279,7 +5292,12 @@ bool show_estimate = initial_show_robot_evidence;
  }
 
  playback.begin_frame(playback_wall_dt_s);
- if (!paused && !session->objectives_done()) {
+ // An open --map/--sandbox session has no authored objective list, so the
+ // ObjectiveDriver quite correctly reports "done" at construction time. That
+ // is a terminal state only for an ExperienceRuntime chapter. Direct map
+ // viewing must continue to advance the plant until the operator closes the
+ // window; otherwise every engineering map appears frozen at its preview.
+ if (!paused && (!experience_loaded || !session->objectives_done())) {
  const auto frame_work_begin = std::chrono::steady_clock::now();
  while (true) {
  const double work_ms = std::chrono::duration<double, std::milli>(
@@ -5308,7 +5326,7 @@ bool show_estimate = initial_show_robot_evidence;
  const double step_ms = std::chrono::duration<double, std::milli>(
  std::chrono::steady_clock::now() - step_begin).count();
  playback.on_step(step_ms);
-        if (session->objectives_done()) break;
+ if (experience_loaded && session->objectives_done()) break;
       }
  } else {
  // Paused wall time is not simulation debt.
@@ -5640,8 +5658,9 @@ bool show_estimate = initial_show_robot_evidence;
  const bool live_audio = !experience_loaded ||
  experience_flow->phase() == ExperiencePhase::kRunning;
  const auto audio_score = session->score();
- viewer_audio.update(frame, session->objectives_done(),
- session->objectives_done() && session->objectives_passed() &&
+ const bool mission_terminal = experience_loaded && session->objectives_done();
+ viewer_audio.update(frame, mission_terminal,
+ mission_terminal && session->objectives_passed() &&
  audio_score.collision_steps == 0,
 playback.turbo() || paused || !live_audio);
     if (follow) {
@@ -5754,15 +5773,38 @@ playback.turbo() || paused || !live_audio);
  GetFPS(), follow ? "FOLLOW" : "FREE",
  render_quality_name(active_quality), view_layer_name(view_layer),
  paused ? "PAUSED"
- : session->objectives_done()
+ : experience_loaded && session->objectives_done()
  ? (session->objectives_passed() ? "PASSED" : "FAILED")
  : "RUN");
- if (engineering_chrome) DrawText(hud, 10, 10, 14, BLACK);
+	 if (engineering_chrome) {
+	 DrawRectangle(6, 6, std::min(GetScreenWidth() - 12, 1060),
+	 engineering_chrome && render_robot_evidence ? 78 : 48,
+	 Color{242, 246, 244, 208});
+	 draw_ui_text(hud, 12, 8, 14, Color{18, 34, 39, 255});
+	 }
+	 if (!experience_loaded) {
+	 // Sandbox runs use the same ObjectiveDriver as authored chapters, but
+	 // historically exposed no active target in the HUD. That made a safe
+	 // wait for fresh observations look like a dead simulation. Keep this
+	 // summary presentation-only: it is derived from scenario progress and
+	 // never enters ROBOT estimation or control.
+	 const std::string& active_place = session->objectives().active_place();
+	 char target_hud[256];
+	 std::snprintf(target_hud, sizeof(target_hud),
+	 "TARGET %s  progress=%zu/%zu successful=%zu  %s",
+	 active_place.empty() ? "(settling / complete)" : active_place.c_str(),
+	 session->objectives().completed(), session->objectives().total(),
+	 session->objectives().successful(),
+	 session->objectives_done()
+	 ? (session->objectives_passed() ? "MISSION PASSED" : "MISSION FAILED")
+	 : "ROBOT is planning from measurements");
+	 draw_ui_text(target_hud, 12, 32, 14, Color{28, 72, 78, 255});
+	 }
  if (engineering_chrome && render_robot_evidence) {
- DrawText("ROBOT OBS/AI  lidar=aqua costmap=amber/red/gray validator=lime safety=cyan/red",
- 10, 32, 13, Color{78, 54, 132, 255});
- DrawText("ROBOT ESTIMATE  map<-odom correction=amber->cyan dynamic forecast=purple",
- 10, 48, 13, Color{78, 54, 132, 255});
+ draw_ui_text("ROBOT OBS/AI  lidar=aqua costmap=amber/red/gray validator=lime safety=cyan/red",
+ 12, 50, 13, Color{78, 54, 132, 255});
+ draw_ui_text("ROBOT ESTIMATE  map<-odom correction=amber->cyan dynamic forecast=purple",
+ 12, 66, 13, Color{78, 54, 132, 255});
  const auto& physical_audio = viewer_audio.physical_sample();
  char physical_evidence[256];
  std::snprintf(physical_evidence, sizeof(physical_evidence),
@@ -5770,7 +5812,7 @@ playback.turbo() || paused || !live_audio);
  physical_audio.motor_intensity, physical_audio.rolling_intensity,
  physical_audio.slip_intensity, physical_audio.brake_intensity,
  physical_audio.impact_intensity);
- DrawText(physical_evidence, 10, 64, 13, Color{24, 116, 105, 255});
+ draw_ui_text(physical_evidence, 12, 82, 13, Color{24, 116, 105, 255});
  }
     if (edit_mode) {
       char ebuf[256];
@@ -5791,9 +5833,12 @@ playback.turbo() || paused || !live_audio);
  if (!experience_loaded && manual_control) {
  control_help = "space pause N step H manual ON WASD/arrows drive L lidar E ROBOT AI K SIM truth U view F follow Q quality +/- speed V 2D/3D M edit";
  }
- DrawText(control_help, 10, GetScreenHeight() - 24, 12, DARKGRAY);
- DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
- 12, DARKGRAY);
+ DrawRectangle(6, GetScreenHeight() - 34, GetScreenWidth() - 12, 28,
+ Color{242, 246, 244, 208});
+ draw_ui_text(control_help, 12, GetScreenHeight() - 30, 12,
+ Color{32, 46, 50, 255});
+ draw_ui_text("T turbo", std::max(12, GetScreenWidth() - 72),
+ GetScreenHeight() - 30, 12, Color{32, 46, 50, 255});
  if (experience_loaded) {
  const sim::experiment::EpisodeArtifact* active_artifact = nullptr;
  if (experience.progression.require_experiment) {

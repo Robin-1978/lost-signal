@@ -1,0 +1,38 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "stormglass_station",
+ "title": "STORMGLASS STATION: WATER AND RIDGE",
+ "subtitle": "A complex station with water, ridge transitions, and an anonymous moving actor.",
+ "files": {
+  "map": "../worlds/stormglass_station.json",
+  "scene": "../worlds/lab_default.scene.json",
+  "robot": "../robot/differential.json",
+  "sim": "../sim/default.json"
+ },
+ "startup_mode": "global_search",
+ "objectives": ["stormglass_base"],
+ "time_limit_steps": 8000,
+ "briefing": [
+  "Standing water and the ridge are physical materials and terrain owned by SIM.",
+  "The moving actor is anonymous to ROBOT; only sensor tracks and predicted motion are available.",
+  "Safety can hold or reroute without receiving an actor identity or future script."
+ ],
+ "prediction": {
+  "question": "What is the correct source for a dynamic obstacle decision?",
+  "choices": [
+   {"choice_id":"track", "label":"Use fresh anonymous tracks, prediction, and the Safety gate", "explanation":"The deployable stack reasons from measured geometry and motion evidence.", "correct":true},
+   {"choice_id":"script", "label":"Use the actor's authored route", "explanation":"Actor identity and future scripts stay in SIM.", "correct":false},
+   {"choice_id":"commit", "label":"Commit to the first route even after the scan changes", "explanation":"Every command remains subject to local validation and Safety.", "correct":false}
+  ]
+ },
+ "running_prompt": "Use Learning view to compare anonymous tracks, future hypotheses, and the final command.",
+ "debrief": {
+  "success_title": "STATION PASSAGE RECORDED",
+  "failure_title": "STATION NEEDS REVIEW",
+  "lessons": [
+   "Dynamic prediction is evidence, not an actor oracle.",
+   "Material effects drive the plant and presentation while ROBOT sees only its interfaces.",
+   "Safety remains independent of planner preference."
+  ]
+ }
+}

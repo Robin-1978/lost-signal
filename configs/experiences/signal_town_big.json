@@ -1,6 +1,7 @@
 {
  "format": "lost-signal-experience/1",
  "experience_id": "signal_town_big",
+	 "next_experience": "industrial_200k.json",
  "title": "SIGNAL TOWN: FIVE SAFE STOPS",
  "subtitle": "A complete multi-goal route with moving carts and pedestrians.",
  "files": {

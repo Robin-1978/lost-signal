@@ -1,6 +1,7 @@
 {
  "format": "lost-signal-experience/1",
  "experience_id": "terrain_lab",
+ "next_experience": "signal_town.json",
  "title": "CONTINUOUS TERRAIN: RAMP AND LOW GRIP",
  "subtitle": "Inspect the slope, contact, traction estimate, and honest failure modes.",
  "files": {

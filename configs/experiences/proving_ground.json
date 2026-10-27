@@ -1,0 +1,37 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "proving_ground",
+ "title": "PROVING GROUND: SURFACE AND BRAKING",
+ "subtitle": "A repeatable engineering course for dry, gravel, mud, ice, ramps, and cross-slope tests.",
+ "files": {
+  "map": "../worlds/proving_ground_map.json",
+  "scene": "../worlds/lab_default.scene.json",
+  "robot": "../robot/differential.json",
+  "sim": "../sim/default.json"
+ },
+ "objectives": ["assembly_pad"],
+ "time_limit_steps": 6000,
+ "briefing": [
+  "This is a measurement course, not a scripted success route.",
+  "Surface material, contact, slip, and braking are simulated by the plant.",
+  "Use Engineering view for physics evidence and Sandbox H for manual control."
+ ],
+ "prediction": {
+  "question": "What should a robot do when a surface reduces measured traction?",
+  "choices": [
+   {"choice_id":"slow", "label":"Slow down and preserve stopping distance", "explanation":"The robot should react to measured motion evidence while keeping its safety footprint fixed.", "correct":true},
+   {"choice_id":"truth", "label":"Read the simulator friction value", "explanation":"Material truth belongs to SIM and is never a ROBOT input.", "correct":false},
+   {"choice_id":"force", "label":"Keep demanding speed until it moves", "explanation":"A larger command cannot make an unsafe contact envelope safe.", "correct":false}
+  ]
+ },
+ "running_prompt": "Drive the course manually or let the route run. Compare contact, slip, and braking evidence with the ROBOT decision.",
+ "debrief": {
+  "success_title": "COURSE RESULT RECORDED",
+  "failure_title": "COURSE RESULT NEEDS REVIEW",
+  "lessons": [
+   "A continuous surface is part of the physical plant, not a render-only height offset.",
+   "Manual driving still passes through the same validator, raw-scan Safety gate, and watchdog.",
+   "A failed test is useful evidence when the physical limit is real and reproducible."
+  ]
+ }
+}

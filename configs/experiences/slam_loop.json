@@ -1,6 +1,7 @@
 {
   "format": "lost-signal-experience/1",
   "experience_id": "slam_loop",
+	 "next_experience": "terrain_lab.json",
   "title": "MAPLESS LOOP: BUILD, TRACK, CORRECT",
   "subtitle": "Start without a surveyed raster, build local submaps, and revisit the start to test loop closure.",
   "startup_mode": "slam_only",

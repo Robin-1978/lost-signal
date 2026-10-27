@@ -2,6 +2,8 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -187,7 +189,7 @@ int main() {
  // The Viewer catalog is a supported entry point, not a hand-maintained
  // README promise. Every published lab must load through the same manifest
  // contract and resolve its map/scene references.
- for (const char* id : {"signal_town_big", "industrial_200k", "terrain_lab"}) {
+ for (const char* id : {"signal_town", "signal_town_big", "industrial_200k", "terrain_lab"}) {
  const auto catalog = root / "configs/experiences" / (std::string(id) + ".json");
  assert(lost_signal::sim::viewer::load_experience_manifest(
  catalog.string(), experience, &error));
@@ -196,5 +198,64 @@ int main() {
  assert(std::filesystem::is_regular_file(experience.map_path));
  assert(std::filesystem::is_regular_file(experience.scene_path));
  }
+	 // The catalog includes the engineering worlds that used to be reachable
+	 // only by guessing a --map path. They all use the same Runtime contract.
+	 for (const char* id : {"proving_ground", "orchard_hillside",
+	 "stormglass_station", "washout_canyon"}) {
+	 const auto catalog = root / "configs/experiences" /
+	 (std::string(id) + ".json");
+	 assert(lost_signal::sim::viewer::load_experience_manifest(
+	 catalog.string(), experience, &error));
+	 assert(experience.experience_id == id);
+	 assert(experience.objectives.size() == 1);
+	 assert(std::filesystem::is_regular_file(experience.map_path));
+	 assert(std::filesystem::is_regular_file(experience.scene_path));
+	 }
+
+ // The authored catalog is a graph, not a list of UI-only labels. Validate
+ // every root-level chapter, resolve each edge, and prove the campaign edge
+ // from first_contact terminates. This catches a renamed chapter before the
+ // Viewer presents a dead Next button.
+ const std::filesystem::path catalog_root = root / "configs/experiences";
+ std::map<std::string, std::filesystem::path> catalog;
+ for (const auto& entry : std::filesystem::directory_iterator(catalog_root)) {
+ if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
+ lost_signal::sim::viewer::ExperienceManifest manifest;
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ entry.path().string(), manifest, &error));
+ assert(catalog.emplace(manifest.experience_id, entry.path()).second);
+ }
+ assert(catalog.size() >= 11);
+ for (const auto& [id, path] : catalog) {
+ lost_signal::sim::viewer::ExperienceManifest manifest;
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ path.string(), manifest, &error));
+ if (!manifest.next_experience_path.empty()) {
+ auto next = std::filesystem::canonical(manifest.next_experience_path);
+ assert(std::filesystem::is_regular_file(next));
+ lost_signal::sim::viewer::ExperienceManifest next_manifest;
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ next.string(), next_manifest, &error));
+ assert(catalog.count(next_manifest.experience_id) == 1);
+ }
+ }
+ std::set<std::string> visited;
+ std::string current = "first_contact";
+ while (!current.empty()) {
+ assert(visited.insert(current).second);
+ const auto it = catalog.find(current);
+ assert(it != catalog.end());
+ lost_signal::sim::viewer::ExperienceManifest manifest;
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ it->second.string(), manifest, &error));
+ if (manifest.next_experience_path.empty()) break;
+ lost_signal::sim::viewer::ExperienceManifest next_manifest;
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ manifest.next_experience_path, next_manifest, &error));
+ current = next_manifest.experience_id;
+ }
+ assert(visited.count("signal_town") == 1);
+ assert(visited.count("signal_town_big") == 1);
+ assert(visited.count("industrial_200k") == 1);
  return 0;
 }

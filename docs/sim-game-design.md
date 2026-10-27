@@ -535,3 +535,13 @@ First Contact 使用 manifest 驱动的 6 秒可跳过英雄镜头：低机位�
 6. 用 Blender 改进机器人家族、叉车、行人和环境 kit，再以真实 physics replay 驱动材质、粒子、声音和教学 overlay。
 
 发布验收至少满足：启动五秒内出现视觉钩子、十秒内完成第一次主动决定、九十秒内完成 First Contact A/B 与因果复盘；baseline/variant 均保留完整 Episode；720p、1080p 和超宽屏无关键遮挡；同配置同 seed 在全部倍率和 headless 下逐 step 的 observation、command、collision、终态与 score 一致；所有可动部件和粒子事件能追溯到物理记录；native artifact 中不出现 SIM truth、actor id、score 或渲染类型。
+
+## 21. 场景目录与工程沙盒
+
+`sim_viewer --catalog` 是当前分支唯一的场景入口目录。它同时列出每个 world 的目标数量、静态几何、连续地形/材质、actor sidecar，以及 3D 场景是 authored 还是 `lab_default.scene.json` fallback。fallback 只提供镜头、灯光、地面和模型装配入口；碰撞、地形、材质和 actor 仍来自当前 world 与 MuJoCo。
+
+当前战役链覆盖 `first_contact → safety_unknown_obstacle → slam_loop → terrain_lab → signal_town → signal_town_big → industrial_200k`。工程实验章节另外覆盖 orchard hillside、proving ground（坡、冰面、砂石、泥地和制动）、stormglass station 与 washout canyon。所有入口都复用同一 ExperienceRuntime、ROBOT/SIM truth boundary 和独立 verdict，不把地形或 actor 真值写入 ROBOT。
+
+直接查看任意 world 使用 `sim_viewer --3d --map configs/worlds/<world>.json`；没有专属 `.scene.json` 时 Viewer 自动使用 fallback，而不是退回没有模型和灯光的 2D 模式。需要可控人工输入时使用 `--sandbox`，按 `H` 开启手动控制，WASD/方向键产生限幅 body command；它仍经过 ROBOT validator、raw-scan Safety、watchdog 和 MuJoCo，手动输入不会混入自主章节成绩。
+
+新增的 catalog 回归验证所有 root-level chapter 的文件引用和 `next_experience` 边，且证明主战役从 first_contact 终止到 industrial_200k；`scene_manifest` 会跳过无 world companion 的通用 fallback，并对所有真正成对的 scene/world 做严格绑定检查。

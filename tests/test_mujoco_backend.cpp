@@ -116,6 +116,15 @@ int main() {
  assert(w.wheels(wheels, 6) == 2);
  assert(wheels[0].pose.valid);
  assert(wheels[1].pose.valid);
+ // The wheel link is authored at the drive axle frame. Its centre is not
+ // re-derived in the renderer, and the contact read-back remains on the
+ // ground plane; these pins catch the old radius/body-z double offset that
+ // made the black tire ring sink into the floor.
+ assert(std::abs(wheels[0].pose.z_m) < 1e-9);
+ assert(std::abs(wheels[1].pose.z_m) < 1e-9);
+ if (wheels[0].contact_valid) {
+ assert(std::abs(wheels[0].contact_z_m) < 1e-6);
+ }
  assert(wheels[0].drive_joint.valid);
  assert(std::abs(wheels[0].drive_joint.axis_x) < 1e-9);
  assert(std::abs(wheels[0].drive_joint.axis_y - 1.0) < 1e-9);

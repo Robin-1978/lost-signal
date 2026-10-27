@@ -164,6 +164,11 @@ int main() {
  const std::string map_name =
  filename.substr(0, filename.size() -
  std::char_traits<char>::length(kSuffix)) + ".json";
+ // lab_default.scene.json is an intentional presentation fallback for
+ // authored worlds that do not have a one-to-one scene file.  It is loaded
+ // against the active world's collision boxes by the Viewer, so there is no
+ // lab_default.json companion to validate here.
+ if (!std::filesystem::is_regular_file(worlds / map_name)) continue;
  lost_signal::sim::eval::WorldFileContent content;
  const bool world_loaded = lost_signal::sim::eval::load_world_file(
  (worlds / map_name).string(), content, &error);

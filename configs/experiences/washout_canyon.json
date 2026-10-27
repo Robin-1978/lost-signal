@@ -1,0 +1,38 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "washout_canyon",
+ "title": "WASHOUT CANYON: RECOVERY",
+ "subtitle": "A narrow canyon for testing route recovery, unknown space, and controlled manual intervention.",
+ "files": {
+  "map": "../worlds/washout_canyon.json",
+  "scene": "../worlds/lab_default.scene.json",
+  "robot": "../robot/differential.json",
+  "sim": "../sim/default.json"
+ },
+ "startup_mode": "global_search",
+ "objectives": ["west_staging"],
+ "time_limit_steps": 8000,
+ "briefing": [
+  "The canyon contains narrow geometry and changing ground support.",
+  "Unknown space is handled as unknown evidence; it is not silently treated as free truth.",
+  "Sandbox manual control is available for a controlled recovery experiment."
+ ],
+ "prediction": {
+  "question": "What should happen when the local plan loses a safe continuation?",
+  "choices": [
+   {"choice_id":"hold", "label":"Hold safely, refresh evidence, and recover when a validated route exists", "explanation":"Safety and route recovery are separate from a blind command retry.", "correct":true},
+   {"choice_id":"blind", "label":"Keep the last command until the route appears", "explanation":"The watchdog and Safety monitor must prevent stale motion.", "correct":false},
+   {"choice_id":"truth", "label":"Ask SIM for the hidden corridor", "explanation":"The ROBOT stack cannot consume simulation truth.", "correct":false}
+  ]
+ },
+ "running_prompt": "If the route pauses, inspect the raw scan, local costmap, validator envelope, and watchdog state before using H.",
+ "debrief": {
+  "success_title": "RECOVERY RESULT RECORDED",
+  "failure_title": "RECOVERY NEEDS REVIEW",
+  "lessons": [
+   "Unknown is an explicit belief state, not free space.",
+   "A stale operator command expires through the same watchdog as a native adapter.",
+   "Recovery must preserve the new framework's ROBOT/SIM truth boundary."
+  ]
+ }
+}
