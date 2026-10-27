@@ -4518,7 +4518,13 @@ std::string robot_path, sim_path, map_path, assets_path, scene_path,
  return 1;
  }
  g_zh_cn = use_zh_cn_locale(requested_locale);
- if (play_requested || (!source_requested && !sandbox_requested)) {
+ // Explicit source selections (`--experience`, `--chapter`, or `--map`) own
+ // the runtime. `--play` is only the convenient default when no source was
+ // supplied; previously it silently replaced an explicit experience with
+ // `first_contact`, so `--experience signal_town_big --play` appeared to
+ // stall in the wrong chapter and map.
+ if (experience_path.empty() && !source_requested &&
+ (play_requested || !sandbox_requested)) {
  experience_path = g_zh_cn
  ? "configs/experiences/zh-CN/first_contact.json"
  : "configs/experiences/first_contact.json";
