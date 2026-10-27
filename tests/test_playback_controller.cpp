@@ -243,6 +243,17 @@ int main() {
  turbo_budget.on_step(1.0);
  assert(!turbo_budget.step_due(5.0));
 
+ // Rate-scaled work remains bounded by its explicit cap. A higher requested
+ // rate can consume more deterministic steps without changing step dt.
+ PlaybackController::Config scaled_config;
+ scaled_config.requested_rate = 8.0;
+ scaled_config.frame_work_budget_ms = 2.0;
+ scaled_config.maximum_rate_scaled_work_budget_ms = 8.0;
+ PlaybackController scaled(scaled_config);
+ scaled.begin_frame(1.0 / 60.0);
+ assert(scaled.step_due(7.9));
+ assert(!scaled.step_due(8.0));
+
  // Dropped historical backlog and long wall stalls are visible as LIMIT.
  PlaybackController::Config backlog_config;
  backlog_config.max_backlog_wall_s = 0.05;

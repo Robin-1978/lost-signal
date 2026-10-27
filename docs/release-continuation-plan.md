@@ -78,11 +78,14 @@
 - Release headless profiling：physics p99 2.163 ms，ROBOT tick p99 6.620 ms、
  max 14.113 ms，total p99 8.044 ms，RTF 5.10×。wall time 只用于报告，不进入
  仿真事件或结果。
-- Xvfb Viewer 固定 120 帧：高质量 1×实际 1.16×；请求 8×/64×时 CPU/渲染
- 吞吐实际约 0.75×；Turbo/FAST 实际 1.69×，显式 `--quality fast` 在 8×/64×
- 约 2.7×。因此倍率一致性已通过，8×/64×交互 RTF 门禁尚未达标，不能把请求倍率
- 当作实际 RTF；后续优化目标是拆分渲染与 sim tick、降低 tick p99，并保留这组
- 基线作为回归。
+- Xvfb Viewer 固定 120 帧（启用倍率工作预算上限后）：高质量 1×实际 1.00×、
+ 8×实际 4.39×、64×实际 3.93×；Turbo/FAST 实际 2.34×。倍率一致性已通过，
+ 8×/64×仍受 MuJoCo 物理与单线程 viewer 吞吐限制，不能把请求倍率当作实际
+ RTF；后续优化目标是拆分渲染与 sim tick、降低 tick p99，并保留这组基线作为回归。
+- Playback 工作预算已按请求倍率增长，并由独立的
+ `maximum_rate_scaled_work_budget_ms` 上限控制；不会改变仿真步长、传感器 cadence
+ 或 ROBOT tick，仍会把超出上限的需求报告为 throttled。需重新采集上述 Viewer
+ 数值后才能关闭 8×/64×交互 RTF 门禁。
 - 第 1 项已经完成：候选预算先覆盖不同历史模式，入选候选全部完成 coarse/refine/reverse 验证后统一比较双向 score 与 overlap；相同 correction mode 内只有同一个历史锚点 ID 才能完成跨时序确认。
 - `test_loop_closure` 首次回环发生在完成 east、north、west 三个目标后；SIM 真值距起点 0.305 m 只写入失败诊断。`slam` 与 `loop_closure` 均连续通过 3 次，`truth_isolation` 与 `robot_boundary` 通过。
 - 第 2 项已经完成：2.5 m 教学路线完成 4/4 目标且零碰撞；终端捕获按底盘运动能力修复，没有放宽到达阈值或延长任务时间。`slam_experience_mission` 连续重复三次通过，相关 14 项定位、SLAM、Experience、truth-isolation 和 boundary 回归通过。

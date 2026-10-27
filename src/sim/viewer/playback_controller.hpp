@@ -19,6 +19,10 @@ class PlaybackController {
  // is not silently capped to the same 0.5 simulated seconds as 1x.
  double max_backlog_wall_s = 0.5;
     double frame_work_budget_ms = 12.0;
+ // High-rate playback may spend more bounded work per rendered frame. The
+ // cap keeps input/UI starvation visible as throttling instead of allowing
+ // an unbounded catch-up loop.
+ double maximum_rate_scaled_work_budget_ms = 64.0;
  // Turbo may spend more time between input polls while remaining bounded.
  // Physics dt, sensor cadence, and ROBOT cadence are unchanged.
  double turbo_frame_work_budget_ms = 24.0;
