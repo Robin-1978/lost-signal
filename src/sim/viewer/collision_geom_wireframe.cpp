@@ -146,4 +146,30 @@ CollisionGeomWireframe build_collision_geom_wireframe(const FrameGeom& geom) {
  return out;
 }
 
+CollisionGeomWireframe build_static_box_wireframe(double x0_m, double y0_m,
+                                                  double x1_m, double y1_m,
+                                                  double height_m) {
+ if (!std::isfinite(x0_m) || !std::isfinite(y0_m) ||
+ !std::isfinite(x1_m) || !std::isfinite(y1_m) ||
+ !std::isfinite(height_m) || !(height_m > 0.0)) {
+ return {};
+ }
+ const double min_x = std::min(x0_m, x1_m);
+ const double max_x = std::max(x0_m, x1_m);
+ const double min_y = std::min(y0_m, y1_m);
+ const double max_y = std::max(y0_m, y1_m);
+ if (!(max_x > min_x) || !(max_y > min_y)) return {};
+
+ FrameGeom geom;
+ geom.valid = true;
+ geom.shape = 6;
+ geom.size_x_m = (max_x - min_x) * 0.5;
+ geom.size_y_m = (max_y - min_y) * 0.5;
+ geom.size_z_m = height_m * 0.5;
+ geom.x_m = (min_x + max_x) * 0.5;
+ geom.y_m = (min_y + max_y) * 0.5;
+ geom.z_m = height_m * 0.5;
+ return build_collision_geom_wireframe(geom);
+}
+
 } // namespace lost_signal::sim::viewer

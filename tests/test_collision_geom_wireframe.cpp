@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -92,6 +93,40 @@ int main() {
  assert(y_edges == 4);
  assert(z_edges == 4);
  }
+
+ // Authored static prisms use the same 12-edge expansion, span ground to the
+ // declared height, and normalize footprint winding.
+ {
+ const auto wires = build_static_box_wireframe(4.0, 3.0, 2.0, 1.0, 1.5);
+ assert(wires.segments.size() == 12);
+ double min_y = 1e9;
+ double max_y = -1e9;
+ int x_edges = 0;
+ int y_edges = 0;
+ int z_edges = 0;
+ for (const auto& edge : wires.segments) {
+ min_y = std::min({min_y, static_cast<double>(edge.start.y),
+ static_cast<double>(edge.end.y)});
+ max_y = std::max({max_y, static_cast<double>(edge.start.y),
+ static_cast<double>(edge.end.y)});
+ const double dx = std::abs(edge.end.x - edge.start.x);
+ const double dy = std::abs(edge.end.y - edge.start.y);
+ const double dz = std::abs(edge.end.z - edge.start.z);
+ if (near(dx, 2.0) && near(dy, 0.0) && near(dz, 0.0)) ++x_edges;
+ if (near(dx, 0.0) && near(dy, 1.5) && near(dz, 0.0)) ++y_edges;
+ if (near(dx, 0.0) && near(dy, 0.0) && near(dz, 2.0)) ++z_edges;
+ }
+ assert(near(min_y, 0.0));
+ assert(near(max_y, 1.5));
+ assert(x_edges == 4);
+ assert(y_edges == 4);
+ assert(z_edges == 4);
+ }
+
+ // Flat paint, invalid numbers, and zero-area footprints are not volumes.
+ assert(build_static_box_wireframe(0.0, 0.0, 1.0, 1.0, 0.0).empty());
+ assert(build_static_box_wireframe(0.0, 0.0, 1.0, 1.0, NAN).empty());
+ assert(build_static_box_wireframe(1.0, 0.0, 1.0, 1.0, 1.0).empty());
 
  // Invalid engine evidence never produces a plausible-looking proxy.
  {

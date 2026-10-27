@@ -46,4 +46,11 @@ struct CollisionGeomWireframe {
 // remain visible as their bounding sphere.
 CollisionGeomWireframe build_collision_geom_wireframe(const FrameGeom& geom);
 
+// Expands an authored static collision prism. Static map boxes are upright in
+// the world frame and span z=[0, height_m]; non-solid paint (height <= 0) and
+// degenerate footprints produce no diagnostics.
+CollisionGeomWireframe build_static_box_wireframe(double x0_m, double y0_m,
+                                                  double x1_m, double y1_m,
+                                                  double height_m);
+
 } // namespace lost_signal::sim::viewer

@@ -258,7 +258,9 @@
 
 - MuJoCo backend 现在导出每个活动 link 的碰撞 geom（shape、size、world pose、
   body id），容量来自 `model->ngeom`，按实际数量动态分配，没有任何固定上限或
-  魔法数字；world 静态几何仍由地图自身渲染，不重复绘制。
+- 魔法数字；静态世界碰撞体则直接使用 `Frame::boxes` 中与引擎一致的 authored
+ footprint/height，在同一诊断通道展开为 12 条棱线。`height_m <= 0` 的平面标线
+ 与退化 footprint 不绘制，避免把视觉 paint 错标成碰撞体。
 - `PresentationSnapshot` 保存该表，回放帧和实时帧走同一条 `FrameBody` 路径；
   engineering overlay 用洋红线框绘制 box/capsule/cylinder/sphere 代理，与 COM、
   joint axis、contact 点/法向同屏，可直接核对“碰撞体是否包住视觉模型”。
@@ -271,7 +273,11 @@
  一次换基，box 输出 12 条边，capsule/cylinder 输出沿真实局部 Z 的线框。
 - 新增 `test_collision_geom_wireframe` 无窗口测试；`signal_town` 与
  `research_base` 的 `--physics-overlay` 3D 截图均显示机器人代理直立并随车体
- 运动。定向回归 `collision_geom_wireframe`、`viewer_frame`、`mujoco_backend`、
+ 运动。静态 box 测试覆盖 footprint 轴、地面到顶面高度、反向坐标归一化、平面
+ 标线、NaN 和零面积退化输入；`research_base` 截图可见静态障碍棱线贴合碰撞体。
+ 静态碰撞线框使用独立 `show_physics_overlay` 参数并受 SIM truth 门禁控制；
+ shadow-map pass 明确传 `false`，不会把诊断线框烘入阴影。定向回归
+ `collision_geom_wireframe`、`viewer_frame`、`mujoco_backend`、
  `scene_manifest`、`world_place_clearance` 通过。
 - 叉车渲染路径选择已抽成 `actor_render_policy` 纯策略：完整模块化 link
  资产、完整 actor GLB、程序化 fallback 三者严格互斥；新增 `test_actor_render_policy`

@@ -2986,6 +2986,7 @@ void draw_frame_3d(const Frame& f,
  const VisualAssets* assets = nullptr,
  const SceneManifest* scene = nullptr,
  const lost_signal::sim::viewer::LidarMount* lidar_mount = nullptr,
+ bool show_physics_overlay = false,
  bool presentation_effects = true) {
   namespace world_ns = lost_signal::sim::world;
   // Ground base sized to the authored map (concrete apron under everything).
@@ -3967,10 +3968,10 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  link_rotation(link.pose, true), {scale, scale, scale}, WHITE);
  }
  }
- // Engineering view: COM and joint axes are drawn from recorded MuJoCo
- // state in the base frame. This is intentionally behind the SIM truth
- // debug toggle; no display-only pose is fed back into the plant.
- if (show_actor_routes) {
+ // Engineering view: COM, live contacts, collision proxies, and static
+ // collision prisms are all read from engine/authoring state. This entire
+ // pass is behind the explicit SIM-truth diagnostics gate.
+ if (show_physics_overlay) {
  FrameLinkPose com_pose;
  com_pose.valid = true;
  com_pose.x_m = f.body.com_x_m;
@@ -4001,6 +4002,15 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  }
  for (const auto& geom : f.body.collision_geoms) {
  if (geom.valid) draw_collision_geom_wireframe(geom);
+ }
+ for (const auto& box : f.boxes) {
+ const auto wires = lost_signal::sim::viewer::build_static_box_wireframe(
+ box.x0_m, box.y0_m, box.x1_m, box.y1_m, box.height_m);
+ for (const auto& line : wires.segments) {
+ DrawLine3D({line.start.x, line.start.y, line.start.z},
+ {line.end.x, line.end.y, line.end.z},
+ Color{226, 74, 210, 150});
+ }
  }
  }
   // Particle positions are already in world coordinates. Draw only after
@@ -4053,7 +4063,7 @@ bool render_shadow_map(const Frame& frame,
  SurfaceTraceSystem no_surface_traces;
  draw_frame_3d(frame, world, light_camera, no_particles,
  no_surface_traces, false, false, false, false, &assets, scene,
- lidar_mount, false);
+  lidar_mount, false, false);
  EndShaderMode();
  EndMode3D();
  EndTextureMode();
@@ -4068,7 +4078,8 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
  const lost_signal::sim::world::World& world, const Camera3D& camera,
  const ParticleSystem& particles, const SurfaceTraceSystem& surface_traces,
  bool show_lidar, bool show_estimate,
- bool show_actor_routes, bool show_places, VisualAssets& assets,
+ bool show_actor_routes, bool show_places, bool show_physics_overlay,
+ VisualAssets& assets,
  const SceneManifest* scene,
  const lost_signal::sim::viewer::LidarMount* lidar_mount) {
  if (!IsShaderValid(assets.lighting) ||
@@ -4097,7 +4108,7 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
  BeginShaderMode(assets.lighting);
  draw_frame_3d(frame, world, camera, particles, surface_traces, show_lidar,
  show_estimate, show_actor_routes, show_places, &assets, scene,
- lidar_mount);
+ lidar_mount, show_physics_overlay);
  EndShaderMode();
  EndMode3D();
  EndTextureMode();
@@ -4179,7 +4190,8 @@ void draw_frame_3d_direct(const Frame& frame,
  const lost_signal::sim::world::World& world, const Camera3D& camera,
  const ParticleSystem& particles, const SurfaceTraceSystem& surface_traces,
  bool show_lidar, bool show_estimate,
- bool show_actor_routes, bool show_places, VisualAssets& assets,
+ bool show_actor_routes, bool show_places, bool show_physics_overlay,
+ VisualAssets& assets,
  const SceneManifest* scene,
  const lost_signal::sim::viewer::LidarMount* lidar_mount) {
  release_shadow_map(assets);
@@ -4188,7 +4200,7 @@ void draw_frame_3d_direct(const Frame& frame,
  if (IsShaderValid(assets.lighting)) BeginShaderMode(assets.lighting);
  draw_frame_3d(frame, world, camera, particles, surface_traces, show_lidar,
  show_estimate, show_actor_routes, show_places, &assets, scene,
- lidar_mount);
+ lidar_mount, show_physics_overlay);
  if (IsShaderValid(assets.lighting)) EndShaderMode();
  EndMode3D();
 }
@@ -4507,7 +4519,8 @@ int main(int argc, char** argv) {
  ExperimentUiState experiment_ui;
 bool show_lidar = initial_show_lidar;
 bool show_estimate = initial_show_robot_evidence;
-  bool show_actor_routes = false;
+ bool show_actor_routes = false;
+ bool show_physics_overlay = initial_physics_overlay;
  ExperienceViewLayer view_layer = experience_loaded
  ? ExperienceViewLayer::kPlayer : ExperienceViewLayer::kEngineering;
   bool follow = true;
@@ -4633,6 +4646,7 @@ bool show_estimate = initial_show_robot_evidence;
  show_lidar = false;
  show_estimate = false;
  show_actor_routes = false;
+ show_physics_overlay = initial_physics_overlay;
  dragging = false;
  middle_dragging = false;
  follow = view3d;
@@ -4999,12 +5013,14 @@ bool show_estimate = initial_show_robot_evidence;
  }
  const bool sim_truth_debug_allowed = !experience_loaded ||
  experience_flow->phase() == ExperiencePhase::kDebrief;
- if (!sim_truth_debug_allowed) show_actor_routes = false;
- if (initial_physics_overlay && sim_truth_debug_allowed) {
- show_actor_routes = true;
+ if (!sim_truth_debug_allowed) {
+ show_actor_routes = false;
+ show_physics_overlay = false;
  }
  if (IsKeyPressed(KEY_K) && sim_truth_debug_allowed) {
- show_actor_routes = !show_actor_routes;
+ const bool enabled = !(show_actor_routes || show_physics_overlay);
+ show_actor_routes = enabled;
+ show_physics_overlay = enabled;
  }
  if (IsKeyPressed(KEY_Q)) {
  render_quality = render_quality == RenderQuality::kHigh
@@ -5283,16 +5299,19 @@ bool show_estimate = initial_show_robot_evidence;
  if (active_quality == RenderQuality::kHigh &&
  !draw_frame_3d_postprocessed(
  preview, session->setup_world(), presentation_camera,
- motion_particles, surface_traces, false, false, false, false, visual_assets,
+ motion_particles, surface_traces, false, false, false, false, false,
+ visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
  draw_frame_3d_direct(
  preview, session->setup_world(), presentation_camera,
- motion_particles, surface_traces, false, false, false, false, visual_assets,
+ motion_particles, surface_traces, false, false, false, false, false,
+ visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  } else if (active_quality == RenderQuality::kFast) {
  draw_frame_3d_direct(
  preview, session->setup_world(), presentation_camera,
- motion_particles, surface_traces, false, false, false, false, visual_assets,
+ motion_particles, surface_traces, false, false, false, false, false,
+ visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
  const Vector2 marker = GetWorldToScreen(
@@ -5510,16 +5529,19 @@ playback.turbo() || paused || !live_audio);
  if (active_quality == RenderQuality::kHigh &&
  !draw_frame_3d_postprocessed(
  frame, session->setup_world(), cam, motion_particles, surface_traces,
- render_lidar, render_robot_evidence, show_actor_routes, true, visual_assets,
+ render_lidar, render_robot_evidence, show_actor_routes, true,
+ show_physics_overlay, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
  draw_frame_3d_direct(
  frame, session->setup_world(), cam, motion_particles, surface_traces,
- render_lidar, render_robot_evidence, show_actor_routes, true, visual_assets,
+ render_lidar, render_robot_evidence, show_actor_routes, true,
+ show_physics_overlay, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  } else if (active_quality == RenderQuality::kFast) {
  draw_frame_3d_direct(
  frame, session->setup_world(), cam, motion_particles, surface_traces,
- render_lidar, render_robot_evidence, show_actor_routes, true, visual_assets,
+ render_lidar, render_robot_evidence, show_actor_routes, true,
+ show_physics_overlay, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
  if (baseline_comparison_frame.has_value()) {
