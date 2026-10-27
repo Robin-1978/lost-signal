@@ -106,6 +106,10 @@
  Safety、watchdog 与 MuJoCo/VirtualMcu；experience 运行期禁用。新增场景回归证明
  没有 map-frame prior 时也能安全驱动，清除输入后会减速停车。后续手动控制的输入
  录制仍必须保持为 observation/command 证据，不能写入 SIM 真值。
+- 手动 body command 现在按“刷新代数 + 现有 command watchdog”失效：调用方停止刷新
+ 时，ROBOT 在 watchdog 窗口后自动清除 operator source；这避免了 UI/真机上层异常
+ 时持续保持最后一个速度，同时不增加独立的场景阈值。场景单测覆盖显式清除和自然
+ 过期两条路径。
 - Viewer 能力目录已补齐：`--list-worlds` 列出全部世界的 places、箱体、连续地形、
  actor sidecar 和 scene 状态，`--list-experiences` 列出所有可加载教学/工程章节。
  新增 Signal Town 五目标、工业 20 万平方米和连续坡/低抓地三个 manifest；它们复用

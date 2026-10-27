@@ -290,6 +290,7 @@ void AutonomyCoordinator::set_operator_command(double forward_mps,
  double yaw_rate_radps) {
  if (!std::isfinite(forward_mps) || !std::isfinite(yaw_rate_radps)) return;
  operator_command_active_ = true;
+ ++operator_command_generation_;
  operator_forward_mps_ = std::clamp(
  forward_mps, -limits_.max_forward_mps, limits_.max_forward_mps);
  operator_yaw_rate_radps_ = std::clamp(
@@ -301,6 +302,7 @@ void AutonomyCoordinator::clear_operator_command() {
  operator_command_active_ = false;
  operator_forward_mps_ = 0.0;
  operator_yaw_rate_radps_ = 0.0;
+ operator_command_last_update_ns_ = core::kInvalidTime;
 }
 
 void AutonomyCoordinator::clear_goal() {
@@ -345,6 +347,17 @@ iface::MotionCommand AutonomyCoordinator::update(
  !observations_.has_observation()) {
     return iface::MotionCommand::SafeStop(now_ns);
   }
+ if (operator_command_active_) {
+ if (operator_command_generation_ != operator_command_consumed_generation_) {
+ operator_command_consumed_generation_ = operator_command_generation_;
+ operator_command_last_update_ns_ = now_ns;
+ }
+ if (operator_command_last_update_ns_ == core::kInvalidTime ||
+ now_ns - operator_command_last_update_ns_ >
+ iface::kDefaultCommandWatchdogNs) {
+ clear_operator_command();
+ }
+ }
  const iface::ObservationFrame& latest_observation = observations_.latest();
   // Decision branch runs at the decision period, or on event wakeup:
   // explicit replan request, or a new map revision. Everything else holds

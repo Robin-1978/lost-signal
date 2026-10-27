@@ -156,6 +156,16 @@ int main() {
  for (int i = 0; i < 20; ++i) session.step_once();
  const auto stopped = session.setup_world().truth();
  assert(stopped.forward_mps < moving.forward_mps);
+
+ // The command has an independent watchdog as well: a caller that stops
+ // refreshing operator input cannot leave a latched body twist indefinitely.
+ sim::scenario::ScenarioSession stale;
+ stale.set_operator_command(0.6, 0.0);
+ for (int i = 0; i < 40; ++i) stale.step_once();
+ const auto stale_start = stale.setup_world().truth();
+ for (int i = 0; i < 20; ++i) stale.step_once();
+ const auto stale_end = stale.setup_world().truth();
+ assert(stale_end.forward_mps < stale_start.forward_mps);
  }
 
   // Full mission: two docks, a crosser, an off-path box. Headless to

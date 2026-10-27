@@ -232,6 +232,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  bool operator_command_active_ = false;
  double operator_forward_mps_ = 0.0;
  double operator_yaw_rate_radps_ = 0.0;
+ std::uint64_t operator_command_generation_ = 0;
+ std::uint64_t operator_command_consumed_generation_ = 0;
+ core::MonotonicNs operator_command_last_update_ns_ = core::kInvalidTime;
   iface::MotionCommand last_cmd_ = iface::MotionCommand::SafeStop(0);
   std::string last_constraint_ = "none";
   std::string last_reason_ = "init";
