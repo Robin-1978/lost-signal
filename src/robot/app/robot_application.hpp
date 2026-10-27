@@ -132,7 +132,7 @@ class RobotApplication : public IRobot {
  const iface::ActuatorCommand& actuator,
  std::uint64_t sequence, core::MonotonicNs now_ns);
   // Latest decision evidence (read-only ops/logging).
-  autonomy::diagnostics::DecisionEvidence last_evidence() const;
+ autonomy::diagnostics::DecisionEvidence last_evidence() const override;
   // Robot -> provider: newest non-expired body command, else safe stop.
   // Retained for smart-drive placements and logging; the default plant
   // consumes take_actuator().

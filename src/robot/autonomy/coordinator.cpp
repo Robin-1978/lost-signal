@@ -368,7 +368,7 @@ iface::MotionCommand AutonomyCoordinator::update(
  // mapper's published layer (measurement heights where confident):
  // the provider owns the immutable map revision for the whole update;
  // the live layer is refreshed here and owned by the coordinator.
-  live_map_ = mapper_ != nullptr ? mapper_->local_map() : LocalMap{};
+ live_map_ = mapper_->local_map();
   SurveyContext survey_ctx;
   survey_ctx.map = &map;
   survey_ctx.live.height_m = live_map_.has_elevation()
@@ -393,9 +393,9 @@ if (due || replan_requested_ || local_plan_reset_requested_ || map_changed) {
  local_plan_reset_requested_ = false;
     // Survey revision: rebind the traversal belief and push the prior to
     // the mapper (ground classification for occupancy painting).
-    if (map_changed) {
+ if (map_changed) {
       traversal_.bind(map);
-      if (mapper_ != nullptr) mapper_->set_survey(map);
+ mapper_->set_survey(map);
     }
  const LocalMap robot_local_map = mapper_->local_map();
  const std::string& safety_reason = safety_->last_verdict().reason;
