@@ -154,6 +154,22 @@
 - 2026-10-27 的 Release 基线复测（当前 HEAD、无额外实验改动）为 71640 步、5/5、0 碰撞、最大定位误差 3.755 m；五个目标 truth miss 为 0.060/0.081/0.181/0.168/0.199 m，最终 `goal_hold/arrived/stop`。此前 71223 步的 4/5 结果没有在这次复测中重现，不能把一次通过当作算法证明；后续仍要保留重复长测和结构化定位证据。
 - 下一恢复点：先在当前干净工作区重复工业长测并保留定位候选/时序证据，再继续 worker 动画、forklift link 拆分、Blender 环境资产和碰撞验收；每个修复独立提交。
 
+### 持续恢复锚点（2026-10-27，`ba93779`）
+
+- 当前分支为 `refactor/clean-rebuild`，工作区在本锚点应保持干净；恢复时先执行
+  `git status --short --branch` 与 `git log -5 --oneline`，确认 HEAD 至少包含
+  `ba93779 docs: record industrial release rerun`。
+- 已完成的机械臂配置、MuJoCo link/joint pose、effort/encoder feedback、回放 v4、动态 actor mocap、GLB link binding、COM/contact/joint-axis overlay 和物理音频均视为已验收边界。恢复工作不得回退这些契约，也不得把 SIM-only 字段加入 `src/robot/`。
+- 第 7 阶段第一个未完成子任务是“模型与场景升级”：先让 worker 行人和 forklift 的分部件视觉绑定消费真实 MuJoCo body/joint pose，再补 Blender/GLB 场景资产 manifest；每个子任务都必须有对应的 backend/frame/viewer 单测或截图验收，并单独提交。
+- 工业长测的 `4/5` 结果曾在干净工作区复测为 `5/5`，因此只能作为需重复的稳定性证据；后续长测必须保留定位候选、协方差、恢复动作和时序记录，不能用放宽到达条件、读取真值或关卡专用常量掩盖波动。
+
+### 压缩后恢复协议（必须遵守）
+
+1. 读取本文件的“持续恢复锚点”和“最新恢复顺序”，再检查 `git status`/`git log`；不要从对话记忆猜测已完成内容。
+2. 从表格中第一个“进行中”阶段的第一个未完成子任务继续。当前入口是第 7 阶段的 worker/forklift link binding；完成后更新本文件、记录测试证据并单独提交。
+3. 任何失败先记录可复现命令、输入 revision、SIM/ROBOT 边界和结构化证据，再修改代码。已撤销的动态回波过滤、无条件 prior-improvement、post-step velocity projection 等实验不得重新引入。
+4. 每次阶段性提交后立即更新本文件中的提交号、测试结果和剩余风险，确保下一次上下文压缩仍能从同一锚点恢复。
+
 ### 阶段 1 回环修订检查点（2026-10-27）
 
 - 回环异步搜索的 pending proposal 不再按墙钟超时清理；proposal 绑定同一历史 keyframe anchor，只有该 anchor 被有界 keyframe ring 丢弃时才失效。这样不会在 coarse/refine/reverse 分片执行期间丢失第一次真实重访证据。
