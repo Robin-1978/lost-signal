@@ -369,6 +369,31 @@ int main() {
  assert(!actor.behavior.yield_active_);
  }
 
+ // A stopped robot may occupy the actor's preferred clearance margin without
+ // occupying the physical contact envelope. After the declared reaction
+ // interval, the yielding actor is allowed to continue along its authored
+ // path; this prevents two cooperative agents from waiting forever while
+ // preserving the hard radius-based no-contact boundary.
+ {
+ sim::world::Actor actor;
+ actor.x = 0.8;
+ actor.y = -3.0;
+ actor.radius_m = 0.3;
+ actor.behavior.yield_to_robot = true;
+ actor.behavior.reaction_time_s = 0.2;
+ actor.behavior.acceleration_mps2 = 1.0;
+ actor.behavior.brake_deceleration_mps2 = 2.0;
+ for (int step = 0; step < 250; ++step) {
+ actor.vx_mps = 0.0;
+ actor.vy_mps = 1.0;
+ sim::world::apply_actor_robot_yield(
+ actor, actor.behavior, 0.0, 0.0, 0.0, 0.0, 0.4, 0.02);
+ actor.y += actor.vy_mps * 0.02;
+ }
+ assert(actor.y > -1.0);
+ assert(!actor.behavior.yield_active_);
+ }
+
  // A leading actor must not brake when a faster robot approaches from
  // behind along the same authored path. Following distance belongs to the
  // rear vehicle; stopping the leader creates a rear-end hazard and a

@@ -213,6 +213,29 @@ void apply_actor_robot_yield(Actor& actor, ActorBehavior& behavior,
  const double a = rvx * rvx + rvy * rvy;
  const double b = 2.0 * (px * rvx + py * rvy);
  const double c = px * px + py * py - combined_radius * combined_radius;
+ // A cooperative actor must not turn its preferred clearance into an
+ // infinite stand-off when the robot has already stopped. Keep the physical
+ // contact envelope as the hard boundary, then let the existing reaction
+ // interval confirm a path whose minimum physical separation remains clear.
+ const double physical_radius = std::max(0.0, actor.radius_m) +
+ std::max(0.0, robot_radius_m);
+ const double physical_c = px * px + py * py -
+ physical_radius * physical_radius;
+ bool physical_conflict = physical_c <= 0.0;
+ if (!physical_conflict && a > 1e-12) {
+ const double discriminant = b * b - 4.0 * a * physical_c;
+ if (discriminant >= 0.0) {
+ const double root = std::sqrt(discriminant);
+ const double leave = (-b + root) / (2.0 * a);
+ if (leave >= 0.0) physical_conflict = true;
+ }
+ }
+ const double robot_speed_mps =
+ std::hypot(robot_vx_mps, robot_vy_mps);
+ const double stop_velocity_mps = std::max(
+ 1e-9, std::max(0.0, behavior.acceleration_mps2) * dt);
+ const bool stationary_physical_path_clear =
+ robot_speed_mps <= stop_velocity_mps && !physical_conflict;
  bool conflict = c <= 0.0;
  double first_contact_s = conflict
  ? 0.0 : std::numeric_limits<double>::infinity();
@@ -230,6 +253,11 @@ void apply_actor_robot_yield(Actor& actor, ActorBehavior& behavior,
  std::max(0.0, behavior.reaction_time_s) +
  behavior.yield_speed_mps_ / brake;
  conflict = conflict || first_contact_s <= stopping_horizon_s;
+ // Clearance is a policy margin, not a second collision geometry. Once the
+ // robot is effectively stopped and the actor's continuous path stays outside
+ // the physical radius sum, it is safe for the actor to keep moving through
+ // that margin; the robot-side Safety layer still owns its own margin.
+ if (stationary_physical_path_clear) conflict = false;
 
  // Latch a yield until the robot is outside the actor's reaction and braking
  // envelope. The release distance is derived from the nominal scripted speed
@@ -246,9 +274,9 @@ void apply_actor_robot_yield(Actor& actor, ActorBehavior& behavior,
  const double separation_rate_mps = separation_m > 1e-9
  ? (px * robot_vx_mps + py * robot_vy_mps) / separation_m
  : 0.0;
- const bool release_evidence = !conflict &&
- separation_m > release_distance_m &&
- separation_rate_mps >= -1e-9;
+ const bool release_evidence =
+ (!conflict && separation_m > release_distance_m &&
+ separation_rate_mps >= -1e-9) || stationary_physical_path_clear;
  if (behavior.yield_active_) {
  behavior.yield_clear_time_s_ = release_evidence
  ? behavior.yield_clear_time_s_ + dt : 0.0;

@@ -232,3 +232,19 @@
   configs/worlds/signal_town.json --mute --shot 120 ...` 成功加载全部分部件、
   WorkerWalk 和 3D 渲染。下一步是提交该子阶段，然后扩展环境资产和最终 Release
   视觉/碰撞验收。
+
+### 工业动态 actor 回归修复（工作区，待提交）
+
+- 20 万平方米全量回归曾在 `central_gate` 发生双方等待：让行行人在机器人
+ 已经停止后仍坚持包含 clearance margin 的 yield latch，机器人 Safety 又不能
+ 穿过该匿名障碍，最终 100000 步只完成 2/5。该失败不涉及目标放宽或 SIM 真值
+ 穿透，且不是视觉资产加载错误。
+- `apply_actor_robot_yield()` 现在把 actor/robot 半径之和作为唯一硬接触边界；
+ 当机器人按声明的单量程加速度已近似静止、actor 连续路径的物理最小距离仍
+ 大于该边界时，沿已有 reaction time 证据释放额外 clearance 的让行锁存。ROBOT
+ 仍独立使用自己的 Safety/costmap margin，actor 不会穿过物理接触包络；这只是
+ 通用 cooperative-deadlock 处理，不读取 ROBOT 估计或场景 ID。
+- 新增 `test_actor_behavior` 覆盖“clearance margin 内但物理半径外”的释放，
+ 保留原有物理接触和 teleport 单量程测试；`test_dynamic_crossing_mission` 通过。
+ `industrial_200k_mission central_gate --steps=40000` 现在 14337 步完成、0 碰撞，
+ truth miss 0.142 m。完整 5 目标长测仍需重新运行后再提交。
