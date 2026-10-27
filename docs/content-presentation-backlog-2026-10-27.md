@@ -65,7 +65,7 @@
 - **验收**：（1）research_base 的 3D 截图中叉车只显示模块化零件，没有 0.9 m × 1.5 m 的橙色圆柱；（2）无 worker 模型时行人仍绘制程序化圆柱；（3）把"选择哪条绘制路径"抽成可单测的纯函数并覆盖各分支组合。需要验证抽取的改动量，该逻辑目前内联在 actor 绘制循环中。
 - **范围与依赖**：仅 Viewer，不触及 SIM 与 ROBOT；无功能依赖；排期上在 F3a 之后（前后对比截图要在 `--physics-overlay` 下确认碰撞代理与模块化零件对齐，见 4.2）。
 
-#### A2 立体道具借 `surface_only` 绕过碰撞绑定，与目标点、actor 起点重叠 [P0]
+#### A2 立体道具借 `surface_only` 绕过碰撞绑定，与目标点、actor 起点重叠 [P0，已修复]
 
 - **依据**：
   - `configs/worlds/research_base.scene.json` 在 `e6e17fd` 新增三个 `surface_only` 实例：`signal_cross_tower_visual` 在 (17.8, 10.0)，`safety_lane_bollards_visual` 在 (18.0, 6.85)、yaw 90°，`supply_pallet_visual` 在 (10.5, 12.5)、yaw 90°。
@@ -88,7 +88,8 @@
   - （c）规则 R2（可选加固，不属于 P0 范围）：place 与任意静态 box 保持不小于到达半径的净空，补上设计文档 `:306` 的“目标 footprint 可达”。现有 77 个 place 在 0.30 m 半径下零例外，可落在按目录枚举世界的测试里（做法参照 `tests/test_sim_actor.cpp:115-141`），到达半径作为参数。它能拦住“给立体件绑定碰撞盒后压在目标点上”的情形。
   - （d）把分类写入场景作者规范：实体立体道具绑定碰撞盒并放在目标点旁，只有贴地标线才用 `surface_only`。
 - **验收**：（1）`test_scene_manifest` 新增负例：临时场景中的立体件声明 `surface_only` 被拒绝且错误信息指明高度，该负例在规则落地前失败；（2）规则落地后，当前数据中被拒绝的恰为上述 3 个立体件，其余 11 个贴地件不受影响；（3）内容处理与规则在同一提交内落地，提交后 `configs/worlds/` 下所有 `*.scene.json` 加载通过，`test_scene_manifest` 的现有断言（38 个实例、`has_instance` 三个 id，`:45-55`）不变；（4）research_base 相关任务与实验测试通过，新增碰撞盒的影响范围需要验证；（5）viewer 截图中三件道具不压在目标点与叉车路径上；`--physics-overlay` 下视觉与碰撞线框对齐的检查在 F3a 修复后补做，不阻塞规则与内容的提交。
-- **范围与依赖**：场景清单校验、world JSON 与测试；不修改 `viewer_main.cpp`，在线 D 并行（4.2）；无前置条目。
+ - **修复状态**：已提交为 `d5f9a69 fix: enforce physical scene collision contracts`。三个立体件已绑定 collision box 并移出目标和 actor 路径；loader 改用场景显式 `surface_only_max_height_m`，同时校验实例基座和按 scale 计算的模型顶部，不再使用隐藏 C++ 高度阈值；`scene_manifest` 与 `world_place_clearance` 通过。
+ - **范围与依赖**：场景清单校验、world JSON 与测试；不修改 `viewer_main.cpp`，在线 D 并行（4.2）；无前置条目。
 
 ### B. Viewer 与 UI
 

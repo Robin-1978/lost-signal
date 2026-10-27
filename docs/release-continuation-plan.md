@@ -49,6 +49,13 @@
    - 增加 joint axis、collision geometry、COM、contact overlay。
    - 按资产 manifest 的单位、轴、pivot、bounds 和 link binding 扩展 Blender/GLB 环境资产。
 
+8. **MCU 确定性控制域与真机适配**
+ - MCU 是独立固定周期时钟域；SIM 默认在 ScenarioSession 的 sim-time deadline 上执行，不让墙钟决定控制结果。
+ - 增加 typed motion ownership、capability 和 setpoint，明确 host motion loop、MCU joint loop、MCU body loop 中只有一层拥有外层控制环。
+ - 硬件适配器通过 INativeAdapter 接入；MCU 固件不伪装成 IProvider，必要的单设备 wrapper 才实现 provider 端点。
+ - 真机与 SIM 共用命令 expiry、session/sequence、watchdog、机械停车、测量时间戳和故障反馈。
+ - 按契约、SIM 虚拟 MCU、native fake transport、HIL、实测硬件 profile 五个子阶段推进。详细设计见 docs/mcu-control-domain-design.md。
+
 ## 当前恢复点
 
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
