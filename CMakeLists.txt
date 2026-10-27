@@ -20,6 +20,7 @@ add_library(lost_signal_robot_iface STATIC
   src/robot/iface/channel.cpp
   src/robot/iface/message.cpp
   src/robot/iface/conformance.cpp
+ src/robot/iface/ring_buffer.cpp
 )
 target_include_directories(lost_signal_robot_iface PUBLIC src)
 target_link_libraries(lost_signal_robot_iface PUBLIC lost_signal_robot_core)
@@ -649,6 +650,12 @@ add_executable(test_virtual_mcu
 )
 target_link_libraries(test_virtual_mcu PRIVATE lost_signal_sim_scenario)
 add_test(NAME virtual_mcu COMMAND test_virtual_mcu)
+
+add_executable(test_ring_buffer
+ tests/test_ring_buffer.cpp
+)
+target_link_libraries(test_ring_buffer PRIVATE lost_signal_robot_iface)
+add_test(NAME ring_buffer COMMAND test_ring_buffer)
 
 add_test(NAME signal_town_mission
  COMMAND lost_signal_sim
