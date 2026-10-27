@@ -345,7 +345,6 @@ RenderTexture2D load_shadow_map(int width, int height) {
  rlDisableFramebuffer();
  rlUnloadFramebuffer(target.id);
  rlUnloadTexture(target.texture.id);
- rlUnloadTexture(target.depth.id);
  return {};
  }
  // rlLoadFramebuffer leaves the new target bound.  Keep render-target
@@ -360,8 +359,6 @@ void release_shadow_map(VisualAssets& assets) {
  if (assets.shadow_map.id > 0) rlUnloadFramebuffer(assets.shadow_map.id);
  if (assets.shadow_map.texture.id > 0)
  rlUnloadTexture(assets.shadow_map.texture.id);
- if (assets.shadow_map.depth.id > 0)
- rlUnloadTexture(assets.shadow_map.depth.id);
  assets.shadow_map = {};
  assets.shadow_map_resolution = 0;
 }
