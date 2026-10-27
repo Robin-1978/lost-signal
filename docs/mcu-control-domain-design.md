@@ -13,6 +13,21 @@ MCU 是独立的确定性控制时钟域，不是 ROBOT 中普通的 IProvider�
 - 倍率：只改变墙钟上执行多少已经定义的事件，不改变 MCU period、命令 expiry、时间戳或事件顺序。
 - 安全：主机和 MCU 都有 watchdog。主机停止时，MCU 在本地 expiry 内直接进入 safe stop，不依赖主机再次发命令。
 
+### 调试调度和真机调度
+
+SIM 的默认实现就是单线程。一次 `ScenarioSession::step_once()` 按固定顺序完成物理
+quantum、传感器发布、ROBOT tick、setpoint 投递和 Virtual MCU deadline；可以在
+`VirtualMcu::tick()` 上断点，逐步执行一个控制周期，或把同一周期重复回放。这里的
+“独立控制域”表示它有自己的周期、expiry、sequence 和 watchdog 合同，不表示必须
+创建一个操作系统线程。单线程是调试和确定性回放的首选；并发压力测试才启用线程
+适配器，而且必须通过与单线程模式相同的 accepted sequence、反馈和终态测试。
+
+真机不把这个单线程实现直接当作实时 MCU。Linux/ROS 主机负责 ROBOT 决策和非阻塞
+通信，传感器由 DMA/中断或驱动采集任务提供带 acquisition timestamp 的数据，底盘
+MCU 由硬件定时器或 RTOS 固定优先级任务运行 PID、expiry 和本地机械停车。三者共享
+typed setpoint/measurement 合同，但调度器属于各自平台；墙钟只在真机最外层 pacing
+和 watchdog 使用，不能改变 ROBOT 算法输入的时间戳。
+
 ## 边界
 
 IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、encoder 或 actuator）。远端 MCU 固件不是 C++ 进程中的 provider。主机硬件包实现 INativeAdapter，负责注册 endpoint、翻译标准消息、轮询测量、写入标准命令和独立机械停车。需要 typed MCU 协议时，适配器实现 `IChassisMcuTransport`；它提供 capability、发送 chassis setpoint、轮询 MotionFeedback 和独立机械停车，但不是 IProvider。`NativeRuntime` 已支持这条可选 transport：未提供时保持现有 duty adapter 路径，提供时发送 sequence/expiry 完整的 typed setpoint，并在 bring-up 拒绝非 host-motion ownership，避免未来 body/joint 转换未完成时重复闭环。
@@ -115,6 +130,18 @@ SIM 的执行顺序固定为：完成一个物理 quantum，推进 sim time，�
  差速轮速，固定 `control_period_ns` 调 PID，使用 conditional anti-windup，
  encoder 是唯一闭环反馈，expiry 触发本地机械停车；独立 CMake host test 已通过。
 5. Hardware profile：用实测 step response 填入能力参数；未测量时保持 safe hold，不能用猜测的默认数字上线。
+
+仓库提供两组可以直接放进 CubeMX 工程的无 HAL 核心：
+`examples/stm32_chassis_mcu/` 负责固定周期底盘 PID、运动学、expiry 和本地
+机械停车；`examples/stm32_sensor_bridge/` 负责 LiDAR/IMU/编码器固定宽度报文的
+版本、boot、sequence、时间戳和有限值校验，并附带一个 native 侧
+`ObservationAdapter` 把接受的测量转换为 `ObservationFrame`。两组核心都在主机上
+有确定性测试，也可以用 `-DSTM32_FIRMWARE=ON` 编译成嵌入式库。
+
+它们是可移植到真实板卡的参考实现，不是假装已经适配某一块 STM32：CubeMX 工程仍
+必须提供实际的时钟、DMA/中断、CAN/UART framing/CRC、引脚、电机驱动、急停输入和
+经过测量的底盘/传感器 profile。没有这些实测参数时，启动保持 safe hold；不能把示例
+里的轮径、PID 或量程当成通用魔法默认值。
 
 ## 验收
 

@@ -68,6 +68,11 @@
  sim-time deadline 调度、transport queue 与本地 watchdog；`virtual_mcu`、
  `signal_town_mission` 回归通过。8.3 已增加 `IChassisMcuTransport` 真机 seam
  和 `examples/stm32_chassis_mcu` 的固定周期 PID reference/CMake host test。
+- 8.4 已增加 `examples/stm32_sensor_bridge`：LiDAR/IMU/编码器固定宽度 wire DTO、
+  boot/sequence/acquisition timestamp/finite-value 校验、native
+  `ObservationAdapter` 和独立 CMake host/firmware 构建。它与底盘 reference 一样
+  不依赖 HAL；真实 STM32 只需补 CubeMX 的 timer、DMA/中断、传输 framing/CRC 和
+  实测 profile，未经这些 profile 不允许退出 safe hold。
 
 ### Release 运行门禁（2026-10-27）
 
