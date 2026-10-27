@@ -1,6 +1,7 @@
 {
  "format": "lost-signal-scene/1",
  "scene_id": "research_base",
+ "surface_only_max_height_m": 0.10,
  "camera": {
  "distance_m": 4.6,
  "yaw_deg": 38.0,
@@ -74,8 +75,8 @@
  {"instance_id":"forklift_lane_north_02","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[18.0,6.85,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
  {"instance_id":"forklift_lane_south_01","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[15.15,5.15,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
  {"instance_id":"forklift_lane_south_02","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[18.0,5.15,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
- {"instance_id":"signal_cross_tower_visual","asset_id":"environment.research_base.traffic_signal","surface_only":true,"position_m":[17.8,10.0,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":180.0},
- {"instance_id":"safety_lane_bollards_visual","asset_id":"environment.research_base.safety_bollards","surface_only":true,"position_m":[18.0,6.85,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":90.0},
- {"instance_id":"supply_pallet_visual","asset_id":"environment.research_base.pallet_stack","surface_only":true,"position_m":[10.5,12.5,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":90.0}
+ {"instance_id":"signal_cross_tower_visual","asset_id":"environment.research_base.traffic_signal","collision_box_id":"signal_cross_tower","position_m":[18.5,10.0,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":180.0},
+ {"instance_id":"safety_lane_bollards_visual","asset_id":"environment.research_base.safety_bollards","collision_box_id":"safety_lane_bollards","position_m":[18.4,6.85,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":90.0},
+ {"instance_id":"supply_pallet_visual","asset_id":"environment.research_base.pallet_stack","collision_box_id":"supply_pallet","position_m":[11.4,12.5,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":90.0}
  ]
 }

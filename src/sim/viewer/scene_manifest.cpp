@@ -123,7 +123,7 @@ const world::StaticBox* find_box(
 
 bool parse_instance(const Json& node, const AssetManifest& assets,
  const std::vector<world::StaticBox>& boxes, SceneInstance& instance,
- std::string& error) {
+ double surface_only_max_height_m, std::string& error) {
  if (!node.is_object() ||
  !take_string(node, "instance_id", instance.instance_id, error) ||
  !take_string(node, "asset_id", instance.asset_id, error) ||
@@ -165,8 +165,30 @@ bool parse_instance(const Json& node, const AssetManifest& assets,
  return false;
  }
  if (instance.surface_only) {
- if (std::abs(instance.position_m[2]) > 0.10) {
- error = "surface-only scene instance must stay within 0.10 m of ground";
+ if (!(surface_only_max_height_m > 0.0)) {
+ error = "scene uses surface_only but does not declare "
+ "surface_only_max_height_m";
+ return false;
+ }
+ if (std::abs(instance.position_m[2]) > surface_only_max_height_m) {
+ std::ostringstream message;
+ message << "surface-only scene instance must stay within "
+ << surface_only_max_height_m << " m of ground";
+ error = message.str();
+ return false;
+ }
+ // The viewer seats the model's lowest point at position z, so the top is z
+ // plus the scaled asset height. A taller instance is a solid prop drawn
+ // without a collision box (docs/sim-game-design.md, scene contract).
+ const double top_m = instance.position_m[2] +
+ (asset->expected_bounds_m.maximum_m[2] -
+ asset->expected_bounds_m.minimum_m[2]) * instance.scale[2];
+ if (top_m > surface_only_max_height_m) {
+ std::ostringstream message;
+ message << "surface-only scene instance '" << instance.instance_id
+ << "' is " << top_m << " m tall (limit " << surface_only_max_height_m
+ << " m); bind a collision_box_id";
+ error = message.str();
  return false;
  }
  return true;
@@ -230,6 +252,8 @@ bool load_scene_manifest(const std::string& path,
  }
  SceneManifest parsed;
  if (!take_string(*root, "scene_id", parsed.scene_id, out_error) ||
+ !take_optional_number(*root, "surface_only_max_height_m",
+ parsed.surface_only_max_height_m, out_error) ||
  !take_number(*camera, "distance_m", parsed.camera.distance_m,
  out_error) ||
  !take_number(*camera, "yaw_deg", parsed.camera.yaw_deg, out_error) ||
@@ -328,7 +352,8 @@ bool load_scene_manifest(const std::string& path,
  std::set<std::string> collision_bindings;
  for (const Json& node : instances->as_array()) {
  SceneInstance instance;
- if (!parse_instance(node, assets, boxes, instance, out_error)) {
+ if (!parse_instance(node, assets, boxes, instance,
+ parsed.surface_only_max_height_m, out_error)) {
  return false;
  }
  if (!ids.insert(instance.instance_id).second) {

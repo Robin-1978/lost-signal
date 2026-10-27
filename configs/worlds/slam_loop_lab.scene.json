@@ -1,6 +1,7 @@
 {
   "format": "lost-signal-scene/1",
-  "scene_id": "slam_loop_lab",
+ "scene_id": "slam_loop_lab",
+ "surface_only_max_height_m": 0.10,
   "camera": {
     "distance_m": 5.6,
     "yaw_deg": 42.0,

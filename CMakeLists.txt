@@ -720,6 +720,15 @@ target_compile_definitions(test_scene_manifest PRIVATE
 target_link_libraries(test_scene_manifest PRIVATE lost_signal_sim_viewer)
 add_test(NAME scene_manifest COMMAND test_scene_manifest)
 
+add_executable(test_world_place_clearance
+  tests/test_world_place_clearance.cpp
+)
+target_compile_definitions(test_world_place_clearance PRIVATE
+  TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_world_place_clearance PRIVATE lost_signal_sim_eval)
+add_test(NAME world_place_clearance COMMAND test_world_place_clearance)
+
 add_executable(test_experience_manifest
  tests/test_experience_manifest.cpp
 )

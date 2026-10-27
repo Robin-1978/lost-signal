@@ -277,6 +277,33 @@
    "x1": 12.905,
    "y1": 12.925,
    "height_m": 0.9119999999999999
+  },
+  {
+ "box_id": "signal_cross_tower",
+ "impact_material": "metal",
+   "x0": 18.29,
+   "y0": 9.84,
+   "x1": 18.71,
+   "y1": 10.16,
+   "height_m": 2.265
+  },
+  {
+ "box_id": "safety_lane_bollards",
+ "impact_material": "metal",
+   "x0": 18.26,
+   "y0": 6.19,
+   "x1": 18.54,
+   "y1": 7.51,
+   "height_m": 0.9125
+  },
+  {
+ "box_id": "supply_pallet",
+ "impact_material": "wood",
+   "x0": 10.99,
+   "y0": 11.95,
+   "x1": 11.81,
+   "y1": 13.05,
+   "height_m": 0.63
   }
  ],
  "places": [

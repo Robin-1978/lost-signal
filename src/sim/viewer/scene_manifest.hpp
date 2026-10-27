@@ -61,6 +61,10 @@ struct SceneInstance {
 
 struct SceneManifest {
  std::string scene_id;
+ // Explicit scene contract for paint/pads declared surface_only. A scene
+ // that uses surface_only must author this value; it is not a loader magic
+ // number and is applied to both the instance base and scaled asset height.
+ double surface_only_max_height_m = 0.0;
  SceneCamera camera;
  SceneLighting lighting;
  SceneFloor floor;
