@@ -364,7 +364,10 @@ void ScenarioSession::step_once() {
  rec.truth_after = world_.truth();
  if (scheduler_.record_due_ns(sim_time_ns_)) {
  if (retain_episode_history_) capture_presentation(world_, rec.presentation);
- rec.step = score_accumulator_.score().steps;
+ // Public episode steps are one-based completed transitions.  The score
+ // accumulator is updated immediately below, so reserve the next ordinal
+ // here instead of exposing its pre-record zero value on the first sample.
+ rec.step = score_accumulator_.score().steps + 1;
  score_accumulator_.record(rec);
  last_eval_step_ = rec;
  if (retain_episode_history_) episode_.record(std::move(rec));
