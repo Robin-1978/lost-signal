@@ -1,8 +1,8 @@
-#include "robot/iface/ring_buffer.hpp"
+#include "robot/transport/ring_buffer.hpp"
 
 #include <algorithm>
 
-namespace lost_signal::robot::iface {
+namespace lost_signal::robot::transport {
 
 RingBuffer::RingBuffer(std::size_t capacity) : bytes_(capacity) {}
 
@@ -71,11 +71,8 @@ std::size_t RingBuffer::overwrite(const std::uint8_t* data, std::size_t count) {
  const bool full = size_unlocked() == capacity();
  bytes_[write_] = data[i];
  write_ = (write_ + 1) % capacity();
- if (full) {
- read_ = (read_ + 1) % capacity();
- } else {
- ++count_;
- }
+ if (full) read_ = (read_ + 1) % capacity();
+ else ++count_;
  }
  return count;
 }
@@ -87,4 +84,4 @@ void RingBuffer::clear() {
  count_ = 0;
 }
 
-} // namespace lost_signal::robot::iface
+} // namespace lost_signal::robot::transport

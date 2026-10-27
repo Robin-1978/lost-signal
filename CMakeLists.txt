@@ -20,7 +20,7 @@ add_library(lost_signal_robot_iface STATIC
   src/robot/iface/channel.cpp
   src/robot/iface/message.cpp
   src/robot/iface/conformance.cpp
- src/robot/iface/ring_buffer.cpp
+ src/robot/transport/ring_buffer.cpp
 )
 target_include_directories(lost_signal_robot_iface PUBLIC src)
 target_link_libraries(lost_signal_robot_iface PUBLIC lost_signal_robot_core)

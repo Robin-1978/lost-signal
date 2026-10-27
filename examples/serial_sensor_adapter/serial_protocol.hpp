@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "robot/iface/ring_buffer.hpp"
+#include "robot/transport/ring_buffer.hpp"
 
 namespace lost_signal::examples::serial_sensor {
 
@@ -89,7 +89,7 @@ class SerialFrameDecoder {
  std::size_t buffered_bytes() const { return rx_.size(); }
 
  private:
- lost_signal::robot::iface::RingBuffer rx_;
+ lost_signal::robot::transport::RingBuffer rx_;
  std::array<std::uint8_t, kMaxFrameBytes> frame_{};
  std::uint32_t boot_ids_[3] = {};
  std::uint64_t last_sequences_[3] = {};

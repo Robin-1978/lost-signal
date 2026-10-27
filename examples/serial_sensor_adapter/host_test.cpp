@@ -91,7 +91,7 @@ int main() {
  // The receive side and parser side can be separate owners. The mutex-backed
  // byte ring never exposes a partially written byte sequence and reports
  // overflow instead of silently overwriting a control measurement.
- lost_signal::robot::iface::RingBuffer ring(8);
+ lost_signal::robot::transport::RingBuffer ring(8);
  const std::uint8_t burst[] = {1, 2, 3, 4, 5};
  assert(ring.push(burst, sizeof(burst)) == sizeof(burst));
  std::uint8_t peeked[3]{};
@@ -100,7 +100,7 @@ int main() {
  std::uint8_t drained[2]{};
  assert(ring.pop(drained, sizeof(drained)) == sizeof(drained));
  assert(drained[0] == 1 && drained[1] == 2);
- lost_signal::robot::iface::RingBuffer full_ring(4);
+ lost_signal::robot::transport::RingBuffer full_ring(4);
  assert(full_ring.push(burst, sizeof(burst)) == 4);
  assert(full_ring.size() == 4);
  assert(full_ring.push(burst, 1) == 0);
