@@ -33,9 +33,18 @@ IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、e
 
 ## Typed capability 和 setpoint
 
-在 robot/iface/motion.hpp 增加正式能力描述，不把单位偷偷塞进现有 duty 数组：
+已在 `robot/iface/motion.hpp` 增加正式能力描述，不把单位偷偷塞进现有 duty
+数组：
 
-    enum class MotionControlOwner { kHostMotionLoop, kMcuJointLoop, kMcuBodyLoop };
+ `MotionControlOwner`、`MotionCapabilities`、`MotionSetpointKind` 和
+ `MotionSetpoint` 现在是接口类型；`valid_motion_capabilities` 与
+ `valid_motion_setpoint` 在 `lost_signal_robot_iface` 边界执行 owner、模式、
+ 关节计数、frame、expiry、profile revision 和字段单位校验。duty 使用独立的
+ `drive_duty`/`steer_duty` 字段，速度/角度 setpoint 使用 `drive_radps`/
+ `steer_rad`，因此 transport 无法把同一数组解释成不同单位。
+
+ ```cpp
+ enum class MotionControlOwner { kHostMotionLoop, kMcuJointLoop, kMcuBodyLoop };
 
     struct MotionCapabilities {
       MotionControlOwner control_owner;
@@ -57,6 +66,8 @@ IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、e
       MonotonicNs stamp_ns;
       MonotonicNs expiry_ns;
       Frame frame;
+ array<double, 4> drive_duty;
+ array<double, 4> steer_duty;
       array<double, 4> drive_radps;
       array<double, 4> steer_rad;
       double forward_mps;
@@ -64,6 +75,7 @@ IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、e
       double yaw_rate_radps;
       double service_brake;
     };
+ ```
 
 kind 唯一决定有效字段，其他字段必须为零或按校验规则忽略；不得按数组位置猜单位。MCU 回显最近接受的 sequence、应用时刻、拒绝原因和制动状态。
 

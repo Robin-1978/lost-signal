@@ -74,6 +74,52 @@ enum class ActuatorMode {
   kMecanumDuty = 3,
 };
 
+// Control ownership is a hardware boundary, not a provider implementation
+// detail. Exactly one layer owns the outer loop for a motion quantity.
+enum class MotionControlOwner {
+ kHostMotionLoop = 0,
+ kMcuJointLoop = 1,
+ kMcuBodyLoop = 2,
+};
+
+struct MotionCapabilities {
+ MotionControlOwner control_owner = MotionControlOwner::kHostMotionLoop;
+ ActuatorMode chassis_mode = ActuatorMode::kDiffDuty;
+ std::uint8_t drive_count = 0;
+ std::uint8_t steer_count = 0;
+ core::MonotonicNs control_period_ns = core::kInvalidTime;
+ core::MonotonicNs feedback_period_ns = core::kInvalidTime;
+ core::MonotonicNs maximum_command_age_ns = core::kInvalidTime;
+ std::string profile_id;
+ std::uint32_t profile_revision = 0;
+};
+
+// A setpoint's kind fixes the units of every populated field. A transport
+// must never infer units from an array position or from the board model.
+enum class MotionSetpointKind {
+ kActuatorDuty = 0,
+ kJointVelocity = 1,
+ kBodyTwist = 2,
+ kStop = 3,
+};
+
+struct MotionSetpoint {
+ MotionSetpointKind kind = MotionSetpointKind::kStop;
+ ActuatorMode chassis_mode = ActuatorMode::kDiffDuty;
+ std::uint64_t sequence = 0;
+ core::MonotonicNs stamp_ns = core::kInvalidTime;
+ core::MonotonicNs expiry_ns = core::kInvalidTime;
+ core::Frame frame = core::Frame::kBaseLink;
+ std::array<double, 4> drive_duty = {};
+ std::array<double, 4> steer_duty = {};
+ std::array<double, 4> drive_radps = {};
+ std::array<double, 4> steer_rad = {};
+ double forward_mps = 0.0;
+ double lateral_mps = 0.0;
+ double yaw_rate_radps = 0.0;
+ double service_brake = 0.0;
+};
+
 struct ActuatorCommand {
   ActuatorMode mode = ActuatorMode::kDiffDuty;
   core::MonotonicNs stamp_ns = core::kInvalidTime;
@@ -159,6 +205,11 @@ inline std::uint8_t actuator_steer_count(ActuatorMode mode) {
 
 bool valid_actuator_command(const ActuatorCommand& cmd,
                             core::MonotonicNs now_ns);
+
+bool valid_motion_capabilities(const MotionCapabilities& capabilities);
+
+bool valid_motion_setpoint(const MotionSetpoint& setpoint,
+  const MotionCapabilities& capabilities, core::MonotonicNs now_ns);
 
 // Motion endpoint: consumes actuator commands, produces body + joint
 // feedback. Same IProvider root as the sensors; only the typed poll differs,

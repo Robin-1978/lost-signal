@@ -15,6 +15,7 @@ target_include_directories(lost_signal_robot_core PUBLIC src)
 
 add_library(lost_signal_robot_iface STATIC
   src/robot/iface/iface.cpp
+ src/robot/iface/motion_contract.cpp
   src/robot/iface/endpoint.cpp
   src/robot/iface/channel.cpp
   src/robot/iface/message.cpp
@@ -524,6 +525,12 @@ add_executable(test_actuation
 )
 target_link_libraries(test_actuation PRIVATE lost_signal_robot_control lost_signal_robot_platform lost_signal_robot_iface lost_signal_robot_autonomy lost_signal_sim_world)
 add_test(NAME actuation COMMAND test_actuation)
+
+add_executable(test_motion_contract
+ tests/test_motion_contract.cpp
+)
+target_link_libraries(test_motion_contract PRIVATE lost_signal_robot_iface)
+add_test(NAME motion_contract COMMAND test_motion_contract)
 
 add_executable(test_dwa
   tests/test_dwa.cpp
