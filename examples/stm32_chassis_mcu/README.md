@@ -39,3 +39,20 @@ To flash a real robot, the CubeMX project still supplies startup/linker code,
 clock and UART DMA/interrupt callbacks, PWM/encoder/estop drivers, a measured
 `ChassisConfig`, and a hardware watchdog. The controller enters safe hold until
 the board profile and motor direction/encoder polarity have passed bring-up.
+
+The CubeMX glue is intentionally a small loop:
+
+```cpp
+FirmwareLoop loop(profile);
+// UART/DMA task:
+loop.receive_uart(rx_bytes, rx_count);
+// Fixed hardware timer task:
+std::size_t tx_size = 0;
+loop.tick(timer_now_ns, read_encoder_feedback(), tx_bytes,
+ sizeof(tx_bytes), tx_size);
+HAL_UART_Transmit_DMA(&huart, tx_bytes, tx_size);
+```
+
+The board supplies `timer_now_ns`, encoder capture, PWM output, UART DMA and
+the independent emergency-stop path. `FirmwareLoop` owns no HAL state and can
+therefore be run through the host test before flashing.

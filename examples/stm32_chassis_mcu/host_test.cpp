@@ -3,6 +3,7 @@
 
 #include "chassis_controller.hpp"
 #include "serial_codec.hpp"
+#include "firmware_loop.hpp"
 
 using namespace lost_signal::stm32_reference;
 
@@ -69,6 +70,27 @@ int main() {
  assert(parser.next(kind, decoded, decoded_output) == SerialStatus::kAccepted);
  assert(kind == SerialMessageKind::kMotorOutput);
  assert(decoded_output.drive_duty[0] == 0.25f);
+
+ // CubeMX integration seam: receive bytes asynchronously, then run one
+ // deterministic timer tick and send a complete MotorOutput frame to PWM.
+ FirmwareLoop loop;
+ std::uint8_t command_frame[kSerialMaxFrame]{};
+ const std::size_t command_size = encode_setpoint(
+ wire, command_frame, sizeof(command_frame));
+ assert(loop.receive_uart(command_frame, command_size));
+ std::uint8_t output_frame[kSerialMaxFrame]{};
+ std::size_t output_size = 0;
+ EncoderFeedback encoder;
+ encoder.valid = true;
+ assert(loop.tick(3'000'000, encoder, output_frame, sizeof(output_frame),
+ output_size) == FirmwareTickStatus::kApplied);
+ assert(output_size > 0);
+ SerialFrameParser output_parser;
+ assert(output_parser.feed(output_frame, output_size));
+ assert(output_parser.next(kind, decoded, decoded_output) ==
+ SerialStatus::kAccepted);
+ assert(kind == SerialMessageKind::kMotorOutput);
+ assert(!decoded_output.watchdog_stop);
  std::puts("stm32_chassis_controller ok");
  return 0;
 }

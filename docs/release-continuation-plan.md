@@ -76,6 +76,10 @@
 - 8.5 已把通用 native transport 下沉到 `src/robot/transport`：UDP、SocketCAN
 （含有限 CAN 分片重组）、spidev 和 USB CDC/串口复用边界，并用 loopback/分片/乱序
  单测证明不会把半帧测量送入 ROBOT。板级驱动和设备树仍留在 adapter/profile 层。
+- 8.6 已把 STM32 示例补成 `FirmwareLoop`：UART/DMA 接收与固定硬件 timer tick
+ 分离，编码器反馈进入底层控制器，MotorOutput 以完整 CRC frame 回传；host test
+ 与 `STM32_FIRMWARE=ON` 构建均通过。它仍需要具体 CubeMX 的 startup、IO、急停和
+ 实测 profile，不能冒充通用可烧录镜像。
 
 ### Release 运行门禁（2026-10-27）
 
