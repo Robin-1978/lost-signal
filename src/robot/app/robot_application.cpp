@@ -254,6 +254,9 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
  fb.drive_radps = last.drive_radps;
  fb.steer_rad = last.steer_rad;
  fb.steer_vel_radps = last.steer_vel_radps;
+ fb.arm_count = last.arm_count;
+ fb.arm_rad = last.arm_rad;
+ fb.arm_vel_radps = last.arm_vel_radps;
  }
  iface::ActuatorCommand act = chassis_->to_actuator(body, fb, now_ns);
   channel_.publish_command(body);

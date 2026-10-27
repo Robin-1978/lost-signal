@@ -40,14 +40,16 @@ struct RecordedStep {
   std::vector<double> drives_radps;
   std::vector<double> steers_rad;
   std::vector<double> steers_vel_radps;
+ std::vector<double> arms_rad;
+ std::vector<double> arms_vel_radps;
 };
 
 // JSONL v4: one header line then one step object per line. v2/v3 remain
 // readable; v2 has no per-section headers, and both older versions default
 // the body-lateral odometry channel to zero.
 // schema: {"v":4,"kind":"episode","map":"<id>","rev":<n>}
-// steps carry measurement headers, "drives":[...], and
-// "steers":{"pos":[...],"vel":[...]}.
+// steps carry measurement headers, "drives":[...], "steers":{"pos":[...],
+// "vel":[...]}, and optional "arm":{"pos":[...],"vel":[...]}.
 struct RecordedEpisode {
   std::string map_id;
   std::uint64_t map_revision = 0;

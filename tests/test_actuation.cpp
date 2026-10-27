@@ -28,6 +28,16 @@ int main() {
  assert(!iface::valid_actuator_command(stop, 100));
  stop.service_brake = std::nan("");
  assert(!iface::valid_actuator_command(stop, 100));
+ iface::ActuatorCommand arm = iface::ActuatorCommand::SafeZero(100);
+ arm.arm_count = 4;
+ arm.arm[0] = 0.5;
+ assert(iface::valid_actuator_command(arm, 100));
+ arm.arm[3] = 1.1;
+ assert(!iface::valid_actuator_command(arm, 100));
+ arm.arm[3] = 0.0;
+ arm.arm_count = 3;
+ arm.arm[3] = 0.1;
+ assert(!iface::valid_actuator_command(arm, 100));
  }
 
   // PID converges a step error (integral action needs a few hundred

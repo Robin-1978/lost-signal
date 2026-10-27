@@ -51,6 +51,18 @@ int main() {
     assert(motor.wheel_radius_m == 0.1);
  if (!differential) assert(motor.support_count <= 0);
   }
+ // The worked articulated configuration is loadable by both native and SIM
+ // paths and carries the declared actuator limits into the plant.
+ {
+ robot::platform::RobotConfig arm_cfg;
+ std::string err;
+ assert(robot::platform::load_robot_config(dir + "/robot/ro6_arm.json",
+ arm_cfg, &err));
+ assert(arm_cfg.robot_id == "ro6" && arm_cfg.profile.arm.enabled);
+ assert(arm_cfg.profile.arm.joint_torque_limit_Nm[0] == 12.0);
+ assert(sim::eval::motor_from_config(arm_cfg).arm.joint_damping_Nms[3] ==
+ 0.10);
+ }
   // Geometry follows kind: ackermann is longer/wider than diff.
   {
     robot::platform::RobotConfig diff, ack;
@@ -139,13 +151,17 @@ int main() {
  std::fputs(R"({"kind":"differential","arm":{"enabled":true,
  "base_xyz_m":[0.0,0.0,0.22],"links":[
  {"length_m":0.30,"mass_kg":2.0,"radius_m":0.04,
- "joint_axis":[0,0,1],"initial_angle_rad":0.1},
+ "joint_axis":[0,0,1],"initial_angle_rad":0.1,
+ "torque_limit_Nm":12.0,"damping_Nms":0.4},
  {"length_m":0.25,"mass_kg":1.5,"radius_m":0.035,
- "joint_axis":[0,1,0],"initial_angle_rad":-0.2},
+ "joint_axis":[0,1,0],"initial_angle_rad":-0.2,
+ "torque_limit_Nm":10.0,"damping_Nms":0.3},
  {"length_m":0.18,"mass_kg":1.0,"radius_m":0.03,
- "joint_axis":[0,1,0],"initial_angle_rad":0.3},
+ "joint_axis":[0,1,0],"initial_angle_rad":0.3,
+ "torque_limit_Nm":8.0,"damping_Nms":0.2},
  {"length_m":0.12,"mass_kg":0.5,"radius_m":0.025,
- "joint_axis":[1,0,0],"initial_angle_rad":-0.1}]}})", fp);
+ "joint_axis":[1,0,0],"initial_angle_rad":-0.1,
+ "torque_limit_Nm":5.0,"damping_Nms":0.1}]}})", fp);
  std::fclose(fp);
  robot::platform::RobotConfig cfg;
  std::string err;

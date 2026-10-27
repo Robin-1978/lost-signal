@@ -24,7 +24,12 @@ bool valid_observation_frame(const ObservationFrame& frame) {
  : scan_measurement_header(frame).valid())) {
  return false;
  }
- if ((frame.odometry_valid || frame.has_joints()) &&
+ if (frame.arm_count > 4) return false;
+ for (std::uint8_t i = 0; i < frame.arm_count; ++i) {
+ if (!std::isfinite(frame.arm_rad[i]) ||
+ !std::isfinite(frame.arm_vel_radps[i])) return false;
+ }
+ if ((frame.odometry_valid || frame.has_joints() || frame.has_arm()) &&
  !(explicit_sections ? frame.motion_header.valid()
  : motion_measurement_header(frame).valid())) {
  return false;
@@ -66,6 +71,16 @@ bool valid_actuator_command(const ActuatorCommand& cmd,
  if (!std::isfinite(cmd.service_brake) || cmd.service_brake < 0.0 ||
  cmd.service_brake > 1.0) {
  return false;
+ }
+ if (cmd.arm_count > 4) return false;
+ for (std::uint8_t i = 0; i < cmd.arm_count; ++i) {
+ if (!std::isfinite(cmd.arm[i]) || cmd.arm[i] < -1.0 ||
+ cmd.arm[i] > 1.0) {
+ return false;
+ }
+ }
+ for (std::uint8_t i = cmd.arm_count; i < 4; ++i) {
+ if (cmd.arm[i] != 0.0) return false;
  }
   const std::uint8_t n_drive = actuator_drive_count(cmd.mode);
   const std::uint8_t n_steer = actuator_steer_count(cmd.mode);

@@ -174,6 +174,15 @@ std::string step_to_json_line(const RecordedStep& step) {
   steers.emplace_back("pos", Json::Arr(std::move(spos)));
   steers.emplace_back("vel", Json::Arr(std::move(svel)));
   o.emplace_back("steers", Json::Obj(std::move(steers)));
+ if (!step.arms_rad.empty() || !step.arms_vel_radps.empty()) {
+ Json::Object arm;
+ Json::Array apos, avel;
+ for (double a : step.arms_rad) apos.push_back(Json::Num(a));
+ for (double a : step.arms_vel_radps) avel.push_back(Json::Num(a));
+ arm.emplace_back("pos", Json::Arr(std::move(apos)));
+ arm.emplace_back("vel", Json::Arr(std::move(avel)));
+ o.emplace_back("arm", Json::Obj(std::move(arm)));
+ }
   return json_dump(Json::Obj(std::move(o)));
 }
 
@@ -323,12 +332,25 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   };
   if (!num_array(spos, "pos", step.steers_rad)) return false;
   if (!num_array(svel, "vel", step.steers_vel_radps)) return false;
+ step.arms_rad.clear();
+ step.arms_vel_radps.clear();
+ if (const Json* arm = obj.find("arm"); arm != nullptr) {
+ if (!arm->is_object()) {
+ err = "key 'arm' not an object";
+ return false;
+ }
+ if (!num_array(arm->find("pos"), "arm.pos", step.arms_rad) ||
+ !num_array(arm->find("vel"), "arm.vel", step.arms_vel_radps)) {
+ return false;
+ }
+ }
  if (v >= 3.0) {
  if (step.scan_valid && !step.scan_header.valid()) {
  err = "recording scan is missing a valid section header";
  return false;
  }
- if ((step.odom_valid || !step.drives_radps.empty()) &&
+ if ((step.odom_valid || !step.drives_radps.empty() ||
+ !step.arms_rad.empty()) &&
  !step.motion_header.valid()) {
  err = "recording motion is missing a valid section header";
  return false;
@@ -376,6 +398,9 @@ RecordedStep record_step(const robot::iface::ObservationFrame& obs) {
                       obs.steer_rad.begin() + obs.steer_count);
   s.steers_vel_radps.assign(obs.steer_vel_radps.begin(),
                             obs.steer_vel_radps.begin() + obs.steer_count);
+ s.arms_rad.assign(obs.arm_rad.begin(), obs.arm_rad.begin() + obs.arm_count);
+ s.arms_vel_radps.assign(obs.arm_vel_radps.begin(),
+ obs.arm_vel_radps.begin() + obs.arm_count);
   return s;
 }
 
@@ -416,6 +441,14 @@ robot::iface::ObservationFrame step_to_observation(const RecordedStep& step) {
     o.steer_rad[i] = step.steers_rad[i];
     if (i < step.steers_vel_radps.size()) o.steer_vel_radps[i] = step.steers_vel_radps[i];
   }
+ o.arm_count = static_cast<std::uint8_t>(
+ std::min<std::size_t>(step.arms_rad.size(), 4));
+ for (std::size_t i = 0; i < o.arm_count; ++i) {
+ o.arm_rad[i] = step.arms_rad[i];
+ if (i < step.arms_vel_radps.size()) {
+ o.arm_vel_radps[i] = step.arms_vel_radps[i];
+ }
+ }
   return o;
 }
 

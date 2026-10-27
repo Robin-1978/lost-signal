@@ -35,6 +35,8 @@ class SimMotionEndpoint : public robot::iface::IMotionEndpoint {
   std::array<double, 4> prev_steer_angle_rad_ = {};
   std::array<double, 4> prev_drive_vel_radps_ = {};
   std::array<double, 4> prev_steer_vel_radps_ = {};
+ std::array<double, 4> prev_arm_angle_rad_ = {};
+ std::array<double, 4> prev_arm_vel_radps_ = {};
 };
 
 }  // namespace lost_signal::sim::providers

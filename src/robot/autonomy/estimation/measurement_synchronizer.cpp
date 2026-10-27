@@ -56,6 +56,9 @@ void copy_motion_section(const iface::ObservationFrame& source,
   target.drive_radps = source.drive_radps;
   target.steer_rad = source.steer_rad;
   target.steer_vel_radps = source.steer_vel_radps;
+ target.arm_count = source.arm_count;
+ target.arm_rad = source.arm_rad;
+ target.arm_vel_radps = source.arm_vel_radps;
 }
 
 void copy_imu_section(const iface::ObservationFrame& source,

@@ -1,0 +1,23 @@
+{
+ "format": "lost-signal-robot/1",
+ "kind": "differential",
+ "robot_id": "ro6",
+ "arm": {
+  "enabled": true,
+  "base_xyz_m": [0.0, 0.0, 0.22],
+  "links": [
+   {"length_m": 0.30, "mass_kg": 2.0, "radius_m": 0.04,
+    "joint_axis": [0.0, 0.0, 1.0], "initial_angle_rad": 0.0,
+    "torque_limit_Nm": 12.0, "damping_Nms": 0.40},
+   {"length_m": 0.25, "mass_kg": 1.5, "radius_m": 0.035,
+    "joint_axis": [0.0, 1.0, 0.0], "initial_angle_rad": 0.0,
+    "torque_limit_Nm": 10.0, "damping_Nms": 0.30},
+   {"length_m": 0.18, "mass_kg": 1.0, "radius_m": 0.03,
+    "joint_axis": [0.0, 1.0, 0.0], "initial_angle_rad": 0.0,
+    "torque_limit_Nm": 8.0, "damping_Nms": 0.20},
+   {"length_m": 0.12, "mass_kg": 0.5, "radius_m": 0.025,
+    "joint_axis": [1.0, 0.0, 0.0], "initial_angle_rad": 0.0,
+    "torque_limit_Nm": 5.0, "damping_Nms": 0.10}
+  ]
+ }
+}

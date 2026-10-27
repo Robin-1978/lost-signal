@@ -171,6 +171,8 @@ int main() {
  params.arm.link_radius_m[i] = 0.025;
  params.arm.joint_axis[i] = {0.0, 0.0, 1.0};
  params.arm.initial_angle_rad[i] = 0.05 * i;
+ params.arm.joint_torque_limit_Nm[i] = 2.0;
+ params.arm.joint_damping_Nms[i] = 0.05;
  }
  w.set_motor_params(params);
  set_diff_duty(w, 0.0);
@@ -181,6 +183,23 @@ int main() {
  assert(link.valid && link.pose.valid && link.joint.valid);
  assert(std::abs(link.joint.axis_z - 1.0) < 1e-9);
  }
+ const double initial_arm = w.arm_angle(0);
+ robot::iface::ActuatorCommand arm_cmd =
+ robot::iface::ActuatorCommand::SafeZero(0);
+ arm_cmd.arm_count = 4;
+ arm_cmd.arm[0] = 1.0;
+ assert(robot::iface::valid_actuator_command(arm_cmd, 0));
+ w.apply(arm_cmd);
+ w.step(0.25);
+ assert(std::abs(w.arm_angle(0) - initial_arm) > 1e-4);
+ sim::providers::SimMotionEndpoint endpoint(&w);
+ robot::iface::MotionFeedback first, second;
+ assert(endpoint.poll_feedback(first));
+ w.step(0.02);
+ assert(endpoint.poll_feedback(second));
+ assert(second.arm_count == 4);
+ assert(std::isfinite(second.arm_rad[0]));
+ assert(std::isfinite(second.arm_vel_radps[0]));
  }
 
  // The compiled multibody has the declared mass and COM. Collision-shell

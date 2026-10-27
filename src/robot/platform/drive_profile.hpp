@@ -109,6 +109,8 @@ struct DriveProfile {
  std::array<double, 4> link_radius_m = {};
  std::array<std::array<double, 3>, 4> joint_axis = {};
  std::array<double, 4> initial_angle_rad = {};
+ std::array<double, 4> joint_torque_limit_Nm = {};
+ std::array<double, 4> joint_damping_Nms = {};
  };
  ArmParams arm;
 

@@ -184,7 +184,8 @@ ResolvedContactMaterial resolve_wheel_contact(double mu_tire_base,
 void MujocoBackend::step(double dt_s, const MotorParams& motor,
                          const std::array<double, 4>& drive_duty,
                          const std::array<double, 4>& steer_duty,
-                         const std::array<double, 4>& brake_request,
+ const std::array<double, 4>& brake_request,
+ const std::array<double, 4>& arm_duty,
                          double incline_grade,
                          const std::vector<MaterialZone>& zones,
                          const std::vector<MaterialEntry>& materials,
@@ -370,6 +371,15 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
       data->qfrc_applied[dof] =
           steer_duty[t] * motor.steer_stall_torque_Nm * curve;
     }
+ // Articulated joints use the same explicit normalized-effort contract as
+ // native hardware. MuJoCo integrates the torque with gravity, damping and
+ // contact constraints; no renderer-side pose or speed is synthesized.
+ for (int a = 0; a < 4; ++a) {
+ const int dof = arm_joint_dof_[a];
+ if (dof < 0 || !motor.arm.enabled) continue;
+ data->qfrc_applied[dof] = std::clamp(arm_duty[a], -1.0, 1.0) *
+ motor.arm.joint_torque_limit_Nm[a];
+ }
  std::array<double, 4> mecanum_impulse{};
  double mecanum_bound[4] = {};
  double mecanum_slip[4] = {};

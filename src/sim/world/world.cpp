@@ -54,6 +54,7 @@ void World::set_motor_params(const MotorParams& params) {
   if (!(motor_ == params)) ++mujoco_model_revision_.value;
   motor_ = params;
   brake_request_ = {};
+ arm_duty_ = {};
 }
 
 void World::set_brake_request(int wheel, double normalized) {
@@ -77,6 +78,8 @@ void World::apply(const robot::iface::ActuatorCommand& cmd) {
  ? std::clamp(cmd.service_brake, 0.0, 1.0) : 0.0;
     // Mode switch retires channels: stale slip flags must not linger.
     if (i >= truth_.drive_count) truth_.drive_slipping[i] = false;
+ arm_duty_[i] = i < cmd.arm_count ? std::clamp(cmd.arm[i], -1.0, 1.0)
+ : 0.0;
   }
 }
 
@@ -141,7 +144,7 @@ void World::step_engine(double dt_s) {
  mujoco_.set_actor_poses(actor_poses);
   if (!mujoco_.valid() || !(dt_s > 0.0)) return;
   mujoco_.step(dt_s, motor_, truth_.drive_duty, truth_.steer_duty,
-               brake_request_, incline_grade_, material_zones_, materials_,
+ brake_request_, arm_duty_, incline_grade_, material_zones_, materials_,
  environment_, sim_time_s());
  read_engine_truth();
 }

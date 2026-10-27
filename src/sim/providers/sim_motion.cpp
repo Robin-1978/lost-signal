@@ -40,6 +40,7 @@ bool SimMotionEndpoint::poll_feedback(
   out.odometry_valid = true;
   out.drive_count = world_->truth().drive_count;
   out.steer_count = world_->truth().steer_count;
+ out.arm_count = static_cast<std::uint8_t>(world_->arm_count());
   // Encoder view: quantize angles to counts, differentiate over the stamp
   // delta. The count quantum comes from the motor params (same DriveProfile
   // contract the ROBOT side reads); non-positive counts mean no encoder.
@@ -60,21 +61,31 @@ bool SimMotionEndpoint::poll_feedback(
             ? std::round(world_->truth().steer_rad[i] / quantum_rad) *
                   quantum_rad
             : world_->truth().steer_rad[i];
+ const double arm_q =
+ quantum_rad > 0.0
+ ? std::round(world_->arm_angle(i) / quantum_rad) * quantum_rad
+ : world_->arm_angle(i);
     if (have_prev_ && dt_s > 0.0) {
       prev_drive_vel_radps_[i] =
           (drive_q - prev_drive_angle_rad_[i]) / dt_s;
       prev_steer_vel_radps_[i] =
           (steer_q - prev_steer_angle_rad_[i]) / dt_s;
+ prev_arm_vel_radps_[i] =
+ (arm_q - prev_arm_angle_rad_[i]) / dt_s;
     } else if (!have_prev_) {
       prev_drive_vel_radps_[i] = 0.0;  // just powered: no history yet
       prev_steer_vel_radps_[i] = 0.0;
+ prev_arm_vel_radps_[i] = 0.0;
     }
     // Repeated stamp: hold the previous velocity (never divide by zero).
     prev_drive_angle_rad_[i] = drive_q;
     prev_steer_angle_rad_[i] = steer_q;
+ prev_arm_angle_rad_[i] = arm_q;
     out.drive_radps[i] = 0.0;
     out.steer_rad[i] = 0.0;
     out.steer_vel_radps[i] = 0.0;
+ out.arm_rad[i] = 0.0;
+ out.arm_vel_radps[i] = 0.0;
   }
   for (int i = 0; i < out.drive_count; ++i) {
     out.drive_radps[i] = prev_drive_vel_radps_[i];
@@ -83,6 +94,10 @@ bool SimMotionEndpoint::poll_feedback(
     out.steer_rad[i] = prev_steer_angle_rad_[i];
     out.steer_vel_radps[i] = prev_steer_vel_radps_[i];
   }
+ for (int i = 0; i < out.arm_count; ++i) {
+ out.arm_rad[i] = prev_arm_angle_rad_[i];
+ out.arm_vel_radps[i] = prev_arm_vel_radps_[i];
+ }
   // Body twist from MEASURED joints (native-driver parity): the ROBOT
   // never sees truth body rates here. Wheel-derived through the same
   // geometry the plant was built with, so slip shows up downstream as

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -37,11 +38,24 @@ struct MotionFeedback {
   std::array<double, 4> steer_rad = {};    // measured steer angle, rad
   std::array<double, 4> steer_vel_radps = {};  // measured steer rate
 
-  bool has_joints() const { return drive_count > 0; }
+ // Optional articulated arm joint feedback. This is a hardware encoder
+ // section, separate from chassis drive/steer counts; zero means no arm.
+ std::uint8_t arm_count = 0;
+ std::array<double, 4> arm_rad = {};
+ std::array<double, 4> arm_vel_radps = {};
+
+ bool has_joints() const { return drive_count > 0; }
+ bool has_arm() const { return arm_count > 0; }
 
   bool valid() const {
+ if (arm_count > 4) return false;
+ for (std::uint8_t i = 0; i < arm_count; ++i) {
+ if (!std::isfinite(arm_rad[i]) || !std::isfinite(arm_vel_radps[i])) {
+ return false;
+ }
+ }
     return !source.empty() && stamp_ns != core::kInvalidTime &&
-           sequence > 0 && (odometry_valid || drive_count > 0);
+ sequence > 0 && (odometry_valid || drive_count > 0 || arm_count > 0);
   }
 };
 
@@ -65,7 +79,12 @@ struct ActuatorCommand {
   core::MonotonicNs stamp_ns = core::kInvalidTime;
   core::MonotonicNs expiry_ns = core::kInvalidTime;
   std::array<double, 4> drive = {};
-  std::array<double, 4> steer = {};
+ std::array<double, 4> steer = {};
+ // Normalized joint effort request for an articulated arm. The SIM plant
+ // maps this through the configured per-joint torque limit; native drivers
+ // use the same [-1, 1] contract. Zero arm_count preserves legacy commands.
+ std::uint8_t arm_count = 0;
+ std::array<double, 4> arm = {};
  // Normalized mechanical service-brake request shared by the driven
  // wheels. It is an explicit actuator channel, independent of encoder
  // feedback and electric motor duty. Native drivers map this value to
@@ -92,9 +111,12 @@ struct ActuatorCommand {
     for (double d : drive) {
       if (d != 0.0) return false;
     }
-    for (double s : steer) {
-      if (s != 0.0) return false;
-    }
+ for (double s : steer) {
+ if (s != 0.0) return false;
+ }
+ for (double a : arm) {
+ if (a != 0.0) return false;
+ }
  return service_brake == 0.0;
  }
 
@@ -104,6 +126,9 @@ struct ActuatorCommand {
  }
  for (double s : steer) {
  if (s != 0.0) return false;
+ }
+ for (double a : arm) {
+ if (a != 0.0) return false;
  }
  return service_brake == 1.0;
   }

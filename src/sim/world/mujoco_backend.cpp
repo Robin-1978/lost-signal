@@ -269,6 +269,11 @@ void MujocoBackend::read_back() {
  for (int i = 0; i < arm_link_count_ && i < 4; ++i) {
  arm_link_[i] = ArmLinkViz{};
  if (arm_link_body_[i] < 0 || arm_joint_dof_[i] < 0) continue;
+ const int arm_dof = arm_joint_dof_[i];
+ const int arm_joint = model->dof_jntid[arm_dof];
+ const int arm_qpos = arm_joint >= 0 ? model->jnt_qposadr[arm_joint] : -1;
+ arm_angle_[i] = arm_qpos >= 0 ? data->qpos[arm_qpos] : 0.0;
+ arm_radps_[i] = data->qvel[arm_dof];
  read_relative_body_pose(arm_link_body_[i], arm_link_[i].pose);
  const std::string joint_name = "arm_joint" + std::to_string(i);
  const int joint_id = mj_name2id(model, mjOBJ_JOINT, joint_name.c_str());

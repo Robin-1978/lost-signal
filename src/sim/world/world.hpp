@@ -242,6 +242,8 @@ struct MotorParams {
  std::array<double, 4> link_radius_m = {};
  std::array<std::array<double, 3>, 4> joint_axis = {};
  std::array<double, 4> initial_angle_rad = {};
+ std::array<double, 4> joint_torque_limit_Nm = {};
+ std::array<double, 4> joint_damping_Nms = {};
  friend bool operator==(const ArmParams&, const ArmParams&) = default;
  } arm;
   // Unpowered casters (base frame, explicit). Empty profiles are resolved
@@ -345,6 +347,9 @@ class World {
  int arm_links(ArmLinkViz* out, int cap) const {
  return mujoco_.arm_links(out, cap);
  }
+ int arm_count() const { return motor_.arm.enabled ? 4 : 0; }
+ double arm_angle(int i) const { return mujoco_.arm_angle(i); }
+ double arm_radps(int i) const { return mujoco_.arm_radps(i); }
  // Aggregated non-ground contact impulse from the last completed physics
  // step. This is SIM-only presentation evidence and never enters a ROBOT
  // observation, estimate, planner, controller, or safety decision.
@@ -458,6 +463,7 @@ class World {
  void read_engine_truth();
  void step_engine(double dt_s);
   std::array<double, 4> brake_request_ = {};
+ std::array<double, 4> arm_duty_ = {};
   double incline_grade_ = 0.0;  // longitudinal rise/run, SIM-side only
   std::vector<StaticBox> static_boxes_;
   std::vector<MaterialEntry> materials_;

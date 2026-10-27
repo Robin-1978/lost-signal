@@ -112,6 +112,9 @@ bool SimSensorSuite::poll_envelope(bool sample_scan, bool sample_motion,
  out.drive_radps = {};
  out.steer_rad = {};
  out.steer_vel_radps = {};
+ out.arm_count = 0;
+ out.arm_rad = {};
+ out.arm_vel_radps = {};
  }
  if (fresh_scan && !robot::iface::set_scan(out, scan_cache_)) return false;
  if (!fresh_scan) {

@@ -343,10 +343,11 @@ bool load_arm_config(const Json* node, DriveProfile::ArmParams& out,
  return false;
  }
  const char* keys[] = {"length_m", "mass_kg", "radius_m",
- "initial_angle_rad"};
+ "initial_angle_rad", "torque_limit_Nm", "damping_Nms"};
  double* slots[] = {&parsed.link_length_m[i], &parsed.link_mass_kg[i],
- &parsed.link_radius_m[i], &parsed.initial_angle_rad[i]};
- for (int field = 0; field < 4; ++field) {
+ &parsed.link_radius_m[i], &parsed.initial_angle_rad[i],
+ &parsed.joint_torque_limit_Nm[i], &parsed.joint_damping_Nms[i]};
+ for (int field = 0; field < 6; ++field) {
  const Json* value = link.find(keys[field]);
  if (value == nullptr || !value->is_num() ||
  !std::isfinite(value->as_num())) {
@@ -357,9 +358,11 @@ bool load_arm_config(const Json* node, DriveProfile::ArmParams& out,
  *slots[field] = value->as_num();
  }
  if (!(parsed.link_length_m[i] > 0.0) ||
- !(parsed.link_mass_kg[i] > 0.0) || !(parsed.link_radius_m[i] > 0.0)) {
+ !(parsed.link_mass_kg[i] > 0.0) || !(parsed.link_radius_m[i] > 0.0) ||
+ !(parsed.joint_torque_limit_Nm[i] > 0.0) ||
+ !(parsed.joint_damping_Nms[i] > 0.0)) {
  err = std::string("'arm.links.") + std::to_string(i) +
- "' needs positive length_m/mass_kg/radius_m";
+ "' needs positive geometry, torque_limit_Nm and damping_Nms";
  return false;
  }
  const Json* axis = link.find("joint_axis");

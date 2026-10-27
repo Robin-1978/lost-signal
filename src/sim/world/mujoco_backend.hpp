@@ -216,7 +216,8 @@ class MujocoBackend {
   void step(double dt_s, const MotorParams& motor,
             const std::array<double, 4>& drive_duty,
             const std::array<double, 4>& steer_duty,
-            const std::array<double, 4>& brake_request, double incline_grade,
+ const std::array<double, 4>& brake_request,
+ const std::array<double, 4>& arm_duty, double incline_grade,
             const std::vector<MaterialZone>& zones,
             const std::vector<MaterialEntry>& materials,
             const std::vector<EnvironmentKeyframe>& environment,
@@ -363,6 +364,12 @@ class MujocoBackend {
  const int n = std::min(cap, arm_link_count_);
  for (int i = 0; i < n; ++i) out[i] = arm_link_[i];
  return n;
+ }
+ double arm_angle(int i) const {
+ return i >= 0 && i < 4 ? arm_angle_[static_cast<std::size_t>(i)] : 0.0;
+ }
+ double arm_radps(int i) const {
+ return i >= 0 && i < 4 ? arm_radps_[static_cast<std::size_t>(i)] : 0.0;
  }
  const ImpactViz& impact() const { return impact_; }
   double body_z() const { return body_z_; }
@@ -520,6 +527,8 @@ class MujocoBackend {
  double system_com_relative_z_m_ = 0.0;
   std::array<double, 4> drive_angle_ = {};
   std::array<double, 4> drive_radps_ = {};
+ std::array<double, 4> arm_angle_ = {};
+ std::array<double, 4> arm_radps_ = {};
   std::array<bool, 4> drive_slipping_ = {};
  bool drive_contact_valid_[4] = {false, false, false, false};
  double drive_contact_x_[4] = {0.0, 0.0, 0.0, 0.0};
@@ -559,8 +568,9 @@ class MujocoBackend {
  const std::vector<Actor>&,
             MujocoModelRevision, int, int) {}
  void set_actor_poses(const std::vector<std::array<double, 4>>&) {}
-  void step(double, const MotorParams&, const std::array<double, 4>&,
-            const std::array<double, 4>&, const std::array<double, 4>&, double,
+ void step(double, const MotorParams&, const std::array<double, 4>&,
+ const std::array<double, 4>&, const std::array<double, 4>&,
+ const std::array<double, 4>&, double,
             const std::vector<MaterialZone>&, const std::vector<MaterialEntry>&,
             const std::vector<EnvironmentKeyframe>&, double) {}
   bool raycast(double, double, double, double, double, double, double,
@@ -595,6 +605,8 @@ class MujocoBackend {
  int contacts(ContactViz*, int) const { return 0; }
  int actor_poses(ActorPoseViz*, int) const { return 0; }
  int arm_links(ArmLinkViz*, int) const { return 0; }
+ double arm_angle(int) const { return 0.0; }
+ double arm_radps(int) const { return 0.0; }
  const ImpactViz& impact() const { return impact_; }
 
  private:

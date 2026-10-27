@@ -93,11 +93,16 @@ struct ObservationFrame {
   std::array<double, 4> drive_radps = {};
   std::array<double, 4> steer_rad = {};
   std::array<double, 4> steer_vel_radps = {};
+ std::uint8_t arm_count = 0;
+ std::array<double, 4> arm_rad = {};
+ std::array<double, 4> arm_vel_radps = {};
 
   bool has_joints() const { return drive_count > 0; }
+ bool has_arm() const { return arm_count > 0; }
 
   bool empty() const {
-    return !scan_valid && !odometry_valid && !imu_valid && drive_count == 0;
+ return !scan_valid && !odometry_valid && !imu_valid && drive_count == 0 &&
+ arm_count == 0;
   }
 };
 

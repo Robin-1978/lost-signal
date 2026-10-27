@@ -67,6 +67,8 @@ MotorParams motor_params_from_profile(
  out.arm.link_radius_m = profile.arm.link_radius_m;
  out.arm.joint_axis = profile.arm.joint_axis;
  out.arm.initial_angle_rad = profile.arm.initial_angle_rad;
+ out.arm.joint_torque_limit_Nm = profile.arm.joint_torque_limit_Nm;
+ out.arm.joint_damping_Nms = profile.arm.joint_damping_Nms;
   out.support_count = 0;
   if (profile.supports.empty() && profile.chassis_kind == "tracked") {
  // Tracks are the support surface; adding a free caster pair would inject

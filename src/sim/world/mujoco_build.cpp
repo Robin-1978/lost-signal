@@ -334,7 +334,9 @@ void MujocoBackend::sync(const MotorParams& motor,
  sig << motor.arm.link_length_m[i] << "," << motor.arm.link_mass_kg[i]
  << "," << motor.arm.link_radius_m[i] << ","
  << axis[0] << "," << axis[1] << "," << axis[2] << ","
- << motor.arm.initial_angle_rad[i] << ";";
+ << motor.arm.initial_angle_rad[i] << ","
+ << motor.arm.joint_torque_limit_Nm[i] << ","
+ << motor.arm.joint_damping_Nms[i] << ";";
  }
   sig << "|" << drive_count << "|" << steer_count << "|" << boxes.size()
       << "|";
@@ -392,6 +394,8 @@ void MujocoBackend::sync(const MotorParams& motor,
  arm_link_body_[i] = -1;
  arm_joint_dof_[i] = -1;
  arm_link_[i] = ArmLinkViz{};
+ arm_angle_[i] = 0.0;
+ arm_radps_[i] = 0.0;
  }
   drive_count_ = 0;
   steer_count_ = 0;
@@ -733,8 +737,10 @@ void MujocoBackend::sync(const MotorParams& motor,
  const double axis_norm = std::sqrt(axis[0] * axis[0] +
  axis[1] * axis[1] + axis[2] * axis[2]);
  if (!(length > 0.0) || !(mass > 0.0) || !(radius > 0.0) ||
+ !(motor.arm.joint_torque_limit_Nm[i] > 0.0) ||
+ !(motor.arm.joint_damping_Nms[i] > 0.0) ||
  !(axis_norm > 1e-12) || !std::isfinite(axis_norm)) {
- refuse_chassis("arm links need positive geometry/mass and a unit axis");
+ refuse_chassis("arm links need positive geometry, actuator limits and axis");
  mj_deleteSpec(spec);
  return;
  }
@@ -746,7 +752,7 @@ void MujocoBackend::sync(const MotorParams& motor,
  axis[0] / axis_norm, axis[1] / axis_norm, axis[2] / axis_norm,
  std::max(1e-7, mass * length * length / 12.0));
  joint->ref = motor.arm.initial_angle_rad[i];
- joint->damping[0] = 0.02;
+ joint->damping[0] = motor.arm.joint_damping_Nms[i];
  mjsGeom* link_geom = add_geom(link,
  "arm_geom" + std::to_string(i), mjGEOM_CAPSULE, radius, length * 0.5,
  0.0, 1);
