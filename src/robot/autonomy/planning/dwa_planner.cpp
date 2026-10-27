@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -529,12 +530,29 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  config_.terminal_confidence_probability));
  const double terminal_position_reset_tolerance_m =
  std::max(0.0, config_.terminal_position_tolerance_m);
+ // When localization confidence is wider than the declared XY envelope, the
+ // confidence-bounded tolerance is zero. Still allow a stopped base to begin
+ // its final-yaw observation manoeuvre in a small, chassis-derived capture
+ // region; otherwise a differential base keeps following an undefined
+ // point-bearing forever and never collects the turn evidence that can reduce
+ // covariance. The distance is the lateral displacement induced by the
+ // configured heading tolerance over the footprint radius, so it carries no
+ // map- or mission-specific threshold.
+ const double terminal_heading_capture_m = std::min(
+ terminal_position_reset_tolerance_m,
+ std::max(0.0, terminal_heading_tolerance_rad) *
+ std::max(0.0, limits.footprint_radius_m));
+ const bool high_uncertainty_terminal_capture =
+ std::isfinite(terminal_position_confidence_radius_m) &&
+ terminal_position_confidence_radius_m >= terminal_position_reset_tolerance_m &&
+ terminal_distance_m <= terminal_heading_capture_m;
  if (terminal_position_latched_) {
  if (terminal_distance_m > terminal_position_reset_tolerance_m) {
  terminal_position_latched_ = false;
  terminal_heading_settled_ = false;
  }
- } else if (terminal_distance_m <= terminal_position_tolerance_m) {
+ } else if (terminal_distance_m <= terminal_position_tolerance_m ||
+ high_uncertainty_terminal_capture) {
  terminal_position_latched_ = true;
  terminal_heading_settled_ = false;
  }
@@ -1199,6 +1217,9 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  });
  previous_w_ = proposals.front().yaw_rate_radps;
  previous_lateral_ = proposals.front().lateral_mps;
+ if (est.x_m > 2.45 && est.x_m < 2.55 && std::abs(est.y_m) < 0.1) {
+ std::fprintf(stderr, "DBG t=%.2f p %.3f %.3f %.3f d %.3f sig %.3f tol %.3f lat %d reach %d hmode %d reacq %d bear %d ht %.3f best %.3f %.3f\\n", est.stamp_ns * 1e-9, est.x_m, est.y_m, est.yaw_rad, terminal_distance_m, terminal_position_confidence_radius_m, terminal_position_tolerance_m, terminal_position_latched_, terminal_position_reached, terminal_heading_mode, terminal_position_reacquire, terminal_bearing_capture, heading_target, proposals.front().forward_mps, proposals.front().yaw_rate_radps);
+ }
   out.has_plan = true;
  out.best = proposals.front();
  out.candidates = std::move(proposals);
