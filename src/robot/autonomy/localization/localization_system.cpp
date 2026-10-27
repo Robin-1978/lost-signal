@@ -9,6 +9,10 @@ void LocalizationSystem::reset() {
   supervisor_.reset(false);
  global_search_.cancel();
   startup_hyps_.reset();
+ // A surveyed-map recovery must retain uncertainty through corridor-like
+ // observations. Partial wall evidence can track a candidate, but it cannot
+ // establish the missing along-wall coordinate as an absolute map fix.
+ recovery_hyps_.set_require_full_observation_for_promotion(true);
  recovery_hyps_.reset();
   slam_.reset();
   slam_origin_seeded_ = false;

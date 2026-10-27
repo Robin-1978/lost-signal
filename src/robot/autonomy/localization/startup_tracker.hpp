@@ -14,8 +14,10 @@
 // Deterministic: fixed rules, sorted order, no sampling.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <vector>
 
 #include "robot/autonomy/localization/global_search.hpp"
@@ -46,6 +48,13 @@ struct StartupTrackerConfig {
  // deployment/test deadline; zero keeps the bounded belief until evidence
  // resolves it, all modes contradict, the map changes, or the session resets.
  int max_scans = 0;
+ // Known-map recovery must not collapse a corridor ridge into an absolute
+ // pose. When enabled, promotion requires the same confirmation count to be
+ // supported by a full-rank [x,y,yaw] scan observation; rank-deficient wall
+ // evidence remains useful for tracking but leaves the odometry prior in
+ // charge of the unobservable direction. Cold-start tests and mapless
+ // startup retain the historical partial-observation behavior by default.
+ bool require_full_observation_for_promotion = false;
  // The whole-map pass already snapped every retained hypothesis. Per-scan
  // tracking only needs to absorb residual odometry error around the
  // propagated pose; a global-sized local window would repeat millions of
@@ -82,9 +91,13 @@ class StartupHypotheses {
  void reset() {
  hyps_.clear();
  require_motion_ = false;
+ promotion_requires_full_observation_ = false;
  last_stamp_ns_ = core::kInvalidTime;
  accumulated_translation_m_ = 0.0;
  accumulated_rotation_rad_ = 0.0;
+ }
+ void set_require_full_observation_for_promotion(bool enabled) {
+ config_.require_full_observation_for_promotion = enabled;
  }
   bool empty() const { return hyps_.empty(); }
   std::size_t size() const { return hyps_.size(); }
@@ -100,6 +113,11 @@ class StartupHypotheses {
  core::MonotonicNs stamp_ns = core::kInvalidTime,
  bool require_motion = false) {
     reset();
+ // Capture the promotion evidence policy for this candidate set. A caller
+ // may reuse the tracker for a new recovery mode, but changing the policy
+ // while confirmations are accumulating must not reinterpret prior scans.
+ promotion_requires_full_observation_ =
+ config_.require_full_observation_for_promotion;
     hyps_.push_back(
  Hyp{ambiguous.x_m, ambiguous.y_m, ambiguous.yaw_rad,
  ambiguous.position_sigma_m, ambiguous.heading_sigma_rad,
@@ -160,6 +178,8 @@ class StartupHypotheses {
  !m.accepted && m.partial_observation_valid &&
  m.rejection_reason == "map match is geometrically ambiguous";
  if (m.accepted || partial_observation) {
+ const bool full_observation = m.accepted &&
+ m.pose_information_valid && fully_observable(m.pose_information);
  if (partial_observation) {
  apply_partial_observation(h, m);
  } else {
@@ -171,10 +191,16 @@ class StartupHypotheses {
  h.heading_sigma_rad = m.heading_sigma_rad;
         h.score = m.score;
         ++h.confirms;
+ if (full_observation) {
+ ++h.full_observation_confirms;
+ } else {
+ h.full_observation_confirms = 0;
+ }
         h.rejects = 0;
       } else {
         ++h.rejects;
         h.confirms = 0;
+ h.full_observation_confirms = 0;
       }
     }
     // Convergences merge (same physical hypothesis now): keep the best,
@@ -228,8 +254,13 @@ class StartupHypotheses {
  !require_motion_ ||
  accumulated_translation_m_ >= required_translation_m ||
  accumulated_rotation_rad_ >= required_rotation_rad;
+ const int required_confirms = std::max(1, config_.promotion_confirms);
+ const bool observation_confirmed =
+ !promotion_requires_full_observation_ ||
+ best.full_observation_confirms >= required_confirms;
  if (hyps_.size() == 1 &&
- best.confirms >= config_.promotion_confirms && motion_confirmed) {
+ best.confirms >= required_confirms && motion_confirmed &&
+ observation_confirmed) {
  return promoted(best);
     }
  if (config_.max_scans > 0 && best.age >= config_.max_scans) {
@@ -256,8 +287,26 @@ class StartupHypotheses {
  double x = 0.0, y = 0.0, yaw = 0.0;
  double position_sigma_m = 0.05, heading_sigma_rad = 0.02;
  double score = 0.0;
-    int confirms = 0, rejects = 0, age = 0;
+ int confirms = 0, full_observation_confirms = 0, rejects = 0, age = 0;
   };
+ static bool fully_observable(const std::array<double, 9>& information) {
+  const double ixx = information[0];
+  const double ixy = 0.5 * (information[1] + information[3]);
+  const double iyy = information[4];
+  const double ihh = information[8];
+  const double determinant = ixx * iyy - ixy * ixy;
+ const double position_scale = std::max(
+ {1.0, std::abs(ixx), std::abs(ixy), std::abs(iyy)});
+ const double rank_tolerance = std::sqrt(
+ std::numeric_limits<double>::epsilon());
+ const double determinant_tolerance =
+ rank_tolerance * position_scale * position_scale;
+ const double heading_tolerance = rank_tolerance *
+ std::max(1.0, std::abs(ihh));
+ return std::isfinite(determinant) &&
+ determinant > determinant_tolerance && std::isfinite(ihh) &&
+ ihh > heading_tolerance;
+ }
  static void apply_partial_observation(Hyp& hypothesis,
  const ScanMatchResult& match) {
  // Project the innovation onto the observed translation subspace. For a
@@ -303,6 +352,7 @@ class StartupHypotheses {
   ScanMatcher matcher_;
   std::vector<Hyp> hyps_;
  bool require_motion_ = false;
+ bool promotion_requires_full_observation_ = false;
  core::MonotonicNs last_stamp_ns_ = core::kInvalidTime;
  double accumulated_translation_m_ = 0.0;
  double accumulated_rotation_rad_ = 0.0;

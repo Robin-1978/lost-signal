@@ -151,6 +151,20 @@ int main(int argc, char** argv) {
  }
  if (trace) {
  if (const auto* sample = session.last_eval_step()) {
+ const std::string& action = sample->diag.localization_action;
+ if (action.find("recovery") != std::string::npos ||
+ action.find("global_relocalization") != std::string::npos) {
+ const auto& estimate = sample->diag.estimate;
+ std::fprintf(stderr,
+ " localization_event step=%d objective=%s truth=(%.3f,%.3f,%.3f) "
+ "estimate=(%.3f,%.3f,%.3f) sigma=(%.3f,%.3f) %s\n",
+ steps, session.objectives().active_place().c_str(),
+ sample->truth_after.body_x_m, sample->truth_after.body_y_m,
+ sample->truth_after.body_yaw_rad, estimate.x_m, estimate.y_m,
+ estimate.yaw_rad, estimate.position_sigma_m,
+ estimate.heading_sigma_rad,
+ sample->diag.localization_action.c_str());
+ }
  if (sample->diag.localization_action.rfind(
  "global_relocalization:accepted", 0) == 0) {
  const auto& estimate = sample->diag.estimate;

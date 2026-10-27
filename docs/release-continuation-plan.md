@@ -211,9 +211,9 @@
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
-| 7. 模型与场景升级 | 进行中 | `525116c`, `53bd9cf`, `d9cebd6` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk` 和回放契约已完成；叉车 link 拆分已完成于工作区，Blender 环境资产和最终视觉/Release 验收待完成 |
+| 7. 模型与场景升级 | 进行中 | `525116c`, `53bd9cf`, `d9cebd6`, `f2e3a5b` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk`、回放契约和叉车六分部件 link 绑定已完成；Blender 环境资产和最终视觉/Release 验收待完成 |
 
-### 阶段 7 叉车 link 子阶段（工作区验收，待提交）
+### 阶段 7 叉车 link 子阶段（已完成，`f2e3a5b`）
 
 - Blender 5.2.2 重新导出了完整叉车和六个可复用分部件 GLB：base、drive
   wheel、steer wheel、mast、carriage、fork。每个文件的单位、轴、pivot、
@@ -228,12 +228,13 @@
   回退到完整 forklift GLB。component 不再用最低顶点自动落地，避免 chassis/mast
   clearance 被错误压低；整体 actor 仍由真实 root pose 和 terrain anchor 放置。
 - 定向验收：`test_mujoco_backend`、`test_viewer_frame`、`test_asset_manifest`
-  和 Blender 资产检查通过；`sim_viewer --3d --map
-  configs/worlds/signal_town.json --mute --shot 120 ...` 成功加载全部分部件、
-  WorkerWalk 和 3D 渲染。下一步是提交该子阶段，然后扩展环境资产和最终 Release
-  视觉/碰撞验收。
+ 和 Blender 资产检查通过；`sim_viewer --3d --map
+ configs/worlds/signal_town.json --mute --shot 120 ...` 成功加载全部分部件、
+ WorkerWalk 和 3D 渲染。子阶段已提交为 `f2e3a5b feat: bind forklift visuals
+ to MuJoCo actor links`；下一步是扩展 Blender 环境资产和最终 Release 视觉/碰撞
+ 验收。
 
-### 工业动态 actor 回归修复（工作区，待提交）
+### 工业动态 actor 回归修复（已完成，`0d3cfec`）
 
 - 20 万平方米全量回归曾在 `central_gate` 发生双方等待：让行行人在机器人
  已经停止后仍坚持包含 clearance margin 的 yield latch，机器人 Safety 又不能
@@ -247,4 +248,23 @@
 - 新增 `test_actor_behavior` 覆盖“clearance margin 内但物理半径外”的释放，
  保留原有物理接触和 teleport 单量程测试；`test_dynamic_crossing_mission` 通过。
  `industrial_200k_mission central_gate --steps=40000` 现在 14337 步完成、0 碰撞，
- truth miss 0.142 m。完整 5 目标长测仍需重新运行后再提交。
+ truth miss 0.142 m。完整长测已在定位修复后重新验收，见下节。
+
+### surveyed-map recovery promotion 修复（工作区，待提交）
+
+- 原完整工业长测曾出现 `71223 steps, 4/5`：`south_yard` 走廊的 LiDAR 只观测到
+  墙面法向和航向，匹配信息矩阵沿走廊方向秩亏；recovery tracker 却把连续的
+  partial wall observation 当成绝对 map pose promotion，ROBOT 估计因此锁在走廊
+  别名，SIM 真值落后目标 2.820 m。SIM 真值只用于离线定位失败诊断。
+- `StartupHypotheses` 现在支持 recovery-only 的
+  `require_full_observation_for_promotion`。partial observation 仍可沿可观测方向
+  跟踪，只有 `[x,y,yaw]` information full-rank 且达到既有 confirmation 数，才可
+  promotion；策略在 `seed()` 时锁定，途中切换配置不会重解释已经积累的历史证据。
+  默认冷启动行为保持不变。
+- `LocalizationSystem::reset()` 只为 surveyed-map recovery 打开该策略；ROBOT 不
+  读取 SIM truth，未放宽 SIM 到达判定。新增定位单测覆盖 partial 保持 tracking、
+  full-rank 连续证据 promotion 和默认冷启动回归。
+- 修复后完整 `industrial_200k_mission`：71520 steps、5/5、0 collisions、
+  464.89 m；五目标 truth miss 为 0.100/0.154/0.121/0.106/0.061 m，最终
+  `goal_hold/arrived/stop`，末端估计与真值差约 0.075 m。`test_localization`、
+  `test_slam`、`test_loop_closure` 均通过。

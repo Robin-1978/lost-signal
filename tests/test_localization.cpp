@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 #include "robot/autonomy/coordinator.hpp"
@@ -255,6 +256,46 @@ int main() {
  assert(confirmed.status == StartupTrackStatus::kPromoted);
  assert(std::abs(confirmed.x_m - 1.02) < 0.15);
  assert(std::abs(confirmed.y_m - 0.4) < 1e-9);
+
+ // Recovery promotion may require full-rank evidence. A wall-only scan can
+ // keep tracking the observed normal, but it must not turn two partial
+ // confirmations into an absolute map pose.
+ StartupTrackerConfig guarded_config = recovery_config;
+ guarded_config.require_full_observation_for_promotion = true;
+ StartupHypotheses guarded_recovery(guarded_config);
+ guarded_recovery.seed(candidate, 0, /*require_motion=*/true);
+ const auto guarded_first = guarded_recovery.update(
+ ranges, -M_PI, increment, map, 20'000'000, 0.0, 0.0, true);
+ const auto guarded_second = guarded_recovery.update(
+ moved_ranges, -M_PI, increment, map, 40'000'000, 1.0, 0.0, true);
+ assert(guarded_first.status == StartupTrackStatus::kTracking);
+ assert(guarded_second.status == StartupTrackStatus::kTracking);
+ assert(guarded_recovery.size() == 1);
+
+ // Once the same tracker receives a geometrically complete observation, the
+ // existing confirmation and motion requirements are sufficient to promote.
+ auto full_map = make_wall_map();
+ const auto full_ranges = scan_from(1.0, 0.0, 0.0, full_map);
+ StartupTrackerConfig full_config = guarded_config;
+ StartupHypotheses full_recovery(full_config);
+ GlobalSearchResult full_candidate;
+ full_candidate.x_m = 1.3;
+ full_candidate.y_m = -0.2;
+ full_candidate.yaw_rad = 0.08;
+ full_candidate.position_sigma_m = 0.12;
+ full_candidate.heading_sigma_rad = 0.04;
+ full_candidate.runner_ups.push_back({50.0, 50.0, 0.0, 0.1});
+ full_recovery.seed(full_candidate, 0, /*require_motion=*/false);
+ StartupTrackResult full_result;
+ for (int k = 1; k <= 4; ++k) {
+ full_result = full_recovery.update(
+ full_ranges, -M_PI, increment, full_map,
+ static_cast<lost_signal::robot::core::MonotonicNs>(k + 1) * 20'000'000LL,
+ 0.0, 0.0, true);
+ if (full_result.status == StartupTrackStatus::kPromoted) break;
+ }
+ assert(full_result.status == StartupTrackStatus::kPromoted);
+ assert(std::abs(full_result.x_m - 1.0) < 0.6);
   }
 
  // 2c. A local search whose best score still improves beyond its bounded
