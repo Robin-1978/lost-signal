@@ -84,6 +84,8 @@ using lost_signal::sim::world::ActorLinkKind;
 
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
+constexpr int kMinimumScreenW = 960;
+constexpr int kMinimumScreenH = 640;
 // Open-ended sandbox runs retain a local replay window. Authored experiences
 // keep their complete, independently scored episode for debrief and A/B.
 constexpr double kDefaultSandboxHistorySeconds = 120.0;
@@ -2157,10 +2159,18 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  const int index = std::clamp(walkaround_stop, 0, count - 1);
  const auto& stop = experience.walkaround[static_cast<std::size_t>(index)];
  char progress[96];
+ if (required_walkaround_count == 0) {
  std::snprintf(progress, sizeof(progress),
  g_zh_cn ? "物理部件 %02d / %02d　已检查 %02zu / %02d"
  : "PHYSICAL COMPONENT %02d / %02d    INSPECTED %02zu / %02d",
-    index + 1, count, walkaround_visited_count, count);
+ index + 1, count, walkaround_visited_count, count);
+ } else {
+ std::snprintf(progress, sizeof(progress),
+ g_zh_cn ? "物理部件 %02d / %02d　必看 %02zu / %02zu"
+ : "PHYSICAL COMPONENT %02d / %02d REQUIRED %02zu / %02zu",
+ index + 1, count, required_walkaround_visited_count,
+ required_walkaround_count);
+ }
  draw_ui_text(progress, static_cast<int>(x + 34), static_cast<int>(y), 13,
  kMuted);
    y += 23.0f;
@@ -4245,6 +4255,7 @@ int main(int argc, char** argv) {
  double initial_playback_rate = 1.0;
  double sandbox_history_seconds = kDefaultSandboxHistorySeconds;
  bool initial_turbo = false;
+ bool initial_maximized = false;
  RenderQuality render_quality = RenderQuality::kHigh;
  bool sandbox_requested = false;
  bool play_requested = false;
@@ -4265,12 +4276,14 @@ int main(int argc, char** argv) {
  " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
  " [--lidar] [--robot-evidence] [--shot N FILE]\n"
 " [--physics-overlay]\n"
+ " [--maximized]\n"
  " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
  " [--experiment-out REPORT.json]\n"
  "\n"
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
  "open engineering demo. During a run: Space pause, N step, F follow,\n"
- "Q quality, +/- rate, T turbo, V 2D/3D, right-drag orbit, wheel zoom.");
+ "Q quality, +/- rate, T turbo, F10 maximize, F11 fullscreen, V 2D/3D,\n"
+ "right-drag orbit, wheel zoom.");
  return 0;
  }
  if (a == "--play") play_requested = true;
@@ -4316,6 +4329,7 @@ int main(int argc, char** argv) {
  sandbox_history_seconds = parsed;
  }
  if (a == "--turbo") initial_turbo = true;
+ if (a == "--maximized") initial_maximized = true;
  if (a == "--quality" && i + 1 < argc) {
  const std::string quality = argv[++i];
  if (quality == "fast") render_quality = RenderQuality::kFast;
@@ -4467,9 +4481,13 @@ int main(int argc, char** argv) {
  sandbox_history_seconds, history_steps);
  }
 
+ unsigned int window_flags = FLAG_WINDOW_RESIZABLE;
+ if (initial_maximized) window_flags |= FLAG_WINDOW_MAXIMIZED;
+ SetConfigFlags(window_flags);
  InitWindow(kScreenW, kScreenH, experience_loaded
  ? tr("Robot Simu - First Contact", "Robot Simu - 初次接触")
  : tr("Robot Simu - Simulation Lab", "Robot Simu - 仿真实验室"));
+ SetWindowMinSize(kMinimumScreenW, kMinimumScreenH);
  load_ui_font(experience_loaded ? &experience : nullptr);
  sim::viewer::ViewerAudio viewer_audio(assets_path, !mute_audio);
  VisualAssets visual_assets;
@@ -5034,6 +5052,11 @@ bool show_estimate = initial_show_robot_evidence;
  follow = false;
  }
  if (IsKeyPressed(KEY_T)) playback.set_turbo(!playback.turbo());
+ if (IsKeyPressed(KEY_F10)) {
+ if (IsWindowMaximized()) RestoreWindow();
+ else MaximizeWindow();
+ }
+ if (IsKeyPressed(KEY_F11)) ToggleFullscreen();
  const bool playback_controls_visible = !experience_loaded ||
  experience_flow->phase() == ExperiencePhase::kRunning;
  if (playback_controls_visible &&
@@ -5612,9 +5635,9 @@ playback.turbo() || paused || !live_audio);
     }
  const char* control_help = experience_loaded &&
  view_layer == ExperienceViewLayer::kPlayer
- ? "U explain space pause F follow Q quality +/- speed V 2D/3D"
+ ? "U explain space pause F follow F10 maximize F11 fullscreen Q quality +/- speed V 2D/3D"
  : experience_loaded && view_layer == ExperienceViewLayer::kLearning
- ? "U engineering space pause F follow Q quality +/- speed V 2D/3D"
+ ? "U engineering space pause F follow F10 maximize F11 fullscreen Q quality +/- speed V 2D/3D"
  : sim_truth_debug_allowed
  ? "space pause  N step  L lidar  E ROBOT AI  K SIM truth debug  U view  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom"
  : "space pause  N step  L lidar  E ROBOT AI  U view  F follow  Q quality  0 fit  +/- speed  V 2D/3D  right-drag pan/orbit  wheel zoom";

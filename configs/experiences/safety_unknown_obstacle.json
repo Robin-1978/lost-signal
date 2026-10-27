@@ -19,9 +19,9 @@
  "Reach the exit without contact. SIM truth scores the outcome but never tells ROBOT where the obstacle is."
  ],
  "walkaround": [
- {"component_id":"lidar","title":"LIVE OBSERVATION","lesson":"Timed range returns reveal geometry that a prior survey does not contain. The robot receives ranges, never a simulator object label."},
- {"component_id":"chassis","title":"LOCAL PLAN AND VALIDATION","lesson":"The local planner proposes motion from the rolling sensor map. A separate validator checks each rollout against the current observation."},
- {"component_id":"drive_wheel","title":"INDEPENDENT SAFETY GATE","lesson":"The final collision monitor checks fresh raw scan geometry before a command reaches the wheels. It can stop motion but cannot make an unsafe command faster."}
+ {"component_id":"lidar","title":"LIVE OBSERVATION","lesson":"Timed range returns reveal geometry that a prior survey does not contain. The robot receives ranges, never a simulator object label.","required":false},
+ {"component_id":"chassis","title":"LOCAL PLAN AND VALIDATION","lesson":"The local planner proposes motion from the rolling sensor map. A separate validator checks each rollout against the current observation.","required":false},
+ {"component_id":"drive_wheel","title":"INDEPENDENT SAFETY GATE","lesson":"The final collision monitor checks fresh raw scan geometry before a command reaches the wheels. It can stop motion but cannot make an unsafe command faster.","required":false}
  ],
  "prediction": {
  "question": "What should happen when the live scan reveals an obstacle missing from the prior map?",

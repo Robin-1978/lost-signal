@@ -256,6 +256,19 @@ link poses and simulation events. Playback never changes physics, sensor
 stamps, or ROBOT control periods. The HUD and exit summary report requested
 rate, measured real-time factor, steps/s, sliding-window tick p99/max, active
 quality, and `LIMIT` when the rendering budget throttles simulation work.
+The window is resizable (minimum 960×640); use the title-bar maximize control,
+`F10` to maximize/restore, or `F11` for fullscreen. `--maximized` starts the
+Viewer maximized. The 200K industrial map can be inspected in the same 3D
+Viewer with:
+
+```sh
+./build/sim_viewer --sandbox --3d \
+  --map configs/worlds/industrial_200k.json --rate 1 --quality fast
+```
+
+The map has no authored presentation scene, so the Viewer uses its physical
+collision geometry and procedural fallback assets; `--physics-overlay` or `K`
+exposes COM, joints, contacts, and collision proxies for engineering review.
 Press `E` for the deployable ROBOT AI overlay: cyan shows anonymous perception
 tracks and velocity, while purple ribbons and uncertainty rings show the same
 multi-hypothesis prediction consumed by behavior, DWA/TEB, validation, and

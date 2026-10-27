@@ -100,6 +100,20 @@ int main() {
  assert(lost_signal::sim::viewer::load_experience_manifest(
  (root / "configs/experiences/safety_unknown_obstacle.json").string(),
  experience, &error));
+ assert(experience.walkaround.size() == 3);
+ for (const auto& stop : experience.walkaround) {
+ assert(!stop.required);
+ }
+ std::vector<bool> safety_required;
+ for (const auto& stop : experience.walkaround) {
+ safety_required.push_back(stop.required);
+ }
+ lost_signal::sim::viewer::ExperienceFlow safety_flow({
+ experience.walkaround.size(), experience.choices.size(),
+ experience.time_limit_steps, safety_required});
+ assert(safety_flow.required_walkaround_count() == 0);
+ assert(safety_flow.walkaround_complete());
+ assert(safety_flow.continue_to_prediction());
  assert(std::filesystem::path(experience.next_experience_path).filename() ==
  "slam_loop.json");
  assert(lost_signal::sim::viewer::load_experience_manifest(

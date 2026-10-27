@@ -20,13 +20,14 @@ add_library(lost_signal_robot_iface STATIC
   src/robot/iface/channel.cpp
   src/robot/iface/message.cpp
   src/robot/iface/conformance.cpp
- src/robot/transport/ring_buffer.cpp
 )
 target_include_directories(lost_signal_robot_iface PUBLIC src)
 target_link_libraries(lost_signal_robot_iface PUBLIC lost_signal_robot_core)
 
 # Reusable native transport boundary. It contains no SIM or rendering code;
-# board-specific firmware and wiring stay under examples/.
+# board-specific firmware and wiring stay under examples/. RingBuffer is
+# implemented only here; iface exposes a compatibility type alias without
+# compiling a second copy of the implementation.
 add_library(lost_signal_robot_transport STATIC
  src/robot/transport/ring_buffer.cpp
  src/robot/transport/serial_sensor_protocol.cpp
@@ -667,7 +668,7 @@ add_test(NAME virtual_mcu COMMAND test_virtual_mcu)
 add_executable(test_ring_buffer
  tests/test_ring_buffer.cpp
 )
-target_link_libraries(test_ring_buffer PRIVATE lost_signal_robot_iface)
+target_link_libraries(test_ring_buffer PRIVATE lost_signal_robot_transport)
 add_test(NAME ring_buffer COMMAND test_ring_buffer)
 
 add_executable(test_native_links tests/test_native_links.cpp)
