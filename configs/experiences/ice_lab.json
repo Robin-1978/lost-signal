@@ -5,7 +5,7 @@
  "subtitle": "Drive onto a low-grip ice lane and observe how measured slip changes the command envelope.",
  "files": {
   "map": "../worlds/ice_lab.json",
-  "scene": "../worlds/lab_default.scene.json",
+ "scene": "../worlds/ice_lab.scene.json",
   "robot": "../robot/differential.json",
   "sim": "../sim/default.json"
  },

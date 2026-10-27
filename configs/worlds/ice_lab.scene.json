@@ -1,0 +1,39 @@
+{
+ "format": "lost-signal-scene/1",
+ "scene_id": "ice_lab",
+ "surface_only_max_height_m": 0.10,
+ "camera": {
+ "distance_m": 7.0,
+ "yaw_deg": 34.0,
+ "pitch_deg": 28.0,
+ "target_height_m": 0.28,
+ "follow_smoothing_s": 0.30,
+ "lookahead_s": 0.90,
+ "speed_distance_gain_s": 0.70,
+ "minimum_distance_m": 3.0,
+ "maximum_distance_m": 18.0
+ },
+ "lighting": {
+ "direction_xyz": [-0.42, 0.24, -1.0],
+ "directional_rgba": [210, 235, 255, 255],
+ "ambient_rgba": [64, 86, 104, 255],
+ "fog_rgba": [18, 30, 45, 255],
+ "directional_intensity": 1.12,
+ "ambient_intensity": 0.86,
+ "fog_start_m": 16.0,
+ "fog_end_m": 42.0,
+ "exposure": 1.02,
+ "bloom_threshold": 0.80,
+ "bloom_strength": 0.24,
+ "vignette_strength": 0.10,
+ "shadow_map_resolution": 2048,
+ "shadow_extent_m": 24.0,
+ "shadow_strength": 0.58
+ },
+ "floor": {
+ "base_rgba": [112, 158, 178, 255],
+ "grid_rgba": [182, 224, 238, 128],
+ "grid_spacing_m": 1.0
+ },
+ "instances": []
+}
