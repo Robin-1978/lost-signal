@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -1217,9 +1216,6 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  });
  previous_w_ = proposals.front().yaw_rate_radps;
  previous_lateral_ = proposals.front().lateral_mps;
- if (est.x_m > 2.45 && est.x_m < 2.55 && std::abs(est.y_m) < 0.1) {
- std::fprintf(stderr, "DBG t=%.2f p %.3f %.3f %.3f d %.3f sig %.3f tol %.3f lat %d reach %d hmode %d reacq %d bear %d ht %.3f best %.3f %.3f\\n", est.stamp_ns * 1e-9, est.x_m, est.y_m, est.yaw_rad, terminal_distance_m, terminal_position_confidence_radius_m, terminal_position_tolerance_m, terminal_position_latched_, terminal_position_reached, terminal_heading_mode, terminal_position_reacquire, terminal_bearing_capture, heading_target, proposals.front().forward_mps, proposals.front().yaw_rate_radps);
- }
   out.has_plan = true;
  out.best = proposals.front();
  out.candidates = std::move(proposals);
