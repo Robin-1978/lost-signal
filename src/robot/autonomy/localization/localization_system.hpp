@@ -86,7 +86,8 @@ class LocalizationSystem {
  std::string& action, bool& local_match_attempted);
  bool try_local_correction(const iface::MapSnapshot& map,
  const iface::ObservationFrame& obs, core::MonotonicNs now_ns,
- IEstimator& estimator, std::string& action);
+ IEstimator& estimator, std::string& action,
+ bool* full_observation_correction = nullptr);
   // Bounded scan-to-submap tracking ahead of supervised corrections.
  void run_tracking(const iface::ObservationFrame& obs, bool has_observation,
  IEstimator& estimator);

@@ -263,11 +263,13 @@ bool LocalizationSystem::run_localization(
  recovery_local_due) {
  last_recovery_local_scan_ns_ = scan_stamp_ns;
  local_match_attempted = true;
+ bool full_observation_correction = false;
  const bool corrected = try_local_correction(
- map, obs, now_ns, estimator, action);
+ map, obs, now_ns, estimator, action, &full_observation_correction);
  const EstimatedState& corrected_estimate = estimator.estimate();
  const auto& config = supervisor_.config();
  const bool covariance_resolved = corrected &&
+ full_observation_correction &&
  std::isfinite(corrected_estimate.position_sigma_m) &&
  std::isfinite(corrected_estimate.heading_sigma_rad) &&
  corrected_estimate.position_sigma_m < config.lost_position_sigma_m &&
@@ -586,7 +588,11 @@ startup_hyps_.seed(global, correction_stamp_ns,
 
 bool LocalizationSystem::try_local_correction(
  const iface::MapSnapshot& map, const iface::ObservationFrame& obs,
- core::MonotonicNs now_ns, IEstimator& estimator, std::string& action) {
+ core::MonotonicNs now_ns, IEstimator& estimator, std::string& action,
+ bool* full_observation_correction) {
+ if (full_observation_correction != nullptr) {
+ *full_observation_correction = false;
+ }
  const EstimatedState& est = estimator.estimate();
  ScanMatcherConfig local_config;
  const auto& supervisor_config = supervisor_.config();
@@ -680,6 +686,9 @@ bool LocalizationSystem::try_local_correction(
  } else {
  estimator.correct_pose(match.x_m, match.y_m, match.yaw_rad,
  match.position_sigma_m, match.heading_sigma_rad, obs.stamp_ns);
+ }
+ if (full_observation_correction != nullptr && !partial_observation) {
+ *full_observation_correction = true;
  }
  if (partial_observation) {
  supervisor_.record_local(true, match);

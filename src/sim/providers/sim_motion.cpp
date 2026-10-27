@@ -119,8 +119,13 @@ bool SimMotionEndpoint::poll_feedback(
     } else if (out.drive_count == 2 && out.steer_count == 2) {
       // Ackermann: rear drive axle + bicycle yaw from measured steer.
       fwd = 0.5 * (w[0] + w[1]) * r;
-      yaw = fwd * std::tan(0.5 * (out.steer_rad[0] + out.steer_rad[1])) /
-            base;
+ // The two front encoders report the inner and outer wheel angles.  The
+ // curvature of an Ackermann axle is the mean of their individual tangent
+ // curvatures; tan(mean(angle)) is only an approximation and biases yaw at
+ // larger steering angles.  Use the same geometry as the chassis command
+ // conversion so wheel odometry and the physical steering linkage agree.
+ yaw = fwd * 0.5 *
+ (std::tan(out.steer_rad[0]) + std::tan(out.steer_rad[1])) / base;
     } else if (out.drive_count == 4 && out.steer_count == 4) {
       // Swerve: rigid-body fit over measured module vectors (speed along
       // the measured steer angle at each corner module position,
