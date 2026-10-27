@@ -58,11 +58,12 @@
 
 ### A. 缺陷与一致性
 
-#### A1 叉车被程序化圆柱盖住 [P0]
+#### A1 叉车被程序化圆柱盖住 [P0，已修复]
 
 - **依据**：`viewer_main.cpp:3216-3224`：模块化叉车绘制成功后（`:3221`）置 `drew_modular_forklift = true`，使 `:3224` 的 `if (!drew_modular_forklift && actor_model != nullptr && ...)` 为假；与该 `if` 配对的 `else`（`:3257-3264`，原用于无模型 actor 的程序化圆柱）随之执行，绘制半径 `a.radius_m`、高 `h` 的圆柱，非行人的颜色为 `:3197-3198` 的 `{235,130,40}`。`configs/worlds/research_base.actors.json` 中两台叉车 `radius_m=0.45`、`height_m=1.5`，与本地截图里圆柱的尺寸一致。`git log -S drew_modular_forklift` 只命中 `f2e3a5b`；`tests/` 与 `src/` 中没有其他引用 `drew_modular_forklift` 或 `draw_forklift_parts` 的位置，该路径无测试覆盖。
 - **方案**：模块化路径绘制成功时跳过程序化 fallback；fallback 只在两条模型路径都未绘制时执行。
 - **验收**：（1）research_base 的 3D 截图中叉车只显示模块化零件，没有 0.9 m × 1.5 m 的橙色圆柱；（2）无 worker 模型时行人仍绘制程序化圆柱；（3）把"选择哪条绘制路径"抽成可单测的纯函数并覆盖各分支组合。需要验证抽取的改动量，该逻辑目前内联在 actor 绘制循环中。
+- **修复状态**：已在 `4e3a75a` 的基础上提交本子项。`actor_render_policy` 将模块化叉车、完整 GLB 和程序化 fallback 设为互斥路径；`test_actor_render_policy` 覆盖模块化优先、完整模型、定义缺失、行人和全 fallback 分支。Viewer 的 `research_base` 3D overlay 运行验证通过。
 - **范围与依赖**：仅 Viewer，不触及 SIM 与 ROBOT；无功能依赖；排期上在 F3a 之后（前后对比截图要在 `--physics-overlay` 下确认碰撞代理与模块化零件对齐，见 4.2）。
 
 #### A2 立体道具借 `surface_only` 绕过碰撞绑定，与目标点、actor 起点重叠 [P0，已修复]

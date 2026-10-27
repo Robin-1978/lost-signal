@@ -273,6 +273,9 @@
  `research_base` 的 `--physics-overlay` 3D 截图均显示机器人代理直立并随车体
  运动。定向回归 `collision_geom_wireframe`、`viewer_frame`、`mujoco_backend`、
  `scene_manifest`、`world_place_clearance` 通过。
+- 叉车渲染路径选择已抽成 `actor_render_policy` 纯策略：完整模块化 link
+ 资产、完整 actor GLB、程序化 fallback 三者严格互斥；新增 `test_actor_render_policy`
+  覆盖行人、模块化资产不完整和模型定义缺失分支，避免程序化圆柱再次覆盖真实叉车。
 
 ### 工业动态 actor 回归修复（已完成，`0d3cfec`）
 

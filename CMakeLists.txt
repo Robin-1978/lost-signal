@@ -308,6 +308,7 @@ target_link_libraries(lost_signal_sim PRIVATE lost_signal_sim_scenario)
 # this plus raylib; only the frontend opens a window.
 add_library(lost_signal_sim_viewer STATIC
   src/sim/viewer/asset_manifest.cpp
+ src/sim/viewer/actor_render_policy.cpp
  src/sim/viewer/collision_geom_wireframe.cpp
  src/sim/viewer/experience_flow.cpp
  src/sim/viewer/experience_manifest.cpp
@@ -710,6 +711,12 @@ target_link_libraries(test_collision_geom_wireframe PRIVATE
  lost_signal_sim_viewer
 )
 add_test(NAME collision_geom_wireframe COMMAND test_collision_geom_wireframe)
+
+add_executable(test_actor_render_policy
+ tests/test_actor_render_policy.cpp
+)
+target_link_libraries(test_actor_render_policy PRIVATE lost_signal_sim_viewer)
+add_test(NAME actor_render_policy COMMAND test_actor_render_policy)
 
 add_executable(test_asset_manifest
   tests/test_asset_manifest.cpp

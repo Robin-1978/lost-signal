@@ -34,6 +34,7 @@
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/asset_manifest.hpp"
+#include "sim/viewer/actor_render_policy.hpp"
 #include "sim/viewer/collision_geom_wireframe.hpp"
 #include "sim/viewer/experience_flow.hpp"
 #include "sim/viewer/experience_manifest.hpp"
@@ -60,6 +61,8 @@ using lost_signal::sim::viewer::FrameWheel;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
+using lost_signal::sim::viewer::ActorRenderPath;
+using lost_signal::sim::viewer::choose_actor_render_path;
 using lost_signal::sim::viewer::ExperienceFlow;
 using lost_signal::sim::viewer::HeroSequence;
 using lost_signal::sim::viewer::ExperienceHeroShot;
@@ -3172,17 +3175,18 @@ void draw_frame_3d(const Frame& f,
  actor_definition = a.pedestrian ? assets->worker_definition
  : assets->forklift_definition;
  }
- bool drew_modular_forklift = false;
+ bool modular_forklift_ready = false;
  if (!a.pedestrian && assets != nullptr && a.world_pose.valid) {
  const ForkliftRenderParts parts = forklift_render_parts(*assets);
  if (forklift_parts_ready(parts) && !a.links.empty()) {
  draw_forklift_parts(a, parts, ground_z);
- drew_modular_forklift = true;
+ modular_forklift_ready = true;
  }
  }
- if (!drew_modular_forklift && actor_model != nullptr &&
- model_ready(*actor_model) &&
- actor_definition != nullptr) {
+ const ActorRenderPath render_path = choose_actor_render_path(
+ a.pedestrian, modular_forklift_ready, actor_model != nullptr &&
+ model_ready(*actor_model), actor_definition != nullptr);
+ if (render_path == ActorRenderPath::kFullModel) {
  if (a.pedestrian && assets != nullptr &&
  assets->worker_animations != nullptr &&
  assets->worker_animation_count > 0 &&
@@ -3209,7 +3213,7 @@ void draw_frame_3d(const Frame& f,
  if (a.world_pose.valid) {
  draw_actor_model_physical(*actor_model, *actor_definition,
  a.world_pose, a.radius_m);
- } else {
+ } else if (render_path == ActorRenderPath::kProceduralFallback) {
  draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  ground_z, a.radius_m, a.heading_rad);
  }
