@@ -1,0 +1,37 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "ice_lab",
+ "title": "ICE LAB: CONTROL THE SLIP",
+ "subtitle": "Drive onto a low-grip ice lane and observe how measured slip changes the command envelope.",
+ "files": {
+  "map": "../worlds/ice_lab.json",
+  "scene": "../worlds/lab_default.scene.json",
+  "robot": "../robot/differential.json",
+  "sim": "../sim/default.json"
+ },
+ "objectives": ["ice_entry", "ice_exit"],
+ "time_limit_steps": 5000,
+ "briefing": [
+  "The ice lane is a physical low-friction surface, not a hidden ROBOT input.",
+  "Use the measured wheel, IMU, LiDAR, and contact response to keep the stop safe.",
+  "A failed run remains useful evidence when the physical limit is reproducible."
+ ],
+ "prediction": {
+  "question": "What should change when the robot enters the ice lane?",
+  "choices": [
+   {"choice_id":"adapt", "label":"Measured slip reduces speed demand while safety stays active", "explanation":"The ROBOT uses sensor residuals and keeps its footprint and validator contract unchanged.", "correct":true},
+   {"choice_id":"truth", "label":"Read the SIM friction coefficient directly", "explanation":"Material parameters belong to SIM and never cross into ROBOT.", "correct":false},
+   {"choice_id":"force", "label":"Increase wheel demand until the route is forced", "explanation":"More command cannot make a low-grip contact envelope safe.", "correct":false}
+  ]
+ },
+ "running_prompt": "Compare ROBOT estimate, slip evidence, local safety, and physical contact in Engineering view.",
+ "debrief": {
+  "success_title": "ICE RESPONSE RECORDED",
+  "failure_title": "ICE LIMIT REPORTED",
+  "lessons": [
+   "Surface friction is a plant property; the robot infers traction from measurements.",
+   "The same validator, Safety gate, and watchdog apply on ice and dry ground.",
+   "A safe controller reports a physical limit instead of hiding it with a truth hint."
+  ]
+ }
+}

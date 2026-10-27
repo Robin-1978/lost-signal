@@ -1,0 +1,31 @@
+{
+ "format": "lost-signal-world/2",
+ "boxes": [
+  {"x0": -6.0, "y0": -5.0, "x1": 22.0, "y1": -4.5, "height_m": 1.5},
+  {"x0": -6.0, "y0": 4.5, "x1": 22.0, "y1": 5.0, "height_m": 1.5},
+  {"x0": -6.0, "y0": -5.0, "x1": -5.5, "y1": 5.0, "height_m": 1.5},
+  {"x0": 21.5, "y0": -5.0, "x1": 22.0, "y1": 5.0, "height_m": 1.5},
+  {"x0": 8.0, "y0": 1.4, "x1": 9.0, "y1": 3.0, "height_m": 1.1},
+  {"x0": 14.0, "y0": -3.0, "x1": 15.0, "y1": -1.4, "height_m": 1.1}
+ ],
+ "places": [
+  {"place_id": "ice_entry", "x_m": 2.0, "y_m": 0.0, "yaw_rad": 0.0},
+  {"place_id": "ice_exit", "x_m": 18.0, "y_m": 0.0, "yaw_rad": 0.0}
+ ],
+ "materials": [
+  {"material_id": "ice", "friction_mu": 0.14, "rolling_resist": 0.006,
+   "contact_time_constant_s": 0.006, "contact_damping_ratio": 0.95,
+   "lidar_reflectivity": 0.48, "surface_effect": "water",
+   "fluid_depth_m": 0.001},
+  {"material_id": "dry_asphalt", "friction_mu": 0.92, "rolling_resist": 0.012,
+   "contact_time_constant_s": 0.01, "contact_damping_ratio": 1.05,
+   "lidar_reflectivity": 0.55, "surface_effect": "none"}
+ ],
+ "zones": [
+  {"zone_id": "ice_lane", "x0": 3.0, "y0": -3.5, "x1": 17.0, "y1": 3.5,
+   "material": "ice"}
+ ],
+ "terrain": [],
+ "slabs": [],
+ "environment": []
+}

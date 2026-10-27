@@ -296,6 +296,9 @@
 - 本阶段工作区包含 `docs/source-layout.md`，用于固定 `src/robot`、`src/sim`、provider、
   transport、MCU 和 Viewer 的依赖边界；公共 adapter seam 不因静态分析的 unusedFunction
   提示而删除。
+- Viewer catalog 现在还包含独立 `ice_lab`：低摩擦冰面由 SIM 的 material/zone 进入
+ MuJoCo 接触求解，ROBOT 只能从轮速、IMU、LiDAR 和自身 slip belief 推断响应；体验入口
+ 与世界校验共用现有 manifest/runtime，不增加关卡专用算法或真值通道。
 
 恢复后按以下顺序继续：
 

@@ -704,6 +704,18 @@ set_tests_properties(signal_town_big_mission PROPERTIES
  RUN_SERIAL TRUE
  TIMEOUT 180)
 
+add_test(NAME ice_lab_mission
+ COMMAND lost_signal_sim
+ --robot ${CMAKE_SOURCE_DIR}/configs/robot/differential.json
+ --sim ${CMAKE_SOURCE_DIR}/configs/sim/default.json
+ --map ${CMAKE_SOURCE_DIR}/configs/worlds/ice_lab.json
+ --objectives ice_entry,ice_exit
+ --steps 5000 --require-pass)
+set_tests_properties(ice_lab_mission PROPERTIES
+ LABELS "physics;terrain"
+ RUN_SERIAL TRUE
+ TIMEOUT 180)
+
 add_executable(test_loop_closure
   tests/test_loop_closure.cpp
 )

@@ -189,7 +189,7 @@ int main() {
  // The Viewer catalog is a supported entry point, not a hand-maintained
  // README promise. Every published lab must load through the same manifest
  // contract and resolve its map/scene references.
- for (const char* id : {"signal_town", "signal_town_big", "industrial_200k", "terrain_lab"}) {
+ for (const char* id : {"signal_town", "signal_town_big", "industrial_200k", "terrain_lab", "ice_lab"}) {
  const auto catalog = root / "configs/experiences" / (std::string(id) + ".json");
  assert(lost_signal::sim::viewer::load_experience_manifest(
  catalog.string(), experience, &error));
