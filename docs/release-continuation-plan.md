@@ -151,7 +151,8 @@
 - `525116c feat: load articulated arm geometry from robot config` 已把机械臂从只能程序化设置改为正式机器人配置契约。`arm.enabled`、`base_xyz_m`、四段连杆的长度/质量/半径、关节轴、初始角度、扭矩上限和阻尼均严格解析；数量、有限性、正几何、非零轴和 actuator 参数错误会 fail-closed。示例配置为 `configs/robot/ro6_arm.json`。
 - `53bd9cf feat: add articulated arm actuator feedback contract` 已把四关节 arm effort `[−1,1]` 通道加入 `ActuatorCommand`，把 encoder 角度/角速度加入 `MotionFeedback`/`ObservationFrame`，并贯穿 envelope、同步器、回放 v4 和 native boundary。MuJoCo 通过配置的每关节扭矩上限和阻尼施加真实 effort，反馈来自引擎 qpos/qvel；没有 draw-time 姿态或 SIM 真值入口。`mujoco_backend`、`replay`、`robot_config`、`robot_config_native`、`robot_cycle`、`truth_isolation`、`viewer_frame`、`actuation` 定向回归通过。
 - 去掉上述 arm 改动后，`industrial_200k_mission --steps=1000` 与当前短轨迹一致；该任务完整 71223 步在 fac57d0 基线也稳定复现第 5 个目标 SIM truth miss 2.820 m（4/5、零碰撞），归因尚未完成，不能以放宽到达条件掩盖。
-- 下一恢复点：先定位 `industrial_200k_mission` 第五目标的估计/真值分叉，再继续 worker 动画、forklift link 拆分、Blender 环境资产和碰撞验收；每个修复独立提交。
+- 2026-10-27 的 Release 基线复测（当前 HEAD、无额外实验改动）为 71640 步、5/5、0 碰撞、最大定位误差 3.755 m；五个目标 truth miss 为 0.060/0.081/0.181/0.168/0.199 m，最终 `goal_hold/arrived/stop`。此前 71223 步的 4/5 结果没有在这次复测中重现，不能把一次通过当作算法证明；后续仍要保留重复长测和结构化定位证据。
+- 下一恢复点：先在当前干净工作区重复工业长测并保留定位候选/时序证据，再继续 worker 动画、forklift link 拆分、Blender 环境资产和碰撞验收；每个修复独立提交。
 
 ### 阶段 1 回环修订检查点（2026-10-27）
 
