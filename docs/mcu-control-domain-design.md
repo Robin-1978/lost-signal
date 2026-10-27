@@ -36,18 +36,19 @@ IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、e
 已在 `robot/iface/motion.hpp` 增加正式能力描述，不把单位偷偷塞进现有 duty
 数组：
 
- `MotionControlOwner`、`MotionCapabilities`、`MotionSetpointKind` 和
- `MotionSetpoint` 现在是接口类型；`valid_motion_capabilities` 与
- `valid_motion_setpoint` 在 `lost_signal_robot_iface` 边界执行 owner、模式、
+ `ChassisControlOwner`、`ChassisCapabilities`、`ChassisSetpointKind` 和
+ `ChassisSetpoint` 现在是接口类型（保留 `Motion*` 源兼容别名）；
+ `valid_chassis_capabilities` 与 `valid_chassis_setpoint` 在
+ `lost_signal_robot_iface` 边界执行 owner、模式、
  关节计数、frame、expiry、profile revision 和字段单位校验。duty 使用独立的
  `drive_duty`/`steer_duty` 字段，速度/角度 setpoint 使用 `drive_radps`/
  `steer_rad`，因此 transport 无法把同一数组解释成不同单位。
 
  ```cpp
- enum class MotionControlOwner { kHostMotionLoop, kMcuJointLoop, kMcuBodyLoop };
+ enum class ChassisControlOwner { kHostMotionLoop, kMcuJointLoop, kMcuBodyLoop };
 
-    struct MotionCapabilities {
-      MotionControlOwner control_owner;
+ struct ChassisCapabilities {
+ ChassisControlOwner control_owner;
       ActuatorMode chassis_mode;
       uint8_t drive_count;
       uint8_t steer_count;
@@ -58,10 +59,10 @@ IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、e
       uint32_t profile_revision;
     };
 
-    enum class MotionSetpointKind { kActuatorDuty, kJointVelocity, kBodyTwist, kStop };
+ enum class ChassisSetpointKind { kActuatorDuty, kJointVelocity, kBodyTwist, kStop };
 
-    struct MotionSetpoint {
-      MotionSetpointKind kind;
+ struct ChassisSetpoint {
+ ChassisSetpointKind kind;
       uint64_t sequence;
       MonotonicNs stamp_ns;
       MonotonicNs expiry_ns;
@@ -101,8 +102,12 @@ SIM 的执行顺序固定为：完成一个物理 quantum，推进 sim time，�
 
 ## 实施阶段
 
-1. 契约：增加 MotionControlOwner、MotionCapabilities 和 typed setpoint；现有 SIM/native 默认保持 host ownership。
-2. SIM MCU：在 ScenarioSession scheduler 加入 MCU deadline 和虚拟 transport，验证 MCU joint/body ownership 的时序与故障语义。
+1. 契约：增加 chassis ownership、capability 和 typed setpoint；现有 SIM/native 默认保持 host ownership。
+2. SIM MCU：`ScenarioSession` 已通过 `VirtualMcu` 把默认 host-duty chassis
+ setpoint 放入 sim-time deadline/transport queue；过期、session 失配、sequence
+ 回退和本地 watchdog 都在 MCU 边界拒绝或停车，物理引擎只消费已接受的命令。
+ `test_virtual_mcu` 和 `signal_town_mission` 已通过。下一步再增加 joint/body
+ ownership 的转换 adapter 以及同线程/独立线程一致性测试。
 3. Native fake transport：用 fake board 跑 bring-up、过期、乱序、断线、重连和独立停车。
 4. HIL：将固定周期、延迟、丢包和 MCU watchdog 对应到真实板卡。
 5. Hardware profile：用实测 step response 填入能力参数；未测量时保持 safe hold，不能用猜测的默认数字上线。

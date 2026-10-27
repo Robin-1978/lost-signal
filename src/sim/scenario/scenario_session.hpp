@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -15,6 +16,7 @@
 #include "sim/scenario/collision_judge.hpp"
 #include "sim/scenario/objectives.hpp"
 #include "sim/scenario/scheduler.hpp"
+#include "sim/scenario/virtual_mcu.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::scenario {
@@ -204,6 +206,13 @@ class ScenarioSession {
  robot::iface::MotionCommand::SafeStop(0);
  robot::iface::ActuatorCommand last_actuator_ =
  robot::iface::ActuatorCommand::SafeZero(0);
+ // Articulated-arm channels remain a separate host-owned execution domain in
+ // this stage. Preserve them while the chassis command crosses the virtual
+ // MCU boundary, and apply the same expiry discipline independently.
+ robot::iface::ActuatorCommand last_host_actuator_ =
+ robot::iface::ActuatorCommand::SafeZero(0);
+ std::unique_ptr<VirtualMcu> virtual_mcu_;
+ std::uint64_t mcu_sequence_ = 0;
   double judge_radius_m_ = 0.4;
   double terrain_clearance_m_ = 0.05;
  StepTiming last_step_timing_;

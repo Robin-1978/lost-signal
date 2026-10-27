@@ -103,6 +103,13 @@ enum class MotionSetpointKind {
  kStop = 3,
 };
 
+// Canonical names for the drive/steer execution domain. The Motion* aliases
+// remain source-compatible with early adopters while chassis is the explicit
+// scope; articulated arms will define a separate typed domain.
+using ChassisControlOwner = MotionControlOwner;
+using ChassisCapabilities = MotionCapabilities;
+using ChassisSetpointKind = MotionSetpointKind;
+
 struct MotionSetpoint {
  MotionSetpointKind kind = MotionSetpointKind::kStop;
  ActuatorMode chassis_mode = ActuatorMode::kDiffDuty;
@@ -118,7 +125,27 @@ struct MotionSetpoint {
  double lateral_mps = 0.0;
  double yaw_rate_radps = 0.0;
  double service_brake = 0.0;
+
+ bool is_safe_stop() const {
+ if (kind != MotionSetpointKind::kStop || service_brake != 1.0) return false;
+ for (double value : drive_duty) {
+ if (value != 0.0) return false;
+ }
+ for (double value : steer_duty) {
+ if (value != 0.0) return false;
+ }
+ for (double value : drive_radps) {
+ if (value != 0.0) return false;
+ }
+ for (double value : steer_rad) {
+ if (value != 0.0) return false;
+ }
+ return forward_mps == 0.0 && lateral_mps == 0.0 &&
+ yaw_rate_radps == 0.0;
+ }
 };
+
+using ChassisSetpoint = MotionSetpoint;
 
 struct ActuatorCommand {
   ActuatorMode mode = ActuatorMode::kDiffDuty;
@@ -210,6 +237,15 @@ bool valid_motion_capabilities(const MotionCapabilities& capabilities);
 
 bool valid_motion_setpoint(const MotionSetpoint& setpoint,
   const MotionCapabilities& capabilities, core::MonotonicNs now_ns);
+
+inline bool valid_chassis_capabilities(const ChassisCapabilities& capabilities) {
+ return valid_motion_capabilities(capabilities);
+}
+
+inline bool valid_chassis_setpoint(const ChassisSetpoint& setpoint,
+ const ChassisCapabilities& capabilities, core::MonotonicNs now_ns) {
+ return valid_motion_setpoint(setpoint, capabilities, now_ns);
+}
 
 // Motion endpoint: consumes actuator commands, produces body + joint
 // feedback. Same IProvider root as the sensors; only the typed poll differs,

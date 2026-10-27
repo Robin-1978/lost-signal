@@ -61,11 +61,11 @@
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
 - `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
 - 当前阶段：第 8 项契约子阶段；第 1–7 项的主要交付已独立提交，不得重新实现或回退已经验收的边界。
-- 第 8.1 项已加入 `MotionControlOwner`、`MotionCapabilities`、typed
-  `MotionSetpoint` 及边界校验；`test_motion_contract` 覆盖三种 ownership 与
-  duty/joint/body 单位隔离，`actuation` 和 `robot_boundary` 回归通过。下一步是
-  SIM 虚拟 MCU 的 sim-time deadline 调度、transport queue 与同线程/独立线程
-  结果一致性。
+- 第 8.1 项已加入 chassis 专属 `ChassisControlOwner`、`ChassisCapabilities`、
+ typed `ChassisSetpoint` 及边界校验（保留 Motion* 源兼容别名）；
+ `test_motion_contract` 覆盖三种 ownership 与 duty/joint/body 单位隔离，
+ `actuation` 和 `robot_boundary` 回归通过。8.2 正在接入 SIM 虚拟 MCU 的
+ sim-time deadline 调度、transport queue 与同线程/独立线程结果一致性。
 - 第 1 项已经完成：候选预算先覆盖不同历史模式，入选候选全部完成 coarse/refine/reverse 验证后统一比较双向 score 与 overlap；相同 correction mode 内只有同一个历史锚点 ID 才能完成跨时序确认。
 - `test_loop_closure` 首次回环发生在完成 east、north、west 三个目标后；SIM 真值距起点 0.305 m 只写入失败诊断。`slam` 与 `loop_closure` 均连续通过 3 次，`truth_isolation` 与 `robot_boundary` 通过。
 - 第 2 项已经完成：2.5 m 教学路线完成 4/4 目标且零碰撞；终端捕获按底盘运动能力修复，没有放宽到达阈值或延长任务时间。`slam_experience_mission` 连续重复三次通过，相关 14 项定位、SLAM、Experience、truth-isolation 和 boundary 回归通过。

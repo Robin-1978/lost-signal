@@ -286,6 +286,7 @@ target_link_libraries(lost_signal_sim_providers PUBLIC
 
 add_library(lost_signal_sim_scenario STATIC
   src/sim/scenario/scenario_session.cpp
+ src/sim/scenario/virtual_mcu.cpp
   src/sim/scenario/collision_judge.cpp
   src/sim/scenario/objectives.cpp
  src/sim/scenario/actor_sidecar.cpp
@@ -642,6 +643,12 @@ add_executable(test_scenario
 )
 target_link_libraries(test_scenario PRIVATE lost_signal_sim_scenario)
 add_test(NAME scenario COMMAND test_scenario)
+
+add_executable(test_virtual_mcu
+ tests/test_virtual_mcu.cpp
+)
+target_link_libraries(test_virtual_mcu PRIVATE lost_signal_sim_scenario)
+add_test(NAME virtual_mcu COMMAND test_virtual_mcu)
 
 add_test(NAME signal_town_mission
  COMMAND lost_signal_sim

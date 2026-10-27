@@ -16,6 +16,54 @@ robot::iface::ActuatorMode actuator_mode_for(const std::string& kind) {
  return robot::iface::ActuatorMode::kDiffDuty;
 }
 
+robot::iface::ChassisCapabilities chassis_capabilities(
+ const robot::platform::RobotDescription& description,
+ robot::iface::ActuatorMode mode) {
+ robot::iface::ChassisCapabilities capabilities;
+ capabilities.control_owner =
+ robot::iface::ChassisControlOwner::kHostMotionLoop;
+ capabilities.chassis_mode = mode;
+ capabilities.drive_count = robot::iface::actuator_drive_count(mode);
+ capabilities.steer_count = robot::iface::actuator_steer_count(mode);
+ capabilities.control_period_ns = kPhysicsQuantumNs;
+ capabilities.feedback_period_ns = kPhysicsQuantumNs;
+ capabilities.maximum_command_age_ns = 200'000'000;
+ capabilities.profile_id = "sim.chassis." + description.robot_id;
+ capabilities.profile_revision = static_cast<std::uint32_t>(
+ description.version);
+ return capabilities;
+}
+
+robot::iface::ChassisSetpoint chassis_setpoint_from(
+ const robot::iface::ActuatorCommand& command, std::uint64_t sequence) {
+ robot::iface::ChassisSetpoint setpoint;
+ setpoint.kind = robot::iface::ChassisSetpointKind::kActuatorDuty;
+ setpoint.chassis_mode = command.mode;
+ setpoint.sequence = sequence;
+ setpoint.stamp_ns = command.stamp_ns;
+ setpoint.expiry_ns = command.expiry_ns;
+ setpoint.drive_duty = command.drive;
+ setpoint.steer_duty = command.steer;
+ setpoint.service_brake = command.service_brake;
+ return setpoint;
+}
+
+robot::iface::ActuatorCommand actuator_from(
+ const robot::iface::ChassisSetpoint& setpoint) {
+ if (setpoint.kind == robot::iface::ChassisSetpointKind::kStop) {
+ return robot::iface::ActuatorCommand::SafeStop(setpoint.stamp_ns,
+ setpoint.chassis_mode);
+ }
+ robot::iface::ActuatorCommand command;
+ command.mode = setpoint.chassis_mode;
+ command.stamp_ns = setpoint.stamp_ns;
+ command.expiry_ns = setpoint.expiry_ns;
+ command.drive = setpoint.drive_duty;
+ command.steer = setpoint.steer_duty;
+ command.service_brake = setpoint.service_brake;
+ return command;
+}
+
 void capture_presentation(const world::World& world,
  eval::PresentationSnapshot& snapshot) {
  world::WheelViz wheels[6];
@@ -94,6 +142,8 @@ ScenarioSession::ScenarioSession()
   // Harness bringup: ordered configure -> activate; a failed module blocks.
   (void)app_.configure();
   (void)app_.activate();
+ virtual_mcu_ = std::make_unique<VirtualMcu>(
+ chassis_capabilities(app_.description(), idle_actuator_mode_), 1);
  // Default cadence runs all taps at the 20 ms plant step. The scheduler
  // still keeps scan, decision, and record deadlines independent so slower
  // sensor streams exercise the same stale-data path as deployment.
@@ -119,6 +169,8 @@ ScenarioSession::ScenarioSession(
   suite_.register_all(app_);
   (void)app_.configure();
   (void)app_.activate();
+ virtual_mcu_ = std::make_unique<VirtualMcu>(
+ chassis_capabilities(app_.description(), idle_actuator_mode_), 1);
  scheduler_.reset_after_ns(0, kOuterStepNs, kOuterStepNs, kOuterStepNs,
  kOuterStepNs, kOuterStepNs);
   suite_.set_mounts(app_.description().sensors);
@@ -253,9 +305,27 @@ void ScenarioSession::step_once() {
  robot_ms += elapsed_ms(robot_begin, Clock::now());
  const auto actuation_begin = Clock::now();
  actuator = app_.take_actuator(sim_stamp_ns);
+ last_host_actuator_ = actuator;
+ if (virtual_mcu_ != nullptr) {
+ const auto setpoint = chassis_setpoint_from(actuator, ++mcu_sequence_);
+ virtual_mcu_->enqueue(virtual_mcu_->session_id(), setpoint, sim_stamp_ns);
+ }
+ actuation_ms += elapsed_ms(actuation_begin, Clock::now());
+ }
+ if (virtual_mcu_ != nullptr) {
+ const auto mcu_event = virtual_mcu_->tick(sim_time_ns_);
+ if (mcu_event.status == VirtualMcuStatus::kApplied ||
+ mcu_event.status == VirtualMcuStatus::kWatchdogStop) {
+ actuator = actuator_from(virtual_mcu_->applied());
+ if (sim_time_ns_ < last_host_actuator_.expiry_ns) {
+ actuator.arm_count = last_host_actuator_.arm_count;
+ actuator.arm = last_host_actuator_.arm;
+ }
  suite_.consume(actuator);
  last_actuator_ = actuator;
- actuation_ms += elapsed_ms(actuation_begin, Clock::now());
+ } else {
+ actuator = last_actuator_;
+ }
  }
  }
  world_.end_fixed_transition();

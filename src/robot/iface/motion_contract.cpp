@@ -53,7 +53,7 @@ bool valid_motion_setpoint(const MotionSetpoint& setpoint,
  const MotionCapabilities& capabilities, core::MonotonicNs now_ns) {
  if (!valid_motion_capabilities(capabilities) || setpoint.sequence == 0 ||
  setpoint.stamp_ns < 0 || setpoint.expiry_ns <= setpoint.stamp_ns ||
- (now_ns != core::kInvalidTime && now_ns > setpoint.expiry_ns) ||
+ (now_ns != core::kInvalidTime && now_ns >= setpoint.expiry_ns) ||
  setpoint.expiry_ns - setpoint.stamp_ns > capabilities.maximum_command_age_ns ||
  setpoint.chassis_mode != capabilities.chassis_mode ||
  setpoint.frame != core::Frame::kBaseLink ||
