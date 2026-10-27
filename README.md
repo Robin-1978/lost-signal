@@ -106,6 +106,19 @@ an open run that uses every named place in that world:
 ./build/sim_viewer --map configs/worlds/signal_town_big.json --3d
 ```
 
+The complete Viewer catalog is discoverable without opening a window:
+
+```sh
+./build/sim_viewer --list-experiences
+./build/sim_viewer --list-worlds
+```
+
+It includes the five-stop Signal Town, the 200,000 m² industrial route, and
+the continuous ramp/low-grip terrain lab in addition to the three guided
+teaching chapters. Every catalog world remains available with `--map`; when a
+world has no decorative scene manifest, the Viewer uses deterministic physical
+geometry fallback so a missing GLB never removes a physics test.
+
 These worlds cover mapless SLAM, ramps and wet/low-grip surfaces, braking and
 material changes, a 200,000 m² industrial route, and the five-goal signal
 town. The third guided chapter is terminal; a successful debrief says

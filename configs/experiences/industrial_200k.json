@@ -1,0 +1,37 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "industrial_200k",
+ "title": "INDUSTRIAL SCALE: 200,000 SQUARE METRES",
+ "subtitle": "Measure route search, localization recovery, and throughput on a large world.",
+ "files": {
+ "map": "../worlds/industrial_200k.json",
+ "scene": "../worlds/lab_default.scene.json",
+ "robot": "../robot/differential.json",
+ "sim": "../sim/default.json"
+ },
+ "objectives": ["west_hub", "north_depot", "central_gate", "east_terminal", "south_yard"],
+ "time_limit_steps": 100000,
+ "briefing": [
+ "The world is large enough that route search and map windows must scale with the authored geometry.",
+ "Unknown cells remain unknown until the robot receives measurements; a fixed local window is not a shortcut.",
+ "Use Turbo for throughput measurements, then inspect the same evidence at 1x."
+ ],
+ "prediction": {
+ "question": "What must remain invariant when playback is accelerated?",
+ "choices": [
+ {"choice_id":"fixed_step", "label":"Physics, observations, commands, and verdict stay deterministic", "explanation":"Playback changes wall-clock pacing only; the plant and ROBOT clocks remain simulation-time based.", "correct":true},
+ {"choice_id":"wall_clock", "label":"A faster host changes which route is reachable", "explanation":"Wall-clock timing is a diagnostic and pacing concern, not a decision input.", "correct":false},
+ {"choice_id":"truth_hint", "label":"The viewer supplies far-away goal truth to planning", "explanation":"The robot receives task intent and measurements, never SIM truth.", "correct":false}
+ ]
+ },
+ "running_prompt": "Compare 1x and Turbo only after the mission evidence is complete; use Engineering view for work budgets and tick p99.",
+ "debrief": {
+ "success_title": "LARGE WORLD, SAME CONTRACT",
+ "failure_title": "SCALE TEST INCOMPLETE",
+ "lessons": [
+ "Large maps need bounded, deterministic work rather than a magic cell cap.",
+ "ROBOT localization and planning remain independent of the renderer and wall-clock pacing.",
+ "The performance report is SIM-side evidence and never feeds the controller."
+ ]
+ }
+}

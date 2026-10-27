@@ -4321,6 +4321,8 @@ int main(int argc, char** argv) {
  bool mute_audio = false;
  bool initial_show_lidar = false;
  bool initial_show_robot_evidence = false;
+ bool list_worlds = false;
+ bool list_experiences = false;
  // Reproducible engineering overlay for screenshots: COM, joint axes,
  // contact evidence and collision-proxy wireframes. It shares the SIM
  // debug gate with the K toggle and is refused during experience runs.
@@ -4337,6 +4339,7 @@ int main(int argc, char** argv) {
  " [--maximized]\n"
  " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
  " [--experiment-out REPORT.json]\n"
+ " [--list-worlds | --list-experiences]\n"
  "\n"
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
  "open engineering demo. During a run: Space pause, N step, F follow,\n"
@@ -4350,6 +4353,8 @@ int main(int argc, char** argv) {
  if (a == "--lidar") initial_show_lidar = true;
  if (a == "--robot-evidence") initial_show_robot_evidence = true;
  if (a == "--physics-overlay") initial_physics_overlay = true;
+ if (a == "--list-worlds") list_worlds = true;
+ if (a == "--list-experiences") list_experiences = true;
  if (a == "--robot" && i + 1 < argc) {
  robot_path = argv[++i];
  source_requested = true;
@@ -4408,6 +4413,65 @@ int main(int argc, char** argv) {
  initial_playback_rate = parsed;
  }
   }
+ if (list_worlds || list_experiences) {
+ if (list_worlds) {
+ std::vector<std::filesystem::path> worlds;
+ const std::filesystem::path root = "configs/worlds";
+ if (std::filesystem::is_directory(root)) {
+ for (const auto& entry : std::filesystem::directory_iterator(root)) {
+ if (!entry.is_regular_file() || entry.path().extension() != ".json" ||
+ entry.path().filename().string().find(".actors.") != std::string::npos ||
+ entry.path().filename().string().find(".scene.") != std::string::npos) {
+ continue;
+ }
+ worlds.push_back(entry.path());
+ }
+ }
+ std::sort(worlds.begin(), worlds.end());
+ for (const auto& path : worlds) {
+ sim::eval::WorldFileContent world;
+ std::string error;
+ if (!sim::eval::load_world_file(path.string(), world, &error)) {
+ std::fprintf(stderr, "WORLD INVALID %s: %s\n",
+ path.string().c_str(), error.c_str());
+ continue;
+ }
+ std::printf("WORLD %-24s places=%zu boxes=%zu terrain=%zu actors=%s scene=%s\n",
+ path.stem().string().c_str(), world.places.size(), world.boxes.size(),
+ world.patches.size(),
+ std::filesystem::is_regular_file(path.parent_path() /
+ (path.stem().string() + ".actors.json")) ? "yes" : "no",
+ std::filesystem::is_regular_file(path.parent_path() /
+ (path.stem().string() + ".scene.json")) ? "yes" : "no");
+ }
+ }
+ if (list_experiences) {
+ std::vector<std::filesystem::path> experiences;
+ const std::filesystem::path root = "configs/experiences";
+ if (std::filesystem::is_directory(root)) {
+ for (const auto& entry : std::filesystem::directory_iterator(root)) {
+ if (entry.is_regular_file() && entry.path().extension() == ".json") {
+ experiences.push_back(entry.path());
+ }
+ }
+ }
+ std::sort(experiences.begin(), experiences.end());
+ for (const auto& path : experiences) {
+ sim::viewer::ExperienceManifest manifest;
+ std::string error;
+ if (!sim::viewer::load_experience_manifest(path.string(), manifest,
+ &error)) {
+ std::fprintf(stderr, "EXPERIENCE INVALID %s: %s\n",
+ path.string().c_str(), error.c_str());
+ continue;
+ }
+ std::printf("EXPERIENCE %-24s objectives=%zu title=%s\n",
+ manifest.experience_id.c_str(), manifest.objectives.size(),
+ manifest.title.c_str());
+ }
+ }
+ return 0;
+ }
  if (requested_locale != "auto" && requested_locale != "en" &&
  requested_locale != "zh-CN") {
  std::fprintf(stderr, "bad --locale: expected auto, en, or zh-CN\n");

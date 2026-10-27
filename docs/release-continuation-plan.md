@@ -106,6 +106,11 @@
  Safety、watchdog 与 MuJoCo/VirtualMcu；experience 运行期禁用。新增场景回归证明
  没有 map-frame prior 时也能安全驱动，清除输入后会减速停车。后续手动控制的输入
  录制仍必须保持为 observation/command 证据，不能写入 SIM 真值。
+- Viewer 能力目录已补齐：`--list-worlds` 列出全部世界的 places、箱体、连续地形、
+ actor sidecar 和 scene 状态，`--list-experiences` 列出所有可加载教学/工程章节。
+ 新增 Signal Town 五目标、工业 20 万平方米和连续坡/低抓地三个 manifest；它们复用
+ 既有 Runtime，不增加关卡专用算法或真值入口，缺少装饰场景的地图明确使用物理几何
+ fallback。manifest 回归现在会解析这三个入口并验证 map/scene 引用。
 
 ### Release 运行门禁（2026-10-27）
 

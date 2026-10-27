@@ -1,0 +1,37 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "terrain_lab",
+ "title": "CONTINUOUS TERRAIN: RAMP AND LOW GRIP",
+ "subtitle": "Inspect the slope, contact, traction estimate, and honest failure modes.",
+ "files": {
+ "map": "../worlds/slope_lab.json",
+ "scene": "../worlds/lab_default.scene.json",
+ "robot": "../robot/differential.json",
+ "sim": "../sim/default.json"
+ },
+ "objectives": ["slope_start", "slope_top"],
+ "time_limit_steps": 12000,
+ "briefing": [
+ "The authored surface is continuous; its height, contact, and material are owned by SIM.",
+ "ROBOT sees motion, IMU, wheel feedback, and LiDAR residuals, not friction or terrain truth.",
+ "A failed climb is a valid result when the measured traction budget cannot make it safe."
+ ],
+ "prediction": {
+ "question": "What should a robust robot do when measured slip reduces its grip estimate?",
+ "choices": [
+ {"choice_id":"adapt", "label":"Reduce speed and preserve a safe stopping margin", "explanation":"The grip governor uses measured residuals and keeps the safety footprint unchanged.", "correct":true},
+ {"choice_id":"terrain_truth", "label":"Read SIM material friction directly", "explanation":"Terrain and material truth never cross into ROBOT.", "correct":false},
+ {"choice_id":"force", "label":"Increase command until the wheels dig through", "explanation":"More demand cannot make an unsafe contact envelope safe.", "correct":false}
+ ]
+ },
+ "running_prompt": "Use Engineering view to inspect contact/slip evidence and the ROBOT grip belief; K remains a SIM-only review layer.",
+ "debrief": {
+ "success_title": "TRACTION MEASURED, CONTACT EXPLAINED",
+ "failure_title": "PHYSICAL LIMIT REPORTED HONESTLY",
+ "lessons": [
+ "Continuous terrain is part of the plant, not a render-time height offset.",
+ "Slip and normal load drive presentation effects, while ROBOT receives only its measured interfaces.",
+ "Safety is evaluated before smoothness or completion time."
+ ]
+ }
+}

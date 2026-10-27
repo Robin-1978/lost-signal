@@ -183,5 +183,18 @@ int main() {
  bad.string(), experience, &error));
  assert(error.find("next_experience") != std::string::npos);
  std::filesystem::remove(bad);
+
+ // The Viewer catalog is a supported entry point, not a hand-maintained
+ // README promise. Every published lab must load through the same manifest
+ // contract and resolve its map/scene references.
+ for (const char* id : {"signal_town_big", "industrial_200k", "terrain_lab"}) {
+ const auto catalog = root / "configs/experiences" / (std::string(id) + ".json");
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ catalog.string(), experience, &error));
+ assert(experience.experience_id == id);
+ assert(experience.objectives.size() >= 2);
+ assert(std::filesystem::is_regular_file(experience.map_path));
+ assert(std::filesystem::is_regular_file(experience.scene_path));
+ }
  return 0;
 }

@@ -1,0 +1,37 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "signal_town_big",
+ "title": "SIGNAL TOWN: FIVE SAFE STOPS",
+ "subtitle": "A complete multi-goal route with moving carts and pedestrians.",
+ "files": {
+ "map": "../worlds/signal_town_big.json",
+ "scene": "../worlds/lab_default.scene.json",
+ "robot": "../robot/differential.json",
+ "sim": "../sim/default.json"
+ },
+ "objectives": ["big_gate", "dock_door", "energy_core", "grand_market", "plaza"],
+ "time_limit_steps": 12000,
+ "briefing": [
+ "Follow five named stops through a town with anonymous moving actors.",
+ "The robot receives measurements and its own estimates; actor identities and routes stay in SIM.",
+ "Safety and physical arrival are judged independently after the robot reports each stop."
+ ],
+ "prediction": {
+ "question": "What should happen when a pedestrian or cart approaches the route?",
+ "choices": [
+ {"choice_id":"adapt", "label":"Slow, hold, or choose a safe escape from fresh observations", "explanation":"The local map and independent Safety monitor can change the command without knowing an actor identity.", "correct":true},
+ {"choice_id":"truth", "label":"Drive through because SIM knows the actor route", "explanation":"Future scripts and truth never enter ROBOT.", "correct":false},
+ {"choice_id":"ignore", "label":"Keep the same speed until collision", "explanation":"A command must be validated against current geometry and braking distance.", "correct":false}
+ ]
+ },
+ "running_prompt": "Use Learning view to compare anonymous tracks, predicted motion, validation, and the final safety command.",
+ "debrief": {
+ "success_title": "FIVE STOPS, ZERO CONTACT",
+ "failure_title": "ROUTE NEEDS REVIEW",
+ "lessons": [
+ "A named place is task intent; it does not give the robot a truth pose.",
+ "Dynamic prediction is evidence from sensors, and every candidate still passes the validator and Safety.",
+ "SIM truth is kept for the offline mission verdict and replay review."
+ ]
+ }
+}
