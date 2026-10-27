@@ -56,6 +56,7 @@ add_library(lost_signal_robot_platform STATIC
   src/robot/platform/chassis_registry.cpp
   src/robot/platform/transform_tree.cpp
   src/robot/platform/robot_config.cpp
+ src/robot/platform/calibration.cpp
   # Ackermann/holonomic controllers live here (not in robot_control) because
   # they call the canonical platform kinematics; robot_control must stay
   # below robot_platform (cf. the inlined twist math in wheel_controller).
@@ -952,6 +953,12 @@ target_compile_definitions(test_robot_config_native PRIVATE
 )
 target_link_libraries(test_robot_config_native PRIVATE lost_signal_robot_platform)
 add_test(NAME robot_config_native COMMAND test_robot_config_native)
+
+add_executable(test_calibration
+ tests/test_calibration.cpp
+)
+target_link_libraries(test_calibration PRIVATE lost_signal_robot_platform)
+add_test(NAME calibration COMMAND test_calibration)
 
 add_executable(test_sim_config
   tests/test_sim_config.cpp

@@ -5,6 +5,13 @@ for a failed route or a way to relax Safety. The ROBOT consumes only the
 published calibration artifact after its hash, units, range and robot
 description match the active profile.
 
+The first deployable schema is implemented in
+`src/robot/platform/calibration.hpp/.cpp`. It provides deterministic JSON
+serialization, a median wheel-scale fit plus stationary IMU-bias fit for
+offline recorded measurements, and an online wheel-scale update with a
+confirmation window, bounded step/range, and explicit checkpoint rollback.
+The solver is a profile tool; it is not called from the navigation tick.
+
 ## Offline calibration
 
 The input is a recorded measurement set with acquisition timestamps, sensor

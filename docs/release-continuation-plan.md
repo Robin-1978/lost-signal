@@ -94,9 +94,12 @@
  分离，编码器反馈进入底层控制器，MotorOutput 以完整 CRC frame 回传；host test
  与 `STM32_FIRMWARE=ON` 构建均通过。它仍需要具体 CubeMX 的 startup、IO、急停和
  实测 profile，不能冒充通用可烧录镜像。
-- 第 9 项已纳入发布目标，下一步先建立 calibration artifact/schema 和离线数据回放，
- 再实现带边界、健康门禁和回滚的在线更新；在此之前任何硬件 profile 仍保持实测/手工
- 配置，不用运行时猜测值替代标定。
+- 第 9 项的第一切已落地到 `robot/platform/calibration.*`：版本化 artifact
+ schema、机器人 description/profile pin、输入 digest、稳健 median wheel-scale
+ 拟合、静止 IMU bias 拟合、JSON round-trip，以及带确认窗口、步长/范围限制和
+ checkpoint rollback 的在线更新。`test_calibration` 覆盖坏值、摘要保留和回滚。
+ 下一步仍需把真实记录文件和硬件启动 handshake 接到 native profile；在此之前任何
+ 硬件 profile 仍保持实测/手工配置，不用运行时猜测值替代标定结果。
 
 ### Release 运行门禁（2026-10-27）
 
