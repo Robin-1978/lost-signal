@@ -4,6 +4,8 @@
 #include <chrono>
 #include <limits>
 
+#include "robot/iface/envelope.hpp"
+
 namespace lost_signal::robot::app {
 
 namespace {
@@ -30,11 +32,20 @@ NativeRuntime::~NativeRuntime() { shutdown(); }
 bool NativeRuntime::start() {
  if (active_.load() || config_.decision_period_ns <= 0) return false;
  if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
-  if (!iface::valid_chassis_capabilities(mcu->capabilities()) ||
-      mcu->capabilities().control_owner !=
-          iface::ChassisControlOwner::kHostMotionLoop) {
+ if (!iface::valid_chassis_capabilities(mcu->capabilities())) {
    return false;
   }
+ const auto& caps = mcu->capabilities();
+ const auto expected_mode = application_.actuator_mode();
+ if (caps.chassis_mode != expected_mode ||
+ caps.drive_count != iface::actuator_drive_count(expected_mode) ||
+ caps.steer_count != iface::actuator_steer_count(expected_mode)) {
+ return false;
+ }
+ application_.set_chassis_control_owner(caps.control_owner);
+ } else {
+ application_.set_chassis_control_owner(
+ iface::ChassisControlOwner::kHostMotionLoop);
  }
  for (const auto& endpoint : adapter_.endpoints()) {
  if (endpoint.backend != iface::ProviderBackend::kNative ||
@@ -64,6 +75,25 @@ bool NativeRuntime::start() {
 bool NativeRuntime::cycle(core::MonotonicNs now_ns) {
  if (!active_.load() || now_ns < 0) return false;
  iface::ObservationFrame observation;
+ if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
+ iface::MotionFeedback feedback;
+ while (mcu->poll_feedback(feedback)) {
+ {
+ std::lock_guard<std::mutex> lock(stats_mutex_);
+ ++stats_.observations_polled;
+ }
+ if (!feedback.valid()) {
+ feedback = {};
+ continue;
+ }
+ observation = iface::make_envelope(feedback);
+ if (application_.publish_observation(observation)) {
+ std::lock_guard<std::mutex> lock(stats_mutex_);
+ ++stats_.observations_accepted;
+ }
+ feedback = {};
+ }
+ }
  while (adapter_.poll_observation(observation)) {
  {
  std::lock_guard<std::mutex> lock(stats_mutex_);
@@ -119,19 +149,16 @@ bool NativeRuntime::publish_output(const iface::ActuatorCommand& command,
  output = iface::ActuatorCommand::SafeStop(now_ns, actuator_mode_);
  }
  actuator_mode_ = output.mode;
+ core::MonotonicNs published_expiry_ns = output.expiry_ns;
  bool ok = false;
  {
  std::lock_guard<std::mutex> io_lock(io_mutex_);
   if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
-   iface::ChassisSetpoint setpoint;
-   setpoint.kind = iface::ChassisSetpointKind::kActuatorDuty;
-   setpoint.chassis_mode = output.mode;
-   setpoint.sequence = ++chassis_sequence_;
-   setpoint.stamp_ns = output.stamp_ns;
-   setpoint.expiry_ns = output.expiry_ns;
-   setpoint.drive_duty = output.drive;
-   setpoint.steer_duty = output.steer;
-   setpoint.service_brake = output.service_brake;
+ const iface::ChassisSetpoint setpoint =
+ application_.take_chassis_setpoint(mcu->capabilities(),
+ output,
+ ++chassis_sequence_, now_ns);
+ published_expiry_ns = setpoint.expiry_ns;
    ok = iface::valid_chassis_setpoint(setpoint, mcu->capabilities(),
                                       now_ns) &&
         mcu->send(setpoint);
@@ -156,7 +183,7 @@ bool NativeRuntime::publish_output(const iface::ActuatorCommand& command,
  }
  {
  std::lock_guard<std::mutex> lock(state_mutex_);
- armed_expiry_ns_ = output.expiry_ns;
+ armed_expiry_ns_ = published_expiry_ns;
  watchdog_fired_ = false;
  }
  watchdog_cv_.notify_all();

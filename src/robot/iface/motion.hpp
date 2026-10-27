@@ -182,7 +182,7 @@ struct ActuatorCommand {
     ActuatorCommand c;
     c.mode = mode;
     c.stamp_ns = now_ns;
-    c.expiry_ns = now_ns + 200'000'000;  // 200 ms watchdog, like motion
+ c.expiry_ns = now_ns + kDefaultCommandWatchdogNs;
     return c;
   }
 

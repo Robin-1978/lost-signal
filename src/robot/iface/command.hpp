@@ -4,6 +4,8 @@
 
 namespace lost_signal::robot::iface {
 
+inline constexpr core::MonotonicNs kDefaultCommandWatchdogNs = 200'000'000;
+
 // Body command spaces. New spaces arrive as new enum values with their own
 // named fields; existing fields are never reinterpreted across spaces.
 enum class CommandSpace {
@@ -26,7 +28,7 @@ struct MotionCommand {
     MotionCommand c;
     c.space = CommandSpace::kStop;
     c.stamp_ns = now_ns;
-    c.expiry_ns = now_ns + 200'000'000;  // 200 ms watchdog
+ c.expiry_ns = now_ns + kDefaultCommandWatchdogNs;
     return c;
   }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <cstdint>
 
 #include "robot/control/ackermann_controller.hpp"
 #include "robot/control/holonomic_controller.hpp"
@@ -30,6 +31,13 @@ class IChassis {
   virtual iface::ActuatorCommand to_actuator(
       const iface::MotionCommand& body, const iface::MotionFeedback& fb,
       core::MonotonicNs now_ns) const = 0;
+ // Build a typed setpoint for a remote MCU-owned loop. This path performs
+ // kinematics only; it never runs the host PID controllers.
+ virtual iface::ChassisSetpoint to_mcu_setpoint(
+ const iface::MotionCommand& body,
+ iface::ChassisControlOwner owner,
+ std::uint64_t sequence,
+ core::MonotonicNs now_ns) const = 0;
 };
 
 // Differential drive: (forward, yaw_rate) <-> (left, right) wheel speeds.
@@ -56,6 +64,9 @@ class DifferentialChassis : public IChassis {
   iface::ActuatorCommand to_actuator(
       const iface::MotionCommand& body, const iface::MotionFeedback& fb,
       core::MonotonicNs now_ns) const override;
+ iface::ChassisSetpoint to_mcu_setpoint(
+ const iface::MotionCommand& body, iface::ChassisControlOwner owner,
+ std::uint64_t sequence, core::MonotonicNs now_ns) const override;
 
   WheelSpeeds inverse(double forward_mps, double yaw_rate_radps) const;
   void forward(const WheelSpeeds& w, double& forward_mps,
@@ -102,6 +113,9 @@ class AckermannChassis : public IChassis {
   iface::ActuatorCommand to_actuator(
       const iface::MotionCommand& body, const iface::MotionFeedback& fb,
       core::MonotonicNs now_ns) const override;
+ iface::ChassisSetpoint to_mcu_setpoint(
+ const iface::MotionCommand& body, iface::ChassisControlOwner owner,
+ std::uint64_t sequence, core::MonotonicNs now_ns) const override;
 
  private:
   double wheel_radius_m_;
@@ -142,6 +156,9 @@ class HolonomicChassis : public IChassis {
   iface::ActuatorCommand to_actuator(
       const iface::MotionCommand& body, const iface::MotionFeedback& fb,
       core::MonotonicNs now_ns) const override;
+ iface::ChassisSetpoint to_mcu_setpoint(
+ const iface::MotionCommand& body, iface::ChassisControlOwner owner,
+ std::uint64_t sequence, core::MonotonicNs now_ns) const override;
 
  private:
   double wheel_radius_m_;

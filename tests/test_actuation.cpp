@@ -267,6 +267,86 @@ int main() {
     assert(swerve->to_actuator(yaw, no_steer, 100).is_safe_stop());
   }
 
+ // Remote MCU ownership uses the same chassis geometry without running a
+ // second host PID. Joint-loop setpoints contain mechanical units, body-loop
+ // setpoints contain only a body twist, and host ownership fails closed.
+ {
+ auto capabilities = [](iface::MotionControlOwner owner,
+ iface::ActuatorMode mode, std::uint8_t drives,
+ std::uint8_t steers) {
+ iface::MotionCapabilities out;
+ out.control_owner = owner;
+ out.chassis_mode = mode;
+ out.drive_count = drives;
+ out.steer_count = steers;
+ out.control_period_ns = 1'000'000;
+ out.feedback_period_ns = 1'000'000;
+ out.maximum_command_age_ns = 1'000'000'000;
+ out.profile_id = "test.mcu";
+ out.profile_revision = 1;
+ return out;
+ };
+ iface::MotionCommand diff_cmd;
+ diff_cmd.space = iface::CommandSpace::kYawRate;
+ diff_cmd.stamp_ns = 100;
+ diff_cmd.expiry_ns = 500;
+ diff_cmd.forward_mps = 1.0;
+ diff_cmd.yaw_rate_radps = 0.4;
+ platform::DifferentialChassis diff_chassis(
+ 0.1, 0.5, {.max_forward_mps = 2.0, .max_yaw_rate_radps = 1.5,
+ .footprint_radius_m = 0.4});
+ const auto expected = diff_chassis.inverse(1.0, 0.4);
+ const auto diff_joint = diff_chassis.to_mcu_setpoint(
+ diff_cmd, iface::ChassisControlOwner::kMcuJointLoop, 1, 100);
+ assert(diff_joint.kind == iface::ChassisSetpointKind::kJointVelocity);
+ assert(std::abs(diff_joint.drive_radps[0] - expected.left_radps) < 1e-9);
+ assert(std::abs(diff_joint.drive_radps[1] - expected.right_radps) < 1e-9);
+ assert(valid_motion_setpoint(diff_joint, capabilities(
+ iface::MotionControlOwner::kMcuJointLoop, iface::ActuatorMode::kDiffDuty,
+ 2, 0), 100));
+ const auto diff_body = diff_chassis.to_mcu_setpoint(
+ diff_cmd, iface::ChassisControlOwner::kMcuBodyLoop, 2, 100);
+ assert(diff_body.kind == iface::ChassisSetpointKind::kBodyTwist);
+ assert(diff_body.forward_mps == diff_cmd.forward_mps);
+ assert(valid_motion_setpoint(diff_body, capabilities(
+ iface::MotionControlOwner::kMcuBodyLoop, iface::ActuatorMode::kDiffDuty,
+ 2, 0), 100));
+ const auto host_stop = diff_chassis.to_mcu_setpoint(
+ diff_cmd, iface::ChassisControlOwner::kHostMotionLoop, 3, 100);
+ assert(host_stop.is_safe_stop());
+
+ platform::AckermannChassis mcu_ack(
+ 0.1, 0.62, 0.58,
+ {.max_forward_mps = 2.0, .max_yaw_rate_radps = 1.5,
+ .footprint_radius_m = 0.4, .max_steer_rad = 0.5});
+ const auto ack_joint = mcu_ack.to_mcu_setpoint(
+ diff_cmd, iface::ChassisControlOwner::kMcuJointLoop, 4, 100);
+ assert(ack_joint.kind == iface::ChassisSetpointKind::kJointVelocity);
+ assert(std::abs(ack_joint.steer_rad[0]) > 1e-6);
+ assert(std::abs(ack_joint.drive_radps[0]) > 1e-6);
+ assert(valid_motion_setpoint(ack_joint, capabilities(
+ iface::MotionControlOwner::kMcuJointLoop, iface::ActuatorMode::kAckermannDuty,
+ 2, 2), 100));
+
+ iface::MotionCommand holo_cmd = diff_cmd;
+ holo_cmd.space = iface::CommandSpace::kHolonomic;
+ holo_cmd.lateral_mps = 0.2;
+ platform::HolonomicChassis mcu_swerve(
+ 0.1, 0.56, 0.56,
+ {.max_forward_mps = 2.0, .max_yaw_rate_radps = 1.5,
+ .footprint_radius_m = 0.4, .max_lateral_mps = 1.0},
+ [] { control::HolonomicControllerConfig c;
+ c.kind = control::HolonomicKind::Swerve; return c; }());
+ const auto swerve_joint = mcu_swerve.to_mcu_setpoint(
+ holo_cmd, iface::ChassisControlOwner::kMcuJointLoop, 5, 100);
+ assert(swerve_joint.kind == iface::ChassisSetpointKind::kJointVelocity);
+ assert(std::isfinite(swerve_joint.drive_radps[0]));
+ assert(std::isfinite(swerve_joint.steer_rad[0]));
+ assert(valid_motion_setpoint(swerve_joint, capabilities(
+ iface::MotionControlOwner::kMcuJointLoop, iface::ActuatorMode::kSwerveDuty,
+ 4, 4), 100));
+ }
+
   // Sim plants: each mode integrates to the commanded body motion.
   {
     // Ackermann drives a left arc.

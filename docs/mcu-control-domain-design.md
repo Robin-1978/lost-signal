@@ -30,7 +30,7 @@ typed setpoint/measurement 合同，但调度器属于各自平台；墙钟只�
 
 ## 边界
 
-IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、encoder 或 actuator）。远端 MCU 固件不是 C++ 进程中的 provider。主机硬件包实现 INativeAdapter，负责注册 endpoint、翻译标准消息、轮询测量、写入标准命令和独立机械停车。需要 typed MCU 协议时，适配器实现 `IChassisMcuTransport`；它提供 capability、发送 chassis setpoint、轮询 MotionFeedback 和独立机械停车，但不是 IProvider。`NativeRuntime` 已支持这条可选 transport：未提供时保持现有 duty adapter 路径，提供时发送 sequence/expiry 完整的 typed setpoint，并在 bring-up 拒绝非 host-motion ownership，避免未来 body/joint 转换未完成时重复闭环。
+IProvider 描述 ROBOT 进程内一个有明确 role 的端点（LiDAR、IMU、encoder 或 actuator）。远端 MCU 固件不是 C++ 进程中的 provider。主机硬件包实现 INativeAdapter，负责注册 endpoint、翻译标准消息、轮询测量、写入标准命令和独立机械停车。需要 typed MCU 协议时，适配器实现 `IChassisMcuTransport`；它提供 capability、发送 chassis setpoint、轮询 MotionFeedback 和独立机械停车，但不是 IProvider。`NativeRuntime` 已支持这条可选 transport：未提供时保持现有 duty adapter 路径，提供时校验底盘 profile/关节布局，发送带 sequence/expiry 的 typed setpoint，并按 ownership 选择 duty、joint velocity 或 body twist；MCU ownership 下 ROBOT 不运行同一层的 host PID，反馈通过同一 observation seam 回到 ROBOT，过期、非法 profile 或机械停车失败仍 fail-closed。
 
 固件不能接触 RobotApplication、estimator、planner、SIM truth、actor identity、score 或渲染状态。它只处理已经定义的 setpoint、编码器/IMU/执行反馈、故障和本地安全状态。
 

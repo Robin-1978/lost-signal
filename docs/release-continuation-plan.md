@@ -56,6 +56,17 @@
  - 真机与 SIM 共用命令 expiry、session/sequence、watchdog、机械停车、测量时间戳和故障反馈。
  - 按契约、SIM 虚拟 MCU、native fake transport、HIL、实测硬件 profile 五个子阶段推进。详细设计见 docs/mcu-control-domain-design.md。
 
+9. **自动标定与硬件 profile**
+ - 离线标定：从真实传感器/编码器记录和可复现实验估计轮径、轮距、轴距、轮速比例、
+ IMU bias/尺度、LiDAR 外参与时间偏移、电机 feedforward/PID 参数；输出带 robot
+ description hash、输入 digest、版本、协方差和适用温度/载荷范围的 calibration artifact。
+ - 在线标定：只允许对轮速比例、IMU bias、低速 slip factor 和执行延迟等有测量证据的
+ 参数做有界小步更新；每个更新需要残差改善、持久化窗口、健康门禁和可回滚 checkpoint。
+ - 安全 footprint、碰撞膨胀、到达条件、planner 搜索规则和任务阈值不得在线自适应；
+ calibration 不能读取 SIM truth、actor identity、score 或未来脚本。
+ - SIM 只用于产生带噪声/延迟的测量和验证 artifact 回放；真机启动必须完成 profile、
+ ownership、单位、版本和 calibration range handshake，超出适用范围保持 safe hold。
+
 ## 当前恢复点
 
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
@@ -80,6 +91,9 @@
  分离，编码器反馈进入底层控制器，MotorOutput 以完整 CRC frame 回传；host test
  与 `STM32_FIRMWARE=ON` 构建均通过。它仍需要具体 CubeMX 的 startup、IO、急停和
  实测 profile，不能冒充通用可烧录镜像。
+- 第 9 项已纳入发布目标，下一步先建立 calibration artifact/schema 和离线数据回放，
+ 再实现带边界、健康门禁和回滚的在线更新；在此之前任何硬件 profile 仍保持实测/手工
+ 配置，不用运行时猜测值替代标定。
 
 ### Release 运行门禁（2026-10-27）
 

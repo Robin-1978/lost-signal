@@ -59,6 +59,21 @@ flowchart TB
 依赖方向只有一条：`sim → robot`，绝无反向。门禁见
 `tests/check_boundary.py`（禁 `sim/` include、禁真值 token、禁 robot 链 sim 库）。
 
+## 1b. 仓库与可发布包
+
+当前保持一个 monorepo，但不是把所有代码链接成一个产品库。CMake target
+已经是发布边界：`lost_signal_robot_stack` 是可部署 ROBOT 库集合，
+`lost_signal_robot` 只是 provider-neutral 的 native 可执行壳；真机产品应在
+硬件适配包中实现 `INativeAdapter`/`IChassisMcuTransport` 后链接这个 stack。
+它不复制 ROBOT 算法，也不把设备型号分支写进 estimator、planner 或 Safety。
+
+SIM 是同一仓库中的另一组库和可执行文件，链接 `lost_signal_robot_stack` 后再
+加入 world/provider/scenario/eval/viewer；它只能依赖 ROBOT，不能反向进入
+`src/robot`。这样可以让接口、truth-isolation、HIL 和 replay 在一次提交中原子
+更新。待 LSRI schema、ownership、profile 和 calibration artifact 有稳定版本及
+独立发布节奏时，再把 `robot_hw_<vendor>` 抽成单独 Git 仓库；抽仓后仍必须消费
+版本化 CMake package，并运行同一套 conformance/HIL contract tests。
+
 ## 2. 数据流总览（一张图）
 
 ```mermaid

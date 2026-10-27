@@ -86,6 +86,14 @@ class RobotApplication : public IRobot {
  coordinator_.set_decision_period(period_ns);
  }
 
+ // Select the single outer motion-loop owner before configure(). Native
+ // hardware profiles use this to prevent the host chassis PID from running
+ // when an MCU owns joint or body control. SIM and legacy native duty paths
+ // keep the default host owner.
+ void set_chassis_control_owner(iface::ChassisControlOwner owner) {
+ control_owner_ = owner;
+ }
+
  iface::GoalHandle request_goal(const iface::TaskRequest& req) override;
   iface::GoalStatus goal_status(iface::GoalHandle handle) const override {
     return executive_.goal_status(handle);
@@ -109,6 +117,13 @@ class RobotApplication : public IRobot {
   // The chassis layer translates the validated body command using the latest
   // joint feedback; loops never close on stale joints.
   iface::ActuatorCommand take_actuator(core::MonotonicNs now_ns) override;
+ // Build the typed setpoint consumed by an MCU-owned chassis loop. The
+ // capability is checked at the transport boundary; this method only
+ // performs the chassis-specific kinematic conversion.
+ iface::ChassisSetpoint take_chassis_setpoint(
+ const iface::ChassisCapabilities& capabilities,
+ const iface::ActuatorCommand& actuator,
+ std::uint64_t sequence, core::MonotonicNs now_ns);
   // Latest decision evidence (read-only ops/logging).
   autonomy::diagnostics::DecisionEvidence last_evidence() const;
   // Robot -> provider: newest non-expired body command, else safe stop.
@@ -124,6 +139,9 @@ class RobotApplication : public IRobot {
   iface::MapSnapshot active_map() const override;
   iface::ChannelHealth channel_health() const override;
   const platform::RobotDescription& description() const { return desc_; }
+ iface::ActuatorMode actuator_mode() const {
+ return chassis_ ? chassis_->actuator_mode() : iface::ActuatorMode::kDiffDuty;
+ }
 
   // Read-only robot outputs for OFFLINE comparison only (SIM eval / logging).
   // Never fed back into tick() or any same-cycle decision. Carries the
@@ -189,6 +207,9 @@ class RobotApplication : public IRobot {
   autonomy::diagnostics::VehicleMeasurementSystem measurement_;
   lifecycle::BringupManager bringup_;
   bool bringup_wired_ = false;
+ iface::ChassisControlOwner control_owner_ =
+ iface::ChassisControlOwner::kHostMotionLoop;
+ iface::MotionCommand last_body_command_{};
 };
 
 }  // namespace lost_signal::robot::app

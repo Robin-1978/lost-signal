@@ -30,8 +30,9 @@ class INativeAdapter {
  virtual bool write_actuator(const iface::ActuatorCommand& command) = 0;
 
  // Optional typed chassis-MCU transport. Returning nullptr keeps the
- // compatibility duty adapter path. A non-null transport must advertise
- // host-motion ownership until body/joint conversion is explicitly enabled.
+ // compatibility duty adapter path. A non-null transport must advertise a
+ // validated ownership/profile; host duty, MCU joint, and MCU body setpoints
+ // are selected by the same typed contract.
  virtual iface::IChassisMcuTransport* chassis_mcu() { return nullptr; }
 
  // Independent mechanical stop path. Implementations must make this

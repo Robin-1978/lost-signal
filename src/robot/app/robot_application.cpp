@@ -208,6 +208,40 @@ iface::ActuatorCommand RobotApplication::take_actuator(
   return channel_.take_actuator(now_ns);
 }
 
+iface::ChassisSetpoint RobotApplication::take_chassis_setpoint(
+ const iface::ChassisCapabilities& capabilities,
+ const iface::ActuatorCommand& actuator, std::uint64_t sequence,
+ core::MonotonicNs now_ns) {
+ if (!chassis_ || capabilities.chassis_mode != chassis_->actuator_mode()) {
+ iface::ChassisSetpoint stop;
+ stop.kind = iface::ChassisSetpointKind::kStop;
+ stop.chassis_mode = chassis_ ? chassis_->actuator_mode()
+ : iface::ActuatorMode::kDiffDuty;
+ stop.sequence = sequence;
+ stop.stamp_ns = now_ns;
+ stop.expiry_ns = now_ns + iface::kDefaultCommandWatchdogNs;
+ stop.frame = core::Frame::kBaseLink;
+ stop.service_brake = 1.0;
+ return stop;
+ }
+ if (capabilities.control_owner ==
+ iface::ChassisControlOwner::kHostMotionLoop) {
+ iface::ChassisSetpoint out;
+ out.kind = iface::ChassisSetpointKind::kActuatorDuty;
+ out.chassis_mode = actuator.mode;
+ out.sequence = sequence;
+ out.stamp_ns = actuator.stamp_ns;
+ out.expiry_ns = actuator.expiry_ns;
+ out.frame = core::Frame::kBaseLink;
+ out.drive_duty = actuator.drive;
+ out.steer_duty = actuator.steer;
+ out.service_brake = actuator.service_brake;
+ return out;
+ }
+ return chassis_->to_mcu_setpoint(last_body_command_,
+ capabilities.control_owner, sequence, now_ns);
+}
+
 autonomy::diagnostics::DecisionEvidence RobotApplication::last_evidence()
     const {
   return coordinator_.last_evidence();
@@ -258,7 +292,11 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
  fb.arm_rad = last.arm_rad;
  fb.arm_vel_radps = last.arm_vel_radps;
  }
- iface::ActuatorCommand act = chassis_->to_actuator(body, fb, now_ns);
+ iface::ActuatorCommand act = control_owner_ ==
+ iface::ChassisControlOwner::kHostMotionLoop
+ ? chassis_->to_actuator(body, fb, now_ns)
+ : iface::ActuatorCommand::SafeStop(now_ns, chassis_->actuator_mode());
+ last_body_command_ = body;
   channel_.publish_command(body);
   channel_.publish_actuator(act);
   // Passive braking instrumentation: command vs realized motion.

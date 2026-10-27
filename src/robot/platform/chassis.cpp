@@ -45,6 +45,48 @@ double controller_dt(core::MonotonicNs& last_ns, core::MonotonicNs now_ns) {
   return dt_s;
 }
 
+iface::ChassisSetpoint base_mcu_setpoint(
+ const iface::MotionCommand& body, iface::ActuatorMode mode,
+ iface::ChassisControlOwner owner, std::uint64_t sequence,
+ core::MonotonicNs now_ns) {
+ iface::ChassisSetpoint out;
+ out.chassis_mode = mode;
+ out.sequence = sequence;
+ out.stamp_ns = body.stamp_ns >= 0 ? body.stamp_ns : now_ns;
+ out.expiry_ns = body.expiry_ns > out.stamp_ns
+ ? body.expiry_ns : out.stamp_ns + iface::kDefaultCommandWatchdogNs;
+ out.frame = core::Frame::kBaseLink;
+ if (body.is_safe_stop() ||
+ (owner != iface::ChassisControlOwner::kMcuJointLoop &&
+ owner != iface::ChassisControlOwner::kMcuBodyLoop)) {
+ out.kind = iface::ChassisSetpointKind::kStop;
+ out.service_brake = 1.0;
+ return out;
+ }
+ if (owner == iface::ChassisControlOwner::kMcuBodyLoop) {
+ out.kind = iface::ChassisSetpointKind::kBodyTwist;
+ out.forward_mps = body.forward_mps;
+ out.lateral_mps = body.lateral_mps;
+ out.yaw_rate_radps = body.yaw_rate_radps;
+ return out;
+ }
+ out.kind = iface::ChassisSetpointKind::kJointVelocity;
+ return out;
+}
+
+iface::ChassisSetpoint stop_mcu_setpoint(iface::ActuatorMode mode,
+ std::uint64_t sequence, core::MonotonicNs now_ns) {
+ iface::ChassisSetpoint out;
+ out.kind = iface::ChassisSetpointKind::kStop;
+ out.chassis_mode = mode;
+ out.sequence = sequence;
+ out.stamp_ns = now_ns;
+ out.expiry_ns = now_ns + iface::kDefaultCommandWatchdogNs;
+ out.frame = core::Frame::kBaseLink;
+ out.service_brake = 1.0;
+ return out;
+}
+
 }  // namespace
 
 DifferentialChassis::DifferentialChassis(double wheel_radius_m,
@@ -122,7 +164,7 @@ iface::ActuatorCommand DifferentialChassis::to_actuator(
   iface::ActuatorCommand out;
   out.mode = iface::ActuatorMode::kDiffDuty;
   out.stamp_ns = now_ns;
-  out.expiry_ns = now_ns + 200'000'000;
+  out.expiry_ns = now_ns + iface::kDefaultCommandWatchdogNs;
   out.drive[0] = wc.left_duty;
   out.drive[1] = wc.right_duty;
  out.service_brake = body.is_safe_stop() ? 1.0 : 0.0;
@@ -131,6 +173,21 @@ iface::ActuatorCommand DifferentialChassis::to_actuator(
  return iface::ActuatorCommand::SafeStop(now_ns);
   }
   return out;
+}
+
+iface::ChassisSetpoint DifferentialChassis::to_mcu_setpoint(
+ const iface::MotionCommand& body, iface::ChassisControlOwner owner,
+ std::uint64_t sequence, core::MonotonicNs now_ns) const {
+ auto out = base_mcu_setpoint(body, actuator_mode(), owner, sequence, now_ns);
+ if (out.kind == iface::ChassisSetpointKind::kStop) return out;
+ if (body.space != iface::CommandSpace::kYawRate) {
+ return stop_mcu_setpoint(actuator_mode(), sequence, now_ns);
+ }
+ if (owner == iface::ChassisControlOwner::kMcuBodyLoop) return out;
+ const WheelSpeeds wheels = inverse(body.forward_mps, body.yaw_rate_radps);
+ out.drive_radps[0] = wheels.left_radps;
+ out.drive_radps[1] = wheels.right_radps;
+ return out;
 }
 
 AckermannChassis::AckermannChassis(double wheel_radius_m, double wheel_base_m,
@@ -214,7 +271,7 @@ iface::ActuatorCommand AckermannChassis::to_actuator(
   iface::ActuatorCommand out;
   out.mode = iface::ActuatorMode::kAckermannDuty;
   out.stamp_ns = now_ns;
-  out.expiry_ns = now_ns + 200'000'000;
+  out.expiry_ns = now_ns + iface::kDefaultCommandWatchdogNs;
   out.drive[0] = ac.rear_left_duty;
   out.drive[1] = ac.rear_right_duty;
   out.steer[0] = ac.front_left_steer_duty;
@@ -226,6 +283,38 @@ iface::ActuatorCommand AckermannChassis::to_actuator(
         now_ns, iface::ActuatorMode::kAckermannDuty);
   }
   return out;
+}
+
+iface::ChassisSetpoint AckermannChassis::to_mcu_setpoint(
+ const iface::MotionCommand& body, iface::ChassisControlOwner owner,
+ std::uint64_t sequence, core::MonotonicNs now_ns) const {
+ auto out = base_mcu_setpoint(body, actuator_mode(), owner, sequence, now_ns);
+ if (out.kind == iface::ChassisSetpointKind::kStop) return out;
+ if (body.space != iface::CommandSpace::kSteerAngle &&
+ body.space != iface::CommandSpace::kYawRate) {
+ return stop_mcu_setpoint(actuator_mode(), sequence, now_ns);
+ }
+ double steer = body.steer_angle_rad;
+ if (body.space == iface::CommandSpace::kYawRate) {
+ steer = steer_for_twist(body.yaw_rate_radps, body.forward_mps,
+ wheel_base_m_, limits_.max_steer_rad);
+ }
+ if (owner == iface::ChassisControlOwner::kMcuBodyLoop) {
+ if (body.space == iface::CommandSpace::kSteerAngle) {
+ out.yaw_rate_radps = body.forward_mps * std::tan(steer) /
+ wheel_base_m_;
+ }
+ return out;
+ }
+ const auto angles = ackermann_steering_angles(steer, wheel_base_m_,
+ track_width_m_);
+ const auto speeds = ackermann_rear_wheel_speeds(body.forward_mps, steer,
+ wheel_base_m_, track_width_m_);
+ out.drive_radps[0] = speeds.left_mps / wheel_radius_m_;
+ out.drive_radps[1] = speeds.right_mps / wheel_radius_m_;
+ out.steer_rad[0] = angles.left_rad;
+ out.steer_rad[1] = angles.right_rad;
+ return out;
 }
 
 HolonomicChassis::HolonomicChassis(double wheel_radius_m, double wheel_base_m,
@@ -310,7 +399,7 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
   iface::ActuatorCommand out;
   out.mode = mode;
   out.stamp_ns = now_ns;
-  out.expiry_ns = now_ns + 200'000'000;
+  out.expiry_ns = now_ns + iface::kDefaultCommandWatchdogNs;
   out.drive = hc.drive_duty;
   out.steer = hc.steer_duty;
  out.service_brake = body.is_safe_stop() ? 1.0 : 0.0;
@@ -319,6 +408,38 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
  return iface::ActuatorCommand::SafeStop(now_ns, mode);
   }
   return out;
+}
+
+iface::ChassisSetpoint HolonomicChassis::to_mcu_setpoint(
+ const iface::MotionCommand& body, iface::ChassisControlOwner owner,
+ std::uint64_t sequence, core::MonotonicNs now_ns) const {
+ auto out = base_mcu_setpoint(body, actuator_mode(), owner, sequence, now_ns);
+ if (out.kind == iface::ChassisSetpointKind::kStop) return out;
+ if (body.space != iface::CommandSpace::kHolonomic &&
+ body.space != iface::CommandSpace::kYawRate) {
+ return stop_mcu_setpoint(actuator_mode(), sequence, now_ns);
+ }
+ const double lateral = body.space == iface::CommandSpace::kHolonomic
+ ? body.lateral_mps : 0.0;
+ if (owner == iface::ChassisControlOwner::kMcuBodyLoop) {
+ out.lateral_mps = lateral;
+ return out;
+ }
+ if (config_.kind == control::HolonomicKind::Swerve) {
+ const auto modules = swerve_inverse(body.forward_mps, lateral,
+ body.yaw_rate_radps, wheel_base_m_, track_width_m_);
+ for (std::size_t i = 0; i < modules.size(); ++i) {
+ out.drive_radps[i] = modules[i].speed_mps / wheel_radius_m_;
+ out.steer_rad[i] = modules[i].steer_rad;
+ }
+ } else {
+ const auto wheels = mecanum_inverse(body.forward_mps, lateral,
+ body.yaw_rate_radps, wheel_base_m_, track_width_m_);
+ for (std::size_t i = 0; i < wheels.size(); ++i) {
+ out.drive_radps[i] = wheels[i] / wheel_radius_m_;
+ }
+ }
+ return out;
 }
 
 std::unique_ptr<IChassis> make_chassis(const RobotDescription& desc) {
