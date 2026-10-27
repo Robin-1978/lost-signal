@@ -10,6 +10,7 @@ option(BUILD_HOST_TEST "Build the deterministic host reference test" ON)
 
 add_library(stm32_chassis_controller STATIC
  chassis_controller.cpp
+ serial_codec.cpp
 )
 target_include_directories(stm32_chassis_controller PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(stm32_chassis_controller PUBLIC cxx_std_17)

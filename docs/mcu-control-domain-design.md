@@ -131,17 +131,17 @@ SIM 的执行顺序固定为：完成一个物理 quantum，推进 sim time，�
  encoder 是唯一闭环反馈，expiry 触发本地机械停车；独立 CMake host test 已通过。
 5. Hardware profile：用实测 step response 填入能力参数；未测量时保持 safe hold，不能用猜测的默认数字上线。
 
-仓库提供两组可以直接放进 CubeMX 工程的无 HAL 核心：
-`examples/stm32_chassis_mcu/` 负责固定周期底盘 PID、运动学、expiry 和本地
-机械停车；`examples/stm32_sensor_bridge/` 负责 LiDAR/IMU/编码器固定宽度报文的
-版本、boot、sequence、时间戳和有限值校验，并附带一个 native 侧
-`ObservationAdapter` 把接受的测量转换为 `ObservationFrame`。两组核心都在主机上
-有确定性测试，也可以用 `-DSTM32_FIRMWARE=ON` 编译成嵌入式库。
+仓库提供一套底盘固件核心和一套通用串口传感器适配器：
+`examples/stm32_chassis_mcu/` 负责固定周期底盘 PID、运动学、expiry、本地机械
+停车，以及主机↔STM32 的显式 UART framing/CRC 示例；`examples/serial_sensor_adapter/`
+负责直接接入 `/dev/ttyUSB*`、USB CDC 或其他串口设备的 LiDAR/IMU/编码器，增量解析
+拆包/粘包、CRC、boot/sequence/acquisition timestamp，并转换为 `ObservationFrame`。
+传感器适配器不绑定 STM32；同一协议也可以由 STM32 或传感器原生串口输出。
 
 它们是可移植到真实板卡的参考实现，不是假装已经适配某一块 STM32：CubeMX 工程仍
 必须提供实际的时钟、DMA/中断、CAN/UART framing/CRC、引脚、电机驱动、急停输入和
 经过测量的底盘/传感器 profile。没有这些实测参数时，启动保持 safe hold；不能把示例
-里的轮径、PID 或量程当成通用魔法默认值。
+里的轮径、PID、串口波特率或量程当成通用魔法默认值。
 
 ## 验收
 
