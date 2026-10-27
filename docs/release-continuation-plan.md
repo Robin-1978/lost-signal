@@ -254,7 +254,7 @@
  `test_asset_manifest`、`test_scene_manifest` 通过。Xvfb 下 3D viewer 成功加载
  三个新 GLB，临时截图已删除；提交前仍需完成 Release 视觉和碰撞代理一致性验收。
 
-### 阶段 7 碰撞几何可视化（工作区，待提交）
+### 阶段 7 碰撞几何可视化（已修复姿态）
 
 - MuJoCo backend 现在导出每个活动 link 的碰撞 geom（shape、size、world pose、
   body id），容量来自 `model->ngeom`，按实际数量动态分配，没有任何固定上限或
@@ -265,6 +265,14 @@
 - 新增 `--physics-overlay` 作为可复现验收开关，与 K 键共用 `sim_truth_debug_allowed`
   门禁，experience 运行期仍禁止显示 SIM 证据。`test_mujoco_backend` 断言导出非空
   且位姿有限；`robot_boundary` 通过，未新增 ROBOT 入口。
+- 后续审查发现首版的姿态基错误：中心点已换到 raylib 基，而朝向向量仍是 MuJoCo
+ SIM 基，导致直立 actor proxy 横躺；box 也只在八角和画小方块。现已拆出
+ `collision_geom_wireframe` 纯模块，在同一 SIM 世界坐标中完成四元数刚体变换后
+ 一次换基，box 输出 12 条边，capsule/cylinder 输出沿真实局部 Z 的线框。
+- 新增 `test_collision_geom_wireframe` 无窗口测试；`signal_town` 与
+ `research_base` 的 `--physics-overlay` 3D 截图均显示机器人代理直立并随车体
+ 运动。定向回归 `collision_geom_wireframe`、`viewer_frame`、`mujoco_backend`、
+ `scene_manifest`、`world_place_clearance` 通过。
 
 ### 工业动态 actor 回归修复（已完成，`0d3cfec`）
 

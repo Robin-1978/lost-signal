@@ -34,6 +34,7 @@
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/asset_manifest.hpp"
+#include "sim/viewer/collision_geom_wireframe.hpp"
 #include "sim/viewer/experience_flow.hpp"
 #include "sim/viewer/experience_manifest.hpp"
 #include "sim/viewer/frame_builder.hpp"
@@ -2951,67 +2952,25 @@ void draw_goal_beacon_3d(
  EndBlendMode();
 }
 
-// Engine collision geom drawn as a wireframe in the same world basis as the
-// contact overlay. Shape ids follow mjtGeom (sphere 2, capsule 3, ellipsoid
-// 4, cylinder 5, box 6); anything else falls back to its bounding sphere so
-// an unexpected proxy is still visible during engineering review.
+// Engine collision geom is expanded in the same display basis as all other
+// world geometry by the headless-tested pure helper.
 void draw_collision_geom_wireframe(const FrameGeom& geom) {
  const Color tint{226, 74, 210, 200};
- const Vector3 center = to_raylib(geom.x_m, geom.y_m, geom.z_m);
- const Quaternion rotation{
- static_cast<float>(geom.qx), static_cast<float>(geom.qy),
- static_cast<float>(geom.qz), static_cast<float>(geom.qw)};
- const Vector3 local_z = Vector3RotateByQuaternion({0.0f, 0.0f, 1.0f},
- rotation);
- const auto extent = [](double value) {
- return static_cast<float>(std::max(0.0, value));
- };
- switch (geom.shape) {
- case 6: { // box: geom_size holds half extents
- const Vector3 half{extent(geom.size_x_m), extent(geom.size_y_m),
- extent(geom.size_z_m)};
- const Vector3 local_x = Vector3RotateByQuaternion(
- {1.0f, 0.0f, 0.0f}, rotation);
- const Vector3 local_y = Vector3RotateByQuaternion(
- {0.0f, 1.0f, 0.0f}, rotation);
- const Vector3 x = Vector3Scale(local_x, half.x);
- const Vector3 y = Vector3Scale(local_y, half.y);
- const Vector3 z = Vector3Scale(local_z, half.z);
- for (int sx = -1; sx <= 1; sx += 2) {
- for (int sy = -1; sy <= 1; sy += 2) {
- for (int sz = -1; sz <= 1; sz += 2) {
- const Vector3 corner = Vector3Add(center, Vector3Add(
- Vector3Add(Vector3Scale(x, static_cast<float>(sx)),
- Vector3Scale(y, static_cast<float>(sy))),
- Vector3Scale(z, static_cast<float>(sz))));
- DrawCubeWiresV(corner, {0.006f, 0.006f, 0.006f}, tint);
+ const auto wires =
+ lost_signal::sim::viewer::build_collision_geom_wireframe(geom);
+ for (const auto& line : wires.segments) {
+ DrawLine3D({line.start.x, line.start.y, line.start.z},
+ {line.end.x, line.end.y, line.end.z}, tint);
  }
+ for (const auto& sphere : wires.spheres) {
+ DrawSphereWires({sphere.center.x, sphere.center.y, sphere.center.z},
+ sphere.radius_m, 8, 8, tint);
  }
- }
- break;
- }
- case 3: // capsule: radius, half segment length
- case 5: { // cylinder: radius, half length
- const float radius = extent(geom.size_x_m);
- const float half = extent(geom.size_y_m);
- const Vector3 start = Vector3Subtract(center,
- Vector3Scale(local_z, half));
- const Vector3 end = Vector3Add(center, Vector3Scale(local_z, half));
- if (geom.shape == 3) {
- DrawSphereWires(start, radius, 6, 6, tint);
- DrawSphereWires(end, radius, 6, 6, tint);
- }
- if (half > 0.0f) {
- DrawCylinderWiresEx(start, end, radius, radius, 12, tint);
- }
- break;
- }
- default: { // sphere, ellipsoid, mesh and unknown fallbacks
- const float radius = extent(std::max({geom.size_x_m, geom.size_y_m,
- geom.size_z_m}));
- DrawSphereWires(center, std::max(radius, 0.002f), 8, 8, tint);
- break;
- }
+ for (const auto& cylinder : wires.cylinders) {
+ DrawCylinderWiresEx(
+ {cylinder.start.x, cylinder.start.y, cylinder.start.z},
+ {cylinder.end.x, cylinder.end.y, cylinder.end.z},
+ cylinder.radius_m, cylinder.radius_m, 12, tint);
  }
 }
 
