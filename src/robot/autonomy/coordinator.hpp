@@ -185,6 +185,14 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   LocalMap local_map() const;
 
  private:
+ // Clear per-run algorithm state without touching static robot description
+ // (TF extrinsics, plant geometry, and the configured decision period). This
+ // is shared by configure() and cleanup() so a stop/start cycle cannot leave
+ // a stale route, watchdog generation, evidence buffer, or validator map
+ // behind. Static configuration is installed before configure() by
+ // RobotApplication and must remain valid across the reset.
+ void reset_runtime_state();
+
   lifecycle::ModuleState state_ = lifecycle::ModuleState::kUnconfigured;
   platform::ChassisLimits limits_;
   // Speed-envelope governor (control layer): owns the grip factor and the

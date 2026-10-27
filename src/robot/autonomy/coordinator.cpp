@@ -119,10 +119,7 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
   });
 }
 
-core::Status AutonomyCoordinator::configure() {
-    if (!local_planner_) {
-        return core::Status::Fail("autonomy: unknown local planner");
-    }
+void AutonomyCoordinator::reset_runtime_state() {
   estimator_->reset();
   perception_module_->reset();
   mapper_->reset();
@@ -133,7 +130,10 @@ core::Status AutonomyCoordinator::configure() {
  decision_pipeline_.reset();
  observations_.reset();
   decision_ = BehaviorDecision{};
+ goal_ = RoutePoint{};
+ has_goal_ = false;
   active_route_ = Route{};
+ live_map_ = {};
  goal_arrival_.reset();
  goal_arrival_decision_ = GoalArrivalDecision{};
   last_decision_ns_ = core::kInvalidTime;
@@ -141,6 +141,8 @@ core::Status AutonomyCoordinator::configure() {
   replan_requested_ = false;
  local_plan_reset_requested_ = false;
  clear_operator_command();
+ operator_command_generation_ = 0;
+ operator_command_consumed_generation_ = 0;
   last_cmd_ = iface::MotionCommand::SafeStop(0);
   last_constraint_ = "none";
   last_reason_ = "init";
@@ -166,10 +168,16 @@ core::Status AutonomyCoordinator::configure() {
   last_published_stop_ = false;
   grip_.reset();
   traversal_ = TraversalModel{};
-  lidar_mount_z_m_ = 0.35;
   evidence_.reset();
  trajectory_tracking_.reset();
  trajectory_tracking_report_ = {};
+}
+
+core::Status AutonomyCoordinator::configure() {
+ if (!local_planner_) {
+ return core::Status::Fail("autonomy: unknown local planner");
+ }
+ reset_runtime_state();
   state_ = lifecycle::ModuleState::kInactive;
   return core::Status::Ok();
 }
@@ -190,51 +198,7 @@ core::Status AutonomyCoordinator::deactivate() {
 }
 
 core::Status AutonomyCoordinator::cleanup() {
-  estimator_->reset();
-  perception_module_->reset();
-  mapper_->reset();
-  behavior_->reset();
-  local_planner_->reset();
-  controller_->reset();
-  safety_->reset();
- decision_pipeline_.reset();
- observations_.reset();
-  decision_ = BehaviorDecision{};
-  active_route_ = Route{};
-  last_decision_ns_ = core::kInvalidTime;
-  last_map_revision_ = 0;
-  replan_requested_ = false;
- local_plan_reset_requested_ = false;
- clear_operator_command();
-  last_cmd_ = iface::MotionCommand::SafeStop(0);
-  last_constraint_ = "none";
-  last_reason_ = "init";
- last_prediction_horizon_s_ = 0.0;
- last_prediction_hypotheses_ = 0;
- last_validated_static_clearance_m_ =
- std::numeric_limits<double>::infinity();
- last_validated_dynamic_clearance_m_ =
- std::numeric_limits<double>::infinity();
- last_local_costmap_ = {};
- last_validated_swept_envelope_radius_m_ = 0.0;
- last_validated_swept_centerline_.clear();
- last_route_point_count_ = 0;
- last_route_segment_ = 0;
- last_moving_candidate_count_ = 0;
- last_requested_gear_ = 0;
- last_route_error_m_ = std::numeric_limits<double>::infinity();
- last_gear_change_pending_ = false;
- last_gear_change_braking_armed_ = false;
- last_gear_change_endpoint_distance_m_ =
- std::numeric_limits<double>::infinity();
-  latch_.reset();
-  last_published_stop_ = false;
-  grip_.reset();
-  traversal_ = TraversalModel{};
-  lidar_mount_z_m_ = 0.35;
-  evidence_.reset();
- trajectory_tracking_.reset();
- trajectory_tracking_report_ = {};
+ reset_runtime_state();
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
 }
