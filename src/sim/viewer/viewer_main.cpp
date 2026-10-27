@@ -3107,10 +3107,26 @@ void draw_frame_3d(const Frame& f,
   // function the engine builds and the survey rasterizes — the slope you
   // see is the slope the robot climbs.
   {
+ // Keep presentation work bounded for large worlds. The physics heightfield
+ // remains at its authored/tile resolution; the viewer only needs a stable
+ // visual mesh and must not turn a 200,000 m² training map into millions of
+ // draw calls on every frame. Small patches retain the original 0.5 m detail,
+ // while large patches adaptively decimate to at most this many cells per
+ // axis. The endpoint is always sampled, so the visible edge still coincides
+ // with the canonical terrain function.
+ constexpr int kMaxTerrainRenderCellsPerAxis = 160;
+ const auto render_steps = [](const auto& patch) {
+ const double width = std::max(0.0, patch.x1_m - patch.x0_m);
+ const double height = std::max(0.0, patch.y1_m - patch.y0_m);
+ return std::pair<double, double>{
+ std::max(0.5, width / kMaxTerrainRenderCellsPerAxis),
+ std::max(0.5, height / kMaxTerrainRenderCellsPerAxis)};
+ };
     double hmax = 0.2;
     for (const auto& p : f.patches) {
-      for (double x = p.x0_m; x < p.x1_m; x += 0.5) {
-        for (double y = p.y0_m; y < p.y1_m; y += 0.5) {
+ const auto [step_x, step_y] = render_steps(p);
+ for (double x = p.x0_m; x < p.x1_m; x += step_x) {
+ for (double y = p.y0_m; y < p.y1_m; y += step_y) {
           const auto s = world_ns::sample_terrain(
               world.terrain_patches(), world.support_slabs(), x, y);
           hmax = std::max(hmax, s.height_m);
@@ -3118,10 +3134,11 @@ void draw_frame_3d(const Frame& f,
       }
     }
     for (const auto& p : f.patches) {
-      for (double x = p.x0_m; x < p.x1_m; x += 0.5) {
-        for (double y = p.y0_m; y < p.y1_m; y += 0.5) {
-          const double x2 = std::min(x + 0.5, p.x1_m);
-          const double y2 = std::min(y + 0.5, p.y1_m);
+ const auto [step_x, step_y] = render_steps(p);
+ for (double x = p.x0_m; x < p.x1_m; x += step_x) {
+ for (double y = p.y0_m; y < p.y1_m; y += step_y) {
+ const double x2 = std::min(x + step_x, p.x1_m);
+ const double y2 = std::min(y + step_y, p.y1_m);
           const double h00 = world_ns::sample_terrain(
                                  world.terrain_patches(),
                                  world.support_slabs(), x, y)
