@@ -11,6 +11,12 @@ enum class SetpointKind : std::uint8_t {
  kStop = 3,
 };
 
+enum class ControlOwner : std::uint8_t {
+ kHostMotionLoop = 0,
+ kMcuJointLoop = 1,
+ kMcuBodyLoop = 2,
+};
+
 // Fixed-width wire DTO. The host transport serializes ChassisSetpoint into
 // this shape; firmware never receives a C++ object with ownership or strings.
 struct WireSetpoint {
@@ -51,6 +57,7 @@ struct PidConfig {
 };
 
 struct ChassisConfig {
+ ControlOwner owner = ControlOwner::kMcuBodyLoop;
  std::uint8_t drive_count = 2;
  std::uint8_t steer_count = 0;
  float wheel_radius_m = 0.1f;

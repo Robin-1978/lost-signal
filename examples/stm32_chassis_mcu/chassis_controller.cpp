@@ -49,6 +49,15 @@ bool ChassisController::finite_setpoint(const WireSetpoint& setpoint) const {
  setpoint.expiry_ns - setpoint.stamp_ns > config_.max_command_age_ns) {
  return false;
  }
+ switch (setpoint.kind) {
+ case SetpointKind::kDuty:
+ case SetpointKind::kJointVelocity:
+ case SetpointKind::kBodyTwist:
+ case SetpointKind::kStop:
+ break;
+ default:
+ return false;
+ }
  if (!std::isfinite(setpoint.forward_mps) ||
  !std::isfinite(setpoint.lateral_mps) ||
  !std::isfinite(setpoint.yaw_rate_radps) ||
@@ -75,6 +84,16 @@ Status ChassisController::accept(const WireSetpoint& setpoint,
  }
  if (now_ns >= setpoint.expiry_ns) return Status::kWatchdogStop;
  if (setpoint.sequence <= last_sequence_) return Status::kSequence;
+ if ((setpoint.kind == SetpointKind::kDuty &&
+ config_.owner != ControlOwner::kHostMotionLoop) ||
+ (setpoint.kind == SetpointKind::kJointVelocity &&
+ config_.owner != ControlOwner::kMcuJointLoop) ||
+ (setpoint.kind == SetpointKind::kBodyTwist &&
+ config_.owner != ControlOwner::kMcuBodyLoop)) {
+ return Status::kRejected;
+ }
+ if (setpoint.kind == SetpointKind::kBodyTwist &&
+ setpoint.lateral_mps != 0.0f) return Status::kRejected;
  last_sequence_ = setpoint.sequence;
  setpoint_ = setpoint;
  have_setpoint_ = true;

@@ -14,6 +14,10 @@ int main() {
  setpoint.expiry_ns = 100'000'000;
  setpoint.forward_mps = 0.5f;
  assert(controller.accept(setpoint, setpoint.stamp_ns) == Status::kApplied);
+ WireSetpoint wrong_owner = setpoint;
+ wrong_owner.sequence = 2;
+ wrong_owner.kind = SetpointKind::kDuty;
+ assert(controller.accept(wrong_owner, setpoint.stamp_ns) == Status::kRejected);
  EncoderFeedback feedback;
  feedback.valid = true;
  MotorOutput output;

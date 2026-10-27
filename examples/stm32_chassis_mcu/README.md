@@ -6,6 +6,10 @@ twist to differential wheel targets, runs one PID per driven joint with
 conditional anti-windup, clamps duty, and applies a local brake on watchdog
 expiry. Encoder feedback is the only closed-loop measurement.
 
+`ChassisConfig::owner` is part of the board profile. A body-loop board accepts
+`kBodyTwist`, a joint-loop board accepts `kJointVelocity`, and a host-loop board
+accepts `kDuty`; an ownership mismatch is rejected before PID state changes.
+
 The reference is HAL-free and uses fixed-width wire DTOs. A CubeMX project
 should keep `chassis_controller.cpp` in the firmware target and replace the
 transport with CAN, EtherCAT or UART code. The host adapter maps the repository
