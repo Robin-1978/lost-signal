@@ -85,6 +85,11 @@ bool valid_motion_setpoint(const MotionSetpoint& setpoint,
  std::numeric_limits<double>::infinity()) &&
  zero_body && zero_duty;
  case MotionSetpointKind::kBodyTwist:
+ if ((capabilities.chassis_mode == ActuatorMode::kDiffDuty ||
+ capabilities.chassis_mode == ActuatorMode::kAckermannDuty) &&
+ setpoint.lateral_mps != 0.0) {
+ return false;
+ }
  return capabilities.control_owner == MotionControlOwner::kMcuBodyLoop &&
  std::isfinite(setpoint.forward_mps) &&
  std::isfinite(setpoint.lateral_mps) &&

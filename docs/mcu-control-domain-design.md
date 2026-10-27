@@ -109,7 +109,10 @@ SIM 的执行顺序固定为：完成一个物理 quantum，推进 sim time，�
  `test_virtual_mcu` 和 `signal_town_mission` 已通过。下一步再增加 joint/body
  ownership 的转换 adapter 以及同线程/独立线程一致性测试。
 3. Native fake transport：用 fake board 跑 bring-up、过期、乱序、断线、重连和独立停车。主机侧 `IChassisMcuTransport` seam 与 native fake board 单测已在 `test_native_runtime` 中建立。
-4. HIL：将固定周期、延迟、丢包和 MCU watchdog 对应到真实板卡。
+4. HIL：将固定周期、延迟、丢包和 MCU watchdog 对应到真实板卡。仓库提供
+ `examples/stm32_chassis_mcu` 的 HAL-free reference：body twist 在板端转成
+ 差速轮速，固定 `control_period_ns` 调 PID，使用 conditional anti-windup，
+ encoder 是唯一闭环反馈，expiry 触发本地机械停车；独立 CMake host test 已通过。
 5. Hardware profile：用实测 step response 填入能力参数；未测量时保持 safe hold，不能用猜测的默认数字上线。
 
 ## 验收

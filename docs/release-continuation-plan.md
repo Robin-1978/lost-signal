@@ -64,8 +64,10 @@
 - 第 8.1 项已加入 chassis 专属 `ChassisControlOwner`、`ChassisCapabilities`、
  typed `ChassisSetpoint` 及边界校验（保留 Motion* 源兼容别名）；
  `test_motion_contract` 覆盖三种 ownership 与 duty/joint/body 单位隔离，
- `actuation` 和 `robot_boundary` 回归通过。8.2 正在接入 SIM 虚拟 MCU 的
- sim-time deadline 调度、transport queue 与同线程/独立线程结果一致性。
+ `actuation` 和 `robot_boundary` 回归通过。8.2 已接入 SIM 虚拟 MCU 的
+ sim-time deadline 调度、transport queue 与本地 watchdog；`virtual_mcu`、
+ `signal_town_mission` 回归通过。8.3 已增加 `IChassisMcuTransport` 真机 seam
+ 和 `examples/stm32_chassis_mcu` 的固定周期 PID reference/CMake host test。
 - 第 1 项已经完成：候选预算先覆盖不同历史模式，入选候选全部完成 coarse/refine/reverse 验证后统一比较双向 score 与 overlap；相同 correction mode 内只有同一个历史锚点 ID 才能完成跨时序确认。
 - `test_loop_closure` 首次回环发生在完成 east、north、west 三个目标后；SIM 真值距起点 0.305 m 只写入失败诊断。`slam` 与 `loop_closure` 均连续通过 3 次，`truth_isolation` 与 `robot_boundary` 通过。
 - 第 2 项已经完成：2.5 m 教学路线完成 4/4 目标且零碰撞；终端捕获按底盘运动能力修复，没有放宽到达阈值或延长任务时间。`slam_experience_mission` 连续重复三次通过，相关 14 项定位、SLAM、Experience、truth-isolation 和 boundary 回归通过。
