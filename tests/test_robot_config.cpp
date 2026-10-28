@@ -34,6 +34,7 @@ int main() {
  assert(cfg.motion.acceleration_mps2 == 2.0);
  assert(cfg.motion.brake_deceleration_mps2 == 2.0);
  assert(cfg.motion.yaw_acceleration_radps2 == 8.0);
+    assert(cfg.motion.execution_fault_confirmation_s == 0.2);
     assert(!cfg.sensors.empty() && !cfg.links.empty());
     assert(cfg.robot_id == "ro1");
     // Both sides from one config.
@@ -46,6 +47,8 @@ int main() {
  assert(desc.motion.acceleration_mps2 == cfg.motion.acceleration_mps2);
  assert(desc.motion.brake_deceleration_mps2 ==
  cfg.motion.brake_deceleration_mps2);
+ assert(desc.motion.execution_fault_confirmation_s ==
+        cfg.motion.execution_fault_confirmation_s);
     assert(desc.sensors.size() == cfg.sensors.size());
     const auto motor = sim::eval::motor_from_config(cfg);
     assert(motor.wheel_radius_m == 0.1);

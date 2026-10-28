@@ -99,7 +99,9 @@ plant、不会反向驱动车辆，并覆盖非法请求和过期降级。低抓
 
 ### P1-3 轨迹执行超差只有诊断，没有故障闭环
 
-`TrajectoryTrackingSystem` 比较最终发布命令与后续 ROBOT 估计，但报告明确不 veto motion。持续超差、actuator stuck、runaway 或 command-vs-feedback 不一致不会 latch fault、停车或触发重规划。
+**已完成（2026-10-28）。** `ExecutionMonitor` 已从轨迹诊断中独立出来，按 ROBOT 自己的 command 与 odom 反馈判断无响应、方向相反、停车后仍运动和反馈过期。故障确认使用机器描述中的执行延迟与确认时间，锁存后直接要求 safe stop；恢复必须由外部停稳检查后显式确认。该模块不读取 SIM truth，也不让 Coordinator 重新拥有执行策略。
+
+`TrajectoryTrackingSystem` 继续负责轨迹误差趋势诊断；执行监控负责 command-vs-feedback 的安全闭环。两者都只使用 ROBOT 已发布的命令和自身估计，不把 SIM 真值、接触或碰撞信息带入控制。
 
 应将持续时间、超差趋势和可达包络判断下沉为独立执行监控模块；瞬时超差只诊断，连续不可达或反向运动进入故障状态，发布软停车或紧急停车，并要求明确恢复条件。Coordinator 只串联结果。
 

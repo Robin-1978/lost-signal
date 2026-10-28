@@ -78,6 +78,10 @@ struct MotionDynamicsPolicy {
  double yaw_acceleration_radps2 = 8.0;
  double actuator_response_delay_s = 0.1;
  double safety_reaction_time_s = 0.2;
+  // Execution supervision uses the declared actuator delay plus this
+  // reaction interval to confirm a persistent command/feedback fault. These
+  // are machine policy fields so SIM, replay and native use one contract.
+  double execution_fault_confirmation_s = 0.2;
 };
 
 // Declared plant loadout for autonomy envelopes (rollover support/COM,

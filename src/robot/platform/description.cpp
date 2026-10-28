@@ -45,6 +45,8 @@ bool valid_robot_description(const RobotDescription& desc) {
  desc.motion.actuator_response_delay_s < 0.0) return false;
  if (!std::isfinite(desc.motion.safety_reaction_time_s) ||
  desc.motion.safety_reaction_time_s < 0.0) return false;
+ if (!std::isfinite(desc.motion.execution_fault_confirmation_s) ||
+ desc.motion.execution_fault_confirmation_s < 0.0) return false;
   if (desc.plant.track_width_m <= 0.0) return false;
   if (desc.plant.wheel_radius_m <= 0.0) return false;
  if (desc.plant.body_half_length_m <= 0.0 ||

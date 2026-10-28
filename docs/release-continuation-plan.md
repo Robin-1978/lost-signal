@@ -78,6 +78,9 @@
 - Fast/Turbo/direct 3D 路径移除无 shadow-map 时的假地面圆盘阴影；高质量路径继续使用物理 shadow map。
 - 回归：`test_slam`、`test_autonomy`、`test_localization`、`test_viewer_frame`、`test_experience_mission`、`test_slam_experience_mission` 已通过；无图路线首次回环在 east/north/west 三个目标完成后的真实重访阶段，2.5 m 路线 4/4、零碰撞。
 
+- 执行跟踪故障闭环已下沉到 `autonomy/diagnostics/execution_monitor.*`：它只比较 ROBOT 已接受的 body command 与连续 odom 反馈，使用机器人 arrival policy 的速度观测带、已声明的 actuator response delay 和 `motion.execution_fault_confirmation_s`；持续无响应、反向运动、停车后失控运动或反馈过期会锁存 safe stop，单帧异常不会触发。恢复必须由外部停稳后显式调用 `acknowledge_execution_recovery()`，规划器和新目标不会自动清除故障。
+- 该监控同时接入 SIM、replay 和 native runtime 的同一 `RobotApplication`，诊断输出为 `exec=...`；没有读取 MuJoCo contact、摩擦、碰撞、actor 或 score。新增 `test_execution_monitor` 覆盖响应、确认窗口、锁存、反向、失控运动、反馈丢失和 yaw 方向，`test_robot_config` 校验机器描述字段。
+
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
 - `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
 - 当前阶段：第 8 项契约子阶段；第 1–7 项的主要交付已独立提交，不得重新实现或回退已经验收的边界。
@@ -361,7 +364,7 @@
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
 | 7. 模型与场景升级 | 已完成 | `525116c`, `53bd9cf`, `d9cebd6`, `f2e3a5b`, `e6e17fd`, `904f0cb`, `4e3a75a`, `8fa94cb`, `62d741a` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk`、叉车六分部件 link 绑定、Blender 环境资产、碰撞几何/COM/joint/contact 工程视图和姿态回归均已完成；当前只保留发布后的场景体验扩展 |
-| 8. MCU 确定性控制域与真机适配 | 进行中 | `7fcef12` | UART/CAN/SPI/USB transport、虚拟 MCU、STM32 reference、typed chassis ownership 和 native profile startup handshake 已接入；仍需板卡级实测 profile/HIL 验收 |
+| 8. MCU 确定性控制域与真机适配 | 进行中 | `7fcef12` + 工作区 | UART/CAN/SPI/USB transport、虚拟 MCU、STM32 reference、typed chassis ownership、native profile startup handshake 和 ROBOT 执行反馈故障闭环已接入；仍需板卡级实测 profile/HIL 验收 |
 | 9. 自动标定与 hardware profile | 第一切已完成 | `5f5cb25` 及既有 calibration 提交 | 离线 median wheel-scale/IMU bias、artifact digest/JSON、在线有界更新和 rollback 已通过单测；真实记录文件导入、温度/载荷 profile 和 HIL 仍待接入 |
 
 ### 阶段 7 叉车 link 子阶段（已完成，`f2e3a5b`）

@@ -593,7 +593,9 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
  {"actuator_response_delay_s",
  &out.motion.actuator_response_delay_s, false},
  {"safety_reaction_time_s",
- &out.motion.safety_reaction_time_s, false}};
+ &out.motion.safety_reaction_time_s, false},
+ {"execution_fault_confirmation_s",
+ &out.motion.execution_fault_confirmation_s, false}};
  for (const auto& slot : slots) {
  if (!take_num(*motion, slot.key, value, present, err)) return false;
  if (!present) continue;

@@ -85,6 +85,11 @@ class RobotApplication : public IRobot {
   coordinator_.set_operator_command(forward_mps, yaw_rate_radps);
  }
  void clear_operator_command() { coordinator_.clear_operator_command(); }
+ // Clears a latched execution fault only after the hardware/operator has
+ // confirmed a stationary safe state; no planner tick clears it implicitly.
+ void acknowledge_execution_recovery() {
+   coordinator_.acknowledge_execution_recovery();
+ }
 
   // Task / map intent (typed, no coordinates from SIM truth).
   // Async: returns a handle immediately; poll goal_status, cancel_goal.
@@ -169,6 +174,7 @@ class RobotApplication : public IRobot {
     std::string safety_reason = "init";
     autonomy::diagnostics::DecisionEvidence evidence;
  autonomy::diagnostics::TrajectoryTrackingReport trajectory_tracking;
+ autonomy::diagnostics::ExecutionMonitorReport execution_monitor;
     bool braking_active = false;
     double braking_distance_m = 0.0;
     std::string slip_quality = "Invalid";

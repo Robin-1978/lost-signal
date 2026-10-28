@@ -353,6 +353,7 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
   d.safety_reason = coordinator_.last_safety().reason;
   d.evidence = coordinator_.last_evidence();
  d.trajectory_tracking = coordinator_.last_trajectory_tracking();
+ d.execution_monitor = coordinator_.last_execution_monitor();
   d.braking_active = measurement_.braking().active;
   d.braking_distance_m = measurement_.braking().distance_m;
   d.slip_quality = autonomy::slip_quality_name(coordinator_.last_slip().quality);

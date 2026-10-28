@@ -10,6 +10,7 @@
 #include "robot/autonomy/decision/goal_arrival.hpp"
 #include "robot/autonomy/decision/autonomy_pipeline.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
+#include "robot/autonomy/diagnostics/execution_monitor.hpp"
 #include "robot/autonomy/diagnostics/trajectory_tracking.hpp"
 #include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/autonomy/safety/safety.hpp"
@@ -182,6 +183,13 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  diagnostics::TrajectoryTrackingReport last_trajectory_tracking() const {
  return trajectory_tracking_report_;
  }
+  diagnostics::ExecutionMonitorReport last_execution_monitor() const {
+    return execution_monitor_report_;
+  }
+  // Explicit operator/bring-up recovery after the external device has been
+  // held safe and feedback has been verified. A latched execution fault is
+  // never cleared by a planner tick or by a new goal.
+  void acknowledge_execution_recovery() { execution_monitor_.clear_fault(); }
   core::MonotonicNs last_decision_ns() const { return last_decision_ns_; }
   LocalMap local_map() const;
 
@@ -274,6 +282,11 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  diagnostics::TrajectoryTrackingSystem trajectory_tracking_;
  diagnostics::TrajectoryTrackingReport trajectory_tracking_report_;
  diagnostics::TrajectoryTrackingLimits trajectory_tracking_limits_;
+ diagnostics::ExecutionMonitor execution_monitor_;
+ diagnostics::ExecutionMonitorReport execution_monitor_report_;
+  // The monitor observes what passed the independent Safety gate, never the
+  // planner's rejected proposal retained in last_cmd_.
+  iface::MotionCommand last_executed_command_ = iface::MotionCommand::SafeStop(0);
 };
 
 }  // namespace lost_signal::robot::autonomy

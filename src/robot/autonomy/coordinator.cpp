@@ -100,6 +100,13 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
  tracking_margin_m / decision_period_s;
  trajectory_tracking_limits_.yaw_rate_radps =
  trajectory_tracking_limits_.heading_rad / decision_period_s;
+ execution_monitor_ = diagnostics::ExecutionMonitor(
+     {.velocity_deadband_mps = arrival_config.maximum_forward_speed_mps,
+      .yaw_rate_deadband_radps = arrival_config.maximum_yaw_rate_radps,
+      .response_delay_s = motion_policy.actuator_response_delay_s,
+      .safety_reaction_time_s = motion_policy.safety_reaction_time_s,
+      .brake_deceleration_mps2 = motion_policy.brake_deceleration_mps2,
+      .confirmation_s = motion_policy.execution_fault_confirmation_s});
   // The traversal belief prices roughness for route choice for the life of
   // the coordinator (the model object is a member: rebinds never dangle).
   global_planner_->set_traversal(&traversal_);
@@ -171,6 +178,9 @@ void AutonomyCoordinator::reset_runtime_state() {
   evidence_.reset();
  trajectory_tracking_.reset();
  trajectory_tracking_report_ = {};
+ execution_monitor_.reset();
+ execution_monitor_report_ = {};
+ last_executed_command_ = iface::MotionCommand::SafeStop(0);
 }
 
 core::Status AutonomyCoordinator::configure() {
@@ -490,6 +500,11 @@ has_goal_, map, force_route_refresh, reset_local_plan,
   // brake/accelerate limit cycle. Independent of planner yaw intent.
   const double tread_mps = std::abs(estimator_->estimate().forward_mps);
   iface::MotionCommand gated = last_cmd_;
+  if (execution_monitor_report_.stop_required) {
+    gated = iface::MotionCommand::SafeStop(now_ns);
+    last_constraint_ = "execution_fault";
+    last_reason_ = execution_monitor_report_.diagnostic;
+  }
   if (latch_.update(last_published_stop_, tread_mps,
                     ControlledStopLatch::Config{})) {
     gated = iface::MotionCommand::SafeStop(now_ns);
@@ -503,6 +518,12 @@ has_goal_, map, force_route_refresh, reset_local_plan,
   iface::MotionCommand final_cmd = safety_->gate(gated, verdict, now_ns);
  verdict = safety_->last_verdict();
   last_published_stop_ = final_cmd.is_safe_stop();
+  last_executed_command_ = final_cmd;
+  // Observe the command that was actually accepted by the final Safety gate.
+  // The report is consumed on the next tick, so a planner transition to a
+  // stop is evaluated as braking rather than as a stale nonzero request.
+  execution_monitor_report_ = execution_monitor_.update(
+      last_executed_command_, odom, now_ns);
   // One evidence record per distinct decision; repeats update in place.
   diagnostics::DecisionEvidence evidence;
  evidence.observation_time_s = latest_observation.stamp_ns * 1e-9;
