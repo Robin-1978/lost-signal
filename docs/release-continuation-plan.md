@@ -335,7 +335,7 @@
 - `0752b1a fix: stabilize shadow camera basis` 修正了阴影 texel snapping 与实际阴影相机 up basis 不一致造成的投影漂移；Xvfb 3D evidence 截图和 `viewer_frame`、`scene_manifest`、`experience_manifest`、`playback_controller` 回归通过。
 - `dc47513 feat: author town presentation scenes` 为 `signal_town` 与 `signal_town_big` 增加同名 authored scene。世界文件仍是唯一碰撞/物理来源；scene 中无碰撞的装饰只使用 `surface_only`，高度约束由 scene loader 强制检查。Viewer catalog 现在将两个世界标为 `scene=authored`。
 - 直接 `sim_viewer --map` 会执行该地图的全部 named places；当前 big town 运行到第 3/5 个目标时仍持续推进，未复现“第一目标后停住”。若 UI 处于 briefing/prediction，必须先完成首屏 walkaround 和 prediction 选择，暂停是教学流程状态，不是仿真卡死。
-- 当前下一步仍是第 7 项：继续把坡面、连续地形、工业和手动 sandbox 的 world 同名 scene 与可验证 GLB 环境资产补齐；随后完成 Release 1x/8x/64x/Turbo/headless 统一性能报告、代码重复清理和全量 CTest 串行门禁。
+- 第 7 项的物理驱动模型、环境 GLB、碰撞/COM/joint/contact 工程视图已完成；当前工作转入发布目录门禁和第 8/9 项真机 profile/HIL 收尾。坡面、冰面、复杂场景和手动 sandbox 已在 catalog、Release smoke 与独立任务测试中可见。
 
 ### Release 性能复测（2026-10-28）
 
@@ -347,6 +347,8 @@
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
 | 7. 模型与场景升级 | 已完成 | `525116c`, `53bd9cf`, `d9cebd6`, `f2e3a5b`, `e6e17fd`, `904f0cb`, `4e3a75a`, `8fa94cb`, `62d741a` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk`、叉车六分部件 link 绑定、Blender 环境资产、碰撞几何/COM/joint/contact 工程视图和姿态回归均已完成；当前只保留发布后的场景体验扩展 |
+| 8. MCU 确定性控制域与真机适配 | 进行中 | `7fcef12` | UART/CAN/SPI/USB transport、虚拟 MCU、STM32 reference、typed chassis ownership 和 native profile startup handshake 已接入；仍需板卡级实测 profile/HIL 验收 |
+| 9. 自动标定与 hardware profile | 第一切已完成 | `5f5cb25` 及既有 calibration 提交 | 离线 median wheel-scale/IMU bias、artifact digest/JSON、在线有界更新和 rollback 已通过单测；真实记录文件导入、温度/载荷 profile 和 HIL 仍待接入 |
 
 ### 阶段 7 叉车 link 子阶段（已完成，`f2e3a5b`）
 
