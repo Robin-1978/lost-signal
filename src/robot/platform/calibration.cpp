@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <cstring>
 #include <cmath>
+#include <fstream>
 #include <limits>
 #include <numeric>
+#include <sstream>
+#include <stdexcept>
 #include <utility>
 
 namespace lost_signal::robot::platform {
@@ -317,6 +320,81 @@ bool calibration_from_json(const core::Json& value,
  }
  out = std::move(parsed);
  return true;
+}
+
+bool load_calibration_measurements_csv(
+    const std::string& path, std::vector<CalibrationMeasurement>& out,
+    std::string* error) {
+  std::ifstream input(path);
+  if (!input.is_open()) {
+    fail(error, "cannot open calibration CSV");
+    return false;
+  }
+  std::vector<CalibrationMeasurement> parsed;
+  std::string line;
+  std::size_t line_number = 0;
+  while (std::getline(input, line)) {
+    ++line_number;
+    const auto first = line.find_first_not_of(" \t\r");
+    if (first == std::string::npos || line[first] == '#') continue;
+    std::vector<std::string> fields;
+    std::stringstream row(line.substr(first));
+    std::string field;
+    while (std::getline(row, field, ',')) {
+      const auto begin = field.find_first_not_of(" \t\r");
+      const auto end = field.find_last_not_of(" \t\r");
+      fields.push_back(begin == std::string::npos
+                          ? std::string{}
+                          : field.substr(begin, end - begin + 1));
+    }
+    if (fields.size() == 10 && fields[0] == "timestamp_s") continue;
+    if (fields.size() != 10) {
+      if (error != nullptr) {
+        *error = "calibration CSV line " + std::to_string(line_number) +
+                 " must contain 10 fields";
+      }
+      return false;
+    }
+    CalibrationMeasurement sample;
+    double* values[] = {
+        &sample.timestamp_s, &sample.wheel_distance_m,
+        &sample.reference_distance_m, &sample.accel_mps2[0],
+        &sample.accel_mps2[1], &sample.accel_mps2[2],
+        &sample.gyro_radps[0], &sample.gyro_radps[1],
+        &sample.gyro_radps[2]};
+    for (std::size_t index = 0; index < 9; ++index) {
+      try {
+        std::size_t consumed = 0;
+        *values[index] = std::stod(fields[index], &consumed);
+        if (consumed != fields[index].size() ||
+            !std::isfinite(*values[index])) throw std::invalid_argument("number");
+      } catch (...) {
+        if (error != nullptr) {
+          *error = "calibration CSV line " + std::to_string(line_number) +
+                   " has an invalid numeric field";
+        }
+        return false;
+      }
+    }
+    if (fields[9] == "1" || fields[9] == "true") {
+      sample.stationary = true;
+    } else if (fields[9] == "0" || fields[9] == "false") {
+      sample.stationary = false;
+    } else {
+      if (error != nullptr) {
+        *error = "calibration CSV line " + std::to_string(line_number) +
+                 " has an invalid stationary flag";
+      }
+      return false;
+    }
+    parsed.push_back(sample);
+  }
+  if (parsed.empty()) {
+    fail(error, "calibration CSV contains no measurements");
+    return false;
+  }
+  out = std::move(parsed);
+  return true;
 }
 
 } // namespace lost_signal::robot::platform

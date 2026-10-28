@@ -101,4 +101,15 @@ class OnlineCalibrator {
 bool calibration_from_json(const core::Json& value,
  CalibrationArtifact& out, std::string* error = nullptr);
 
+// Portable offline-record bridge. The file contains one measurement per row
+// in the order documented below; a header row is optional. It is deliberately
+// a small CSV reader so a field log can be calibrated without pulling a
+// simulator or a third-party serialization library into ROBOT.
+//
+// timestamp_s,wheel_distance_m,reference_distance_m,
+// accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,stationary
+bool load_calibration_measurements_csv(
+    const std::string& path, std::vector<CalibrationMeasurement>& out,
+    std::string* error = nullptr);
+
 } // namespace lost_signal::robot::platform

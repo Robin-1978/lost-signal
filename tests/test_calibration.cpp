@@ -1,5 +1,7 @@
 #include <cassert>
 #include <cmath>
+#include <fstream>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -63,5 +65,33 @@ int main() {
  assert(std::abs(online.artifact().wheel_radius_scale - 1.05) < 1e-9);
  assert(updated != online.artifact().wheel_radius_scale);
  assert(!online.update_wheel_scale(0.5, 0.5));
+
+ const auto csv = std::filesystem::temp_directory_path() /
+                  "lost_signal_calibration_measurements.csv";
+ {
+  std::ofstream output(csv);
+  assert(output.is_open());
+  output << "timestamp_s,wheel_distance_m,reference_distance_m,"
+            "accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,stationary\n";
+  output << "0,10,10.5,0.1,-0.02,9.82,0.001,-0.002,0.003,true\n";
+  output << "1,10.1,10.605,0.1,-0.02,9.82,0.001,-0.002,0.003,0\n";
+ }
+ std::vector<CalibrationMeasurement> loaded;
+ assert(load_calibration_measurements_csv(csv.string(), loaded, &error));
+ assert(loaded.size() == 2);
+ assert(loaded.front().stationary);
+ assert(!loaded.back().stationary);
+ std::filesystem::remove(csv);
+
+ const auto bad_csv = std::filesystem::temp_directory_path() /
+                      "lost_signal_bad_calibration_measurements.csv";
+ {
+  std::ofstream output(bad_csv);
+  assert(output.is_open());
+  output << "0,10,10.5,0,0,9.8,0,0,0,maybe\n";
+ }
+ assert(!load_calibration_measurements_csv(bad_csv.string(), loaded, &error));
+ assert(!error.empty());
+ std::filesystem::remove(bad_csv);
  return 0;
 }
