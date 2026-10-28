@@ -117,14 +117,25 @@ bool NativeRuntime::cycle(core::MonotonicNs now_ns) {
  observation = iface::ObservationFrame{};
  }
 
- application_.tick(now_ns);
  conformance_.check_liveness(now_ns);
+ const auto conformance_report = conformance_.report(now_ns);
+ {
+  std::lock_guard<std::mutex> lock(stats_mutex_);
+  stats_.conformance_failures = conformance_report.failures.size();
+ }
+ if (!conformance_report.failures.empty()) {
+  // A provider stream violation is a hardware fault, not an algorithmic
+  // input to recover from. Stop before another ROBOT decision can consume a
+  // malformed or stale measurement.
+  mechanical_stop(now_ns, false);
+  return false;
+ }
+ application_.tick(now_ns);
  const iface::ActuatorCommand command = application_.take_actuator(now_ns);
  const bool written = publish_output(command, now_ns);
  {
  std::lock_guard<std::mutex> lock(stats_mutex_);
  ++stats_.cycles;
- stats_.conformance_failures = conformance_.report(now_ns).failures.size();
  }
  return written;
 }

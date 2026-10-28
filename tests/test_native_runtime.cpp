@@ -174,6 +174,23 @@ int main() {
   assert(rejected_adapter.writes() == 0);
  }
 
+ {
+  app::RobotApplication malformed_application(nullptr);
+  FakeNativeAdapter malformed_adapter;
+  app::NativeRuntime malformed_runtime(
+      malformed_application, malformed_adapter,
+      {.decision_period_ns = 1'000'000});
+  assert(malformed_runtime.start());
+  const core::MonotonicNs malformed_now = app::native_monotonic_now_ns();
+  auto malformed = lidar(malformed_now);
+  malformed.sequence = 0;
+  malformed_adapter.push(std::move(malformed));
+  assert(!malformed_runtime.cycle(malformed_now));
+  assert(malformed_runtime.stats().conformance_failures > 0);
+  assert(malformed_adapter.stops() >= 1);
+  malformed_runtime.shutdown();
+ }
+
  app::RobotApplication application(nullptr);
  FakeNativeAdapter adapter;
  app::NativeRuntime runtime(
