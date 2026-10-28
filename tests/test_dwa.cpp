@@ -209,6 +209,37 @@ int main() {
  assert(p.best.yaw_rate_radps > 0.05);
  }
 
+ // A raw terminal position capture remains actionable when the confidence
+ // radius is wider than the pose tolerance. The planner may settle heading
+ // evidence, while GoalArrivalPolicy still withholds completion until the
+ // confidence contract is satisfied.
+ {
+   LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+   EstimatedState est;
+   est.valid = true;
+   est.stamp_ns = 1'000'000;
+   est.x_m = 1.90;
+   est.y_m = 0.0;
+   est.yaw_rad = 0.8;
+   est.position_sigma_m = 0.20;
+   est.heading_sigma_rad = 0.01;
+   PerceptionResult perc;
+   perc.scan_ok = true;
+   Route route;
+   route.valid = true;
+   route.points = {{0.0, 0.0, 0.0, 1}, {2.0, 0.0, 0.0, 1}};
+   DwaPlannerConfig config;
+   config.terminal_position_tolerance_m = 0.20;
+   config.terminal_heading_tolerance_rad = 0.20;
+   DwaPlanner planner(config);
+   const LocalPlan uncertain_capture = planner.plan(
+       est, perc, m, route, limits);
+   assert(uncertain_capture.has_plan);
+   assert(uncertain_capture.moving_candidate_count > 0);
+   assert(std::abs(uncertain_capture.best.forward_mps) < 1e-9);
+   assert(uncertain_capture.best.yaw_rate_radps < -0.05);
+ }
+
  // DWA threads a gap: wall with a 2 m opening, goal straight through.
   {
     LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);

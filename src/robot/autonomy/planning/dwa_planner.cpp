@@ -537,10 +537,16 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // covariance. The distance is the lateral displacement induced by the
  // configured heading tolerance over the footprint radius, so it carries no
  // map- or mission-specific threshold.
- const double terminal_heading_capture_m = std::min(
- terminal_position_reset_tolerance_m,
- std::max(0.0, terminal_heading_tolerance_rad) *
- std::max(0.0, limits.footprint_radius_m));
+ // A confidence radius wider than the terminal envelope must not claim
+ // arrival, but it must not remove the controller's ability to settle the
+ // requested heading either.  Once the ROBOT estimate is inside the raw
+ // terminal position contract, let the same terminal manoeuvre run while
+ // GoalArrivalPolicy continues to require confidence-bounded pose evidence.
+ // This keeps the manoeuvre tied to the declared position tolerance rather
+ // than introducing a second distance threshold derived from a footprint or
+ // a map cell.
+ const double terminal_heading_capture_m =
+     terminal_position_reset_tolerance_m;
  const bool high_uncertainty_terminal_capture =
  std::isfinite(terminal_position_confidence_radius_m) &&
  terminal_position_confidence_radius_m >= terminal_position_reset_tolerance_m &&
@@ -828,7 +834,13 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // below and in-place rotation becomes the required terminal progress.
  if (!terminal_position_reached) {
  return std::hypot(forward, lateral) > 1e-9 ||
- (terminal_bearing_capture && std::abs(angular) > 1e-9);
+ (terminal_bearing_capture && std::abs(angular) > 1e-9) ||
+ // A raw terminal capture can be active while the confidence-bounded
+ // position radius is still wider than the declared pose envelope.  Heading
+ // rotation is then the only observable manoeuvre that can improve the
+ // terminal evidence; do not classify it as non-progress merely because the
+ // confidence gate has (correctly) withheld arrival.
+ (terminal_heading_mode && std::abs(angular) > 1e-9);
  }
  const double horizon_s = std::max(0.0, predict_T);
  const double spatial_resolution_m = std::max(1e-6, map.resolution_m);

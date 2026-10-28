@@ -723,6 +723,17 @@ bool LocalizationSystem::try_local_correction(
  innovation_m > position_limit || innovation_rad > heading_limit;
  }
  if (innovation_rejected) {
+   // A bounded scan match outside the current innovation gate is still
+   // positive evidence that the map-frame covariance is too optimistic. Feed
+   // the rejected innovation into the estimator's uncertainty model without
+   // moving the pose. This preserves REP-105 odom continuity and lets the
+   // supervisor escalate to a wider recovery search only when the measured
+   // residual has actually grown the belief beyond its loss envelope.
+   if (std::isfinite(innovation_m) && std::isfinite(innovation_rad)) {
+     estimator.note_absolute_rejection(
+         match.x_m - est.x_m, match.y_m - est.y_m,
+         core::wrap_angle(match.yaw_rad - est.yaw_rad), obs.stamp_ns);
+   }
  supervisor_.record_local(false, match);
  action = partial_observation
  ? "local_correction:partial innovation rejected"

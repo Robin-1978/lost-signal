@@ -211,6 +211,8 @@ int main() {
  FusedOdometryEstimator separated_estimator;
  separated_estimator.reset();
  separated_estimator.seed_pose(2.0, 0.4, 0.0, 0.4, 0.1, 1);
+ const double separated_sigma_before =
+     separated_estimator.estimate().position_sigma_m;
  RayClearingMapper separated_mapper;
  const auto separated = separated_localization.update(
  map, observation, observation.stamp_ns, true,
@@ -219,6 +221,8 @@ int main() {
  "local_correction:partial innovation rejected");
  assert(std::abs(separated_estimator.estimate().x_m - 2.0) < 1e-9);
  assert(std::abs(separated_estimator.estimate().y_m - 0.4) < 1e-9);
+ assert(separated_estimator.estimate().position_sigma_m >
+        separated_sigma_before);
 
  // A decisive global candidate entering temporal recovery must survive the
  // same wall ridge. Later scans validate the observable wall normal and yaw;
