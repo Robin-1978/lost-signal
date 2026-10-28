@@ -4328,6 +4328,7 @@ std::string robot_path, sim_path, map_path, assets_path, scene_path,
  bool initial_show_robot_evidence = false;
  bool list_worlds = false;
  bool list_experiences = false;
+ bool catalog_requested = false;
  // Reproducible engineering overlay for screenshots: COM, joint axes,
  // contact evidence and collision-proxy wireframes. It shares the SIM
  // debug gate with the K toggle and is refused during experience runs.
@@ -4361,6 +4362,7 @@ std::string robot_path, sim_path, map_path, assets_path, scene_path,
  if (a == "--list-worlds") list_worlds = true;
  if (a == "--list-experiences") list_experiences = true;
  if (a == "--catalog") {
+ catalog_requested = true;
  list_worlds = true;
  list_experiences = true;
  }
@@ -4507,6 +4509,10 @@ std::string robot_path, sim_path, map_path, assets_path, scene_path,
  manifest.experience_id.c_str(), manifest.objectives.size(),
  manifest.title.c_str());
  }
+ }
+ if (catalog_requested) {
+ std::puts("SANDBOX manual_control       mode=operator body_command=WASD/arrows "
+           "safety=validator+raw_scan+watchdog");
  }
  return 0;
  }

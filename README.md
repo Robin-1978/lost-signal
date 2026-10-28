@@ -116,6 +116,12 @@ The complete Viewer catalog is discoverable without opening a window:
 ./build/sim_viewer --catalog
 ```
 
+The catalog includes the open `SANDBOX manual_control` course as well as every
+authored chapter. In the sandbox, `H` enables operator control and `WASD` or
+the arrow keys publish a typed body command through the same validator, raw
+scan safety monitor, watchdog, and MuJoCo actuator path used by autonomous
+runs.
+
 The catalog includes the five-stop Signal Town, the five-stop expanded town,
 the 200,000 m² industrial route, continuous terrain, the proving ground,
 Ice Lab, orchard hillside, stormglass station, and washout canyon. Every
