@@ -47,17 +47,23 @@
 - feedback endpoint 的 profile/sequence/故障字段和启动 zero-state 自检；
 - adapter 的非阻塞 I/O 约束。`poll_observation()` 和 `write_actuator()` 是接口合同，但目前没有运行时检测阻塞或独立 I/O 队列。
 
-### B. Provider conformance 还主要是测试能力
+### B. Provider conformance 已接入 native runtime，仍需设备级故障策略
 
-`ProviderConformanceMonitor` 已检查来源、帧、序列、采集时间、future skew、速率和静默，但 `RobotApplication::publish_observation()` 目前主要做结构/ownership/队列校验。真机发布时，应在 NativeRuntime bring-up 和运行期都接入 monitor：
+`ProviderConformanceMonitor` 已检查来源、帧、序列、采集时间、future skew、速率和静默；
+`NativeRuntime` 在 bring-up 注册 endpoint expectation，并在每个 cycle 观察原始 provider
+frame，native stats 暴露累计失败数。`RobotApplication::publish_observation()` 继续负责
+结构/ownership/队列校验，两层职责没有合并：
 
 - activate 前检查 endpoint expectation、单位、frame、nominal rate；
 - 运行期把 silence、重复序列、时间倒退和过期升级为可观测 health；
 - health 只允许安全降级或停车，不能绕过 Safety。
 
-### C. 标定设计还没有 artifact 实现
+### C. 标定 artifact 已有第一切，仍需设备 profile 持久化
 
-`docs/calibration-design.md` 已定义离线/在线参数、hash、协方差、适用范围、父版本和回滚，但仓库还需要版本化 schema、序列化 digest、原子写入、启动校验和 rollback journal。没有实测 profile 时必须 safe hold；不能用源码默认轮径、PID、波特率或摩擦系数冒充标定结果。
+`robot/platform/calibration.*` 已提供版本化 schema、序列化 digest、CSV 实测记录导入、
+median wheel-scale/IMU bias 拟合、在线有界更新和 rollback checkpoint；真实设备仍需
+补原子持久化、温度/载荷 profile 与 HIL journal。没有实测 profile 时必须 safe hold；不能
+用源码默认轮径、PID、波特率或摩擦系数冒充标定结果。
 
 ### D. 几何安全仍以圆形 footprint 为主
 

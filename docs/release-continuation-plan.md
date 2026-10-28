@@ -108,6 +108,10 @@
   hash、profile/revision、ownership、单位、关节布局和 calibration artifact。拒绝时
   不会注册 provider，也不会产生 actuator output。`test_native_runtime` 覆盖拒绝和
   正常路径，保持 SIM/ROBOT 边界门禁通过。
+- 8.8 已把 `ProviderConformanceMonitor` 接到 `NativeRuntime`：启动时注册 endpoint
+  期望，运行时检查结构、来源/frame、序列、采集时间、速率和静默，并把失败计数
+  暴露到 native stats；适配器可声明每个 endpoint 的 nominal rate。监控只读取
+  provider 测量，不改变 ROBOT 估计或引入 SIM 真值。
 
  - Sandbox 手动控制已接入同一 RobotApplication/ScenarioSession seam：Viewer 的
  `H` + `WASD`/方向键只发布限幅的 body command，仍经过 ROBOT validator、raw-scan
