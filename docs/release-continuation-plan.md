@@ -98,8 +98,16 @@
  schema、机器人 description/profile pin、输入 digest、稳健 median wheel-scale
  拟合、静止 IMU bias 拟合、JSON round-trip，以及带确认窗口、步长/范围限制和
  checkpoint rollback 的在线更新。`test_calibration` 覆盖坏值、摘要保留和回滚。
- 下一步仍需把真实记录文件和硬件启动 handshake 接到 native profile；在此之前任何
- 硬件 profile 仍保持实测/手工配置，不用运行时猜测值替代标定结果。
+ 真实记录文件和硬件启动 handshake 现在分别由 calibration artifact 与
+ `INativeAdapter::validate_startup_profile()` 接入；具体板卡仍必须提供实测 profile，
+ 不用运行时猜测值替代标定结果。
+
+- 8.7 已把真实硬件 handshake 变成 `INativeAdapter::validate_startup_profile()`
+  的显式 seam。`NativeRuntime` 在注册 endpoint、配置 ROBOT 或启动 watchdog
+  之前调用它；UART、CAN、USB 或 SPI adapter 可以在这里校验 robot description
+  hash、profile/revision、ownership、单位、关节布局和 calibration artifact。拒绝时
+  不会注册 provider，也不会产生 actuator output。`test_native_runtime` 覆盖拒绝和
+  正常路径，保持 SIM/ROBOT 边界门禁通过。
 
  - Sandbox 手动控制已接入同一 RobotApplication/ScenarioSession seam：Viewer 的
  `H` + `WASD`/方向键只发布限幅的 body command，仍经过 ROBOT validator、raw-scan
