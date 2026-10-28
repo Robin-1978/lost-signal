@@ -58,6 +58,10 @@ frame，native stats 暴露累计失败数。`RobotApplication::publish_observat
 - 运行期把 silence、重复序列、时间倒退和过期升级为可观测 health；
 - health 只允许安全降级或停车，不能绕过 Safety。
 
+NativeRuntime 当前对 conformance failure 直接机械停车并返回失败，下一步仍需把
+设备级重连/恢复状态和 HIL fault injection 纳入发布门禁；不会在 ROBOT 内部重放
+坏帧或用场景真值修复测量。
+
 ### C. 标定 artifact 已有第一切，仍需设备 profile 持久化
 
 `robot/platform/calibration.*` 已提供版本化 schema、序列化 digest、CSV 实测记录导入、

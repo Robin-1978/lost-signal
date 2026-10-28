@@ -110,7 +110,8 @@
   正常路径，保持 SIM/ROBOT 边界门禁通过。
 - 8.8 已把 `ProviderConformanceMonitor` 接到 `NativeRuntime`：启动时注册 endpoint
   期望，运行时检查结构、来源/frame、序列、采集时间、速率和静默，并把失败计数
-  暴露到 native stats；适配器可声明每个 endpoint 的 nominal rate。监控只读取
+  暴露到 native stats；适配器可声明每个 endpoint 的 nominal rate。出现 stream
+  违规时 NativeRuntime 在下一次 ROBOT tick 前执行机械停车并 fail closed。监控只读取
   provider 测量，不改变 ROBOT 估计或引入 SIM 真值。
 
  - Sandbox 手动控制已接入同一 RobotApplication/ScenarioSession seam：Viewer 的
