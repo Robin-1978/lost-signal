@@ -31,6 +31,13 @@ NativeRuntime::~NativeRuntime() { shutdown(); }
 
 bool NativeRuntime::start() {
  if (active_.load() || config_.decision_period_ns <= 0) return false;
+ // The adapter owns the physical handshake: this is where a real transport
+ // verifies the board profile, calibration artifact, units and ownership
+ // against the deployable ROBOT description. Do it before registering any
+ // endpoint or activating a controller so a mismatch can never emit motion.
+ if (!adapter_.validate_startup_profile(application_.description())) {
+  return false;
+ }
  if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
  if (!iface::valid_chassis_capabilities(mcu->capabilities())) {
    return false;

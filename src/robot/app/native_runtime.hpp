@@ -26,6 +26,17 @@ class INativeAdapter {
  public:
  virtual ~INativeAdapter() = default;
  virtual const std::vector<iface::EndpointDescriptor>& endpoints() const = 0;
+ // Performs the deployment-specific profile/calibration handshake before
+ // ROBOT lifecycle activation. The adapter may query a board over UART, CAN,
+ // USB or another native link and compare ownership, units, joint layout,
+ // robot-description revision, and calibration range. A default keeps
+ // simple duty adapters source-compatible; production adapters should fail
+ // closed until their measured profile is acknowledged.
+ virtual bool validate_startup_profile(
+     const platform::RobotDescription& description) const {
+   (void)description;
+   return true;
+ }
  virtual bool poll_observation(iface::ObservationFrame& out) = 0;
  virtual bool write_actuator(const iface::ActuatorCommand& command) = 0;
 

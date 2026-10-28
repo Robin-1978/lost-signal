@@ -27,6 +27,10 @@ class FakeNativeAdapter : public app::INativeAdapter {
  const std::vector<iface::EndpointDescriptor>& endpoints() const override {
  return endpoints_;
  }
+ bool validate_startup_profile(
+     const platform::RobotDescription&) const override {
+  return !reject_profile_;
+ }
  bool poll_observation(iface::ObservationFrame& out) override {
  std::lock_guard<std::mutex> lock(mutex_);
  if (observations_.empty()) return false;
@@ -53,6 +57,10 @@ class FakeNativeAdapter : public app::INativeAdapter {
  std::lock_guard<std::mutex> lock(mutex_);
  fail_writes_ = true;
  }
+ void reject_profile() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  reject_profile_ = true;
+ }
  std::size_t writes() const {
  std::lock_guard<std::mutex> lock(mutex_);
  return writes_.size();
@@ -73,6 +81,7 @@ class FakeNativeAdapter : public app::INativeAdapter {
  std::vector<iface::ActuatorCommand> writes_;
  std::vector<iface::ActuatorCommand> stops_;
  bool fail_writes_ = false;
+ bool reject_profile_ = false;
 };
 
 class FakeChassisMcu final : public iface::IChassisMcuTransport {
@@ -149,6 +158,21 @@ iface::ObservationFrame imu(core::MonotonicNs now_ns) {
 
 int main() {
  using namespace lost_signal::robot;
+
+ // A native adapter must be able to reject an unacknowledged board profile
+ // or calibration artifact before any provider is registered or actuator
+ // output is emitted. This proves the startup boundary fails closed.
+ {
+  app::RobotApplication rejected_application(nullptr);
+  FakeNativeAdapter rejected_adapter;
+  rejected_adapter.reject_profile();
+  app::NativeRuntime rejected_runtime(
+      rejected_application, rejected_adapter,
+      {.decision_period_ns = 1'000'000});
+  assert(!rejected_runtime.start());
+  assert(!rejected_runtime.active());
+  assert(rejected_adapter.writes() == 0);
+ }
 
  app::RobotApplication application(nullptr);
  FakeNativeAdapter adapter;
