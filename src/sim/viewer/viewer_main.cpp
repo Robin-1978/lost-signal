@@ -3046,6 +3046,14 @@ void draw_frame_3d(const Frame& f,
  bool show_physics_overlay = false,
  bool presentation_effects = true) {
   namespace world_ns = lost_signal::sim::world;
+  // High quality rendering owns shadows through the MuJoCo driven shadow
+  // map.  The old path also drew a translucent ground disc for every body;
+  // that second projection is intentionally retained only for the direct
+  // fast path, where no shadow map exists.  Drawing both makes the disc drift
+  // away from the physical shadow whenever the light or body moves.
+  const bool draw_contact_shadow_disc =
+      presentation_effects &&
+      (assets == nullptr || assets->shadow_map.id == 0);
   // Ground base sized to the authored map (concrete apron under everything).
   double gx0, gy0, gx1, gy1;
   map_bounds(world, gx0, gy0, gx1, gy1);
@@ -3193,7 +3201,7 @@ void draw_frame_3d(const Frame& f,
  world.terrain_patches(), world.support_slabs(),
  scene_visual->position_m[0], scene_visual->position_m[1]).height_m;
  draw_scene_instance(*scene_visual, *assets, ground_z);
- if (presentation_effects)
+    if (draw_contact_shadow_disc)
  box_shadow_3d(b.x0_m, b.y0_m, b.x1_m, b.y1_m, ground_z);
  continue;
  }
@@ -3206,7 +3214,7 @@ void draw_frame_3d(const Frame& f,
               {size.x, 0.016f, size.z},
               b.selected ? Color{255, 240, 160, 255}
                          : Color{168, 175, 184, 255});
- if (presentation_effects)
+    if (draw_contact_shadow_disc)
  box_shadow_3d(b.x0_m, b.y0_m, b.x1_m, b.y1_m);
     if (b.selected) {
       const double cx[4] = {b.x0_m, b.x1_m, b.x1_m, b.x0_m};
@@ -3240,7 +3248,7 @@ void draw_frame_3d(const Frame& f,
  const double ground_z = physical_pose ? a.world_pose.z_m
  : world_ns::sample_terrain(world.terrain_patches(),
  world.support_slabs(), a.x_m, a.y_m).height_m;
- if (presentation_effects)
+ if (draw_contact_shadow_disc)
  blob_shadow_3d(visual_x, visual_y, a.radius_m * 1.3, ground_z);
  const Model* actor_model = nullptr;
  const AssetDefinition* actor_definition = nullptr;
@@ -3608,7 +3616,7 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
         0.0f, 0.0f, 0.0f, 1.0f};
  const double robot_ground_z = world_ns::sample_terrain(
  world.terrain_patches(), world.support_slabs(), f.body.x_m, f.body.y_m).height_m;
- if (presentation_effects) blob_shadow_3d(f.body.x_m, f.body.y_m,
+ if (draw_contact_shadow_disc) blob_shadow_3d(f.body.x_m, f.body.y_m,
  std::max(f.body.half_length_m, f.body.half_width_m) * 1.4,
  robot_ground_z);
     rlPushMatrix();
