@@ -283,7 +283,11 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
  state.y_m += delta_y;
  // Slope z is continuous odometry in both frames. A 2D map correction
  // changes map_T_odom in SE(2) and never resets height or tilt.
- state.z_m += forward_step_m * std::sin(state.pitch_rad);
+    // The estimator's REP-103 pitch convention follows the IMU gravity
+    // projection used by SimImu: negative pitch is an uphill nose.  Project
+    // forward travel onto world Z with that same convention so a surveyed
+    // ramp raises the sensor estimate instead of driving it below ground.
+    state.z_m -= forward_step_m * std::sin(state.pitch_rad);
  state.yaw_rad = core::wrap_angle(state.yaw_rad + yaw_rate * dt_s);
  state.forward_mps = forward;
  state.lateral_mps = lateral;

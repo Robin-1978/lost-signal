@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/mapping/terrain_math.hpp"
 #include "robot/core/geometry.hpp"
 #include "robot/core/time.hpp"
 #include "robot/core/transform.hpp"
@@ -101,6 +102,10 @@ struct LidarPerceptionConfig {
   // out via set_lidar_mount(). No second copy here.
   // Foreground test: |measured - expected| beyond this is not static world.
   double foreground_threshold_m = 0.30;
+  // Surveyed terrain returns at the sensor plane are ground evidence, not
+  // dynamic objects.  This is the same contract used by the validator and
+  // mapper; it prevents a continuous ramp face from becoming a moving track.
+  double survey_ground_tolerance_m = kTerrainGroundToleranceM;
  // Maximum probability that propagated pose uncertainty alone is mistaken
  // for map-relative foreground. The corresponding 2-D Gaussian radial
  // quantile expands the map comparison gate; when localization is uncertain,

@@ -315,6 +315,30 @@ int main() {
  std::abs(pitch_before_seed) + 1e-12);
   }
 
+  // The simulated IMU uses negative pitch for an uphill nose under the
+  // REP-105 body convention.  Forward odometry must therefore increase the
+  // estimated world height on a ramp; the old sign drove the estimate below
+  // the contact surface and made the lidar plane disagree with the survey.
+  {
+    FusedOdometryEstimator est;
+    est.reset();
+    const double pitch = -std::atan(0.30);
+    for (int k = 1; k <= 50; ++k) {
+      iface::ObservationFrame o;
+      o.sequence = static_cast<std::uint64_t>(k);
+      o.stamp_ns = static_cast<core::MonotonicNs>(k) * 20'000'000LL;
+      o.source = "t.ramp";
+      o.frame = core::Frame::kImuLink;
+      o.odometry_valid = true;
+      o.forward_mps = 1.0;
+      o.imu_valid = true;
+      o.imu_ax_mps2 = -9.81 * std::sin(pitch);
+      o.imu_az_mps2 = 9.81 * std::cos(pitch);
+      est.predict(o);
+    }
+    assert(est.estimate().z_m > 0.10);
+  }
+
   // Coordinator pipeline: configure -> activate -> ingest -> update.
   // v1 holds position through perception/map/plan/validate/control.
   {

@@ -269,6 +269,17 @@ PerceptionResult LidarPerception::update(
     const core::Vec3 off = core::rotate_vector(
         map_from_sensor.rotation, {local.x, local.y, 0.0});
  bool reference_backed = false;
+    // A 2-D lidar can intersect an uphill surface at its scan plane.  When
+    // the public elevation prior agrees with that endpoint, consume it as
+    // surveyed-ground evidence before foreground tracking.  Without this
+    // shared terrain contract every ramp face is repeatedly reprojected by
+    // odometry and eventually promoted to a false dynamic obstacle.
+    if (static_map_ != nullptr && static_map_->has_elevation() &&
+        endpoint_is_survey_ground(
+            *static_map_, sensor_p.x + off.x, sensor_p.y + off.y,
+            sensor_p.z, config_.survey_ground_tolerance_m)) {
+      continue;
+    }
  if (has_provider_ref) {
  if (std::abs(range - obs.static_ranges_m[i]) <=
  config_.foreground_threshold_m) {
@@ -333,7 +344,6 @@ PerceptionResult LidarPerception::update(
     beams[i].wx = sensor_p.x + off.x;
     beams[i].wy = sensor_p.y + off.y;
   }
-
   // Pass 1: maximal runs of index-adjacent foreground beams.
   struct Run {
     std::size_t begin, end;  // [begin, end)

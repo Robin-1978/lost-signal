@@ -140,7 +140,7 @@ struct SurveyContext {
  // Filled from the declared chassis footprint.
  double footprint_radius_m = 0.4;
   // Endpoint-vs-survey agreement to call a return surveyed ground.
-  double ground_tol_m = 0.15;
+  double ground_tol_m = kTerrainGroundToleranceM;
   // Steeper along-track grade is unclimbable; steeper side-slope risks
   // rollover (same caps as route choice, one doctrine).
   double max_grade = 0.5;

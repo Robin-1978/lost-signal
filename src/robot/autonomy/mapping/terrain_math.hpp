@@ -25,6 +25,11 @@ constexpr double kTerrainGravityMps2 = 9.81;
 
 }  // namespace
 
+// One shared sensor-plane tolerance for all surveyed-ground classifiers.  A
+// return is only cleared as terrain when the public elevation prior agrees
+// with the measured sensor plane within this declared resolution budget.
+inline constexpr double kTerrainGroundToleranceM = 0.15;
+
 // Along-track grade (rise/run) of the surveyed surface under a heading.
 // Finite differences at the survey resolution; unknown elevation reads 0
 // (flat assumption — gates that must fail closed check has_elevation).

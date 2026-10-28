@@ -3044,7 +3044,11 @@ void draw_frame_3d(const Frame& f,
  const SceneManifest* scene = nullptr,
  const lost_signal::sim::viewer::LidarMount* lidar_mount = nullptr,
  bool show_physics_overlay = false,
- bool presentation_effects = true) {
+ bool presentation_effects = true,
+ // Fast/direct rendering has no shadow map, so it may use the inexpensive
+ // contact-disc fallback. High-quality rendering passes this explicitly as
+ // false and owns all shadows through the physical shadow map.
+ bool draw_fast_shadow_discs = false) {
   namespace world_ns = lost_signal::sim::world;
   // High quality rendering owns shadows through the MuJoCo driven shadow
   // map.  The old path also drew a translucent ground disc for every body;
@@ -3052,8 +3056,7 @@ void draw_frame_3d(const Frame& f,
   // fast path, where no shadow map exists.  Drawing both makes the disc drift
   // away from the physical shadow whenever the light or body moves.
   const bool draw_contact_shadow_disc =
-      presentation_effects &&
-      (assets == nullptr || assets->shadow_map.id == 0);
+      presentation_effects && draw_fast_shadow_discs;
   // Ground base sized to the authored map (concrete apron under everything).
   double gx0, gy0, gx1, gy1;
   map_bounds(world, gx0, gy0, gx1, gy1);
@@ -4144,7 +4147,7 @@ bool render_shadow_map(const Frame& frame,
  SurfaceTraceSystem no_surface_traces;
  draw_frame_3d(frame, world, light_camera, no_particles,
  no_surface_traces, false, false, false, false, &assets, scene,
-  lidar_mount, false, false);
+  lidar_mount, false, false, false);
  EndShaderMode();
  EndMode3D();
  EndTextureMode();
@@ -4189,7 +4192,7 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
  BeginShaderMode(assets.lighting);
  draw_frame_3d(frame, world, camera, particles, surface_traces, show_lidar,
  show_estimate, show_actor_routes, show_places, &assets, scene,
- lidar_mount, show_physics_overlay);
+ lidar_mount, show_physics_overlay, false);
  EndShaderMode();
  EndMode3D();
  EndTextureMode();
@@ -4281,7 +4284,7 @@ void draw_frame_3d_direct(const Frame& frame,
  if (IsShaderValid(assets.lighting)) BeginShaderMode(assets.lighting);
  draw_frame_3d(frame, world, camera, particles, surface_traces, show_lidar,
  show_estimate, show_actor_routes, show_places, &assets, scene,
- lidar_mount, show_physics_overlay);
+ lidar_mount, show_physics_overlay, true);
  if (IsShaderValid(assets.lighting)) EndShaderMode();
  EndMode3D();
 }

@@ -49,6 +49,31 @@ int main() {
     assert(!r.tracks[0].prediction_ready);  // single sighting: not ready
   }
 
+  // A surveyed ramp crossing the lidar plane is terrain evidence.  It must
+  // not be promoted to a moving object merely because the robot's odometry
+  // changes the endpoint in map coordinates between scans.
+  {
+    LidarPerception perc;
+    lost_signal::robot::iface::MapSnapshot survey;
+    survey.map_id = "ramp-survey";
+    survey.revision = 1;
+    survey.width = 40;
+    survey.height = 40;
+    survey.resolution_m = 0.25;
+    survey.origin_x_m = -5.0;
+    survey.origin_y_m = -5.0;
+    survey.occupancy.assign(survey.width * survey.height, -1);
+    survey.elevation_m.assign(survey.width * survey.height, 0.0f);
+    survey.elevation_sigma_m.assign(survey.width * survey.height, 0.0f);
+    perc.set_static_map(survey);
+    auto ramp_scan = make_scan(1'000'000, 10.0f, 34, 38, 3.0f);
+    // The default identity mount puts the scan plane at z=0, matching the
+    // flat surveyed surface in this focused classifier test.
+    const PerceptionResult r = perc.update(ramp_scan, origin());
+    assert(r.scan_ok);
+    assert(r.tracks.empty());
+  }
+
   // Non-zero scan start with an explicit increment: beams 0..4 point +x.
  // The old hardcoded [-pi, pi) layout put them near -x.
  {

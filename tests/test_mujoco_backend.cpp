@@ -169,6 +169,32 @@ int main() {
  assert(std::abs((20.0 - distance_m) - expected_height) < 1e-3);
  }
 
+ // A zero-height ramp foot must be wheelable.  Building a graded patch as a
+ // finite tilted box leaves its below-floor side face in the collision scene;
+ // the shell then hits that artificial curb before the tire reaches the
+ // authored surface.  The height-field path keeps the floor/ramp boundary
+ // continuous and the engine body follows the same grade the survey sees.
+ {
+ sim::world::World ramp = make_mujoco_diff();
+ ramp.set_terrain_patches({{
+ "continuous_ramp", 1.0, -2.0, 7.0, 2.0,
+ 0.0, 0.20, 0.0, 0.0, 0.0}});
+ set_diff_duty(ramp, 1.0);
+ ramp.prepare();
+ for (int i = 0; i < 180; ++i) ramp.step(0.02);
+ const auto& truth = ramp.truth();
+ assert(truth.body_x_m > 4.0);
+ assert(truth.body_z_m > 0.7);
+ assert(truth.body_pitch_rad < -0.10);
+ double foot_distance = 0.0;
+ assert(ramp.raycast(1.0, 0.0, 5.0, 0.0, 0.0, -1.0,
+ 10.0, foot_distance));
+ const double foot_height = 5.0 - foot_distance;
+ assert(std::abs(foot_height - sim::world::sample_terrain(
+ ramp.terrain_patches(), ramp.support_slabs(), 1.0, 0.0).height_m) <
+ 1e-3);
+ }
+
  sim::scenario::ScenarioSession session;
  session.prepare_world();
  assert(session.setup_world().sim_time_s() == 0.0);

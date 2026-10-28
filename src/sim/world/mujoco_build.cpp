@@ -667,16 +667,17 @@ void MujocoBackend::sync(const MotorParams& motor,
   mjsBody* world = mjs_findBody(spec, "world");
  const bool use_heightfield = std::any_of(
  patches.begin(), patches.end(), [](const TerrainPatch& p) {
- if (p.roughness > 0.0 || std::abs(p.grade_xy_per_m) > 1e-12) {
- return true;
- }
- const double width = p.x1 - p.x0;
- const double height = p.y1 - p.y0;
- const double h00 = p.base_height_m;
- const double h10 = h00 + p.grade_x * width;
- const double h01 = h00 + p.grade_y * height;
- const double h11 = h10 + p.grade_y * height;
- return std::min({h00, h10, h01, h11}) < -1e-6;
+ // A finite tilted box has a vertical side wall at every patch boundary.
+ // Even when the authored height is continuous at the boundary, that wall
+ // is a collision curb: the chassis shell can hit it before a wheel reaches
+ // the ramp.  Height fields represent the sampled surface itself and keep
+ // the zero-height ramp foot continuous with the surrounding floor.  Use
+ // them for every non-flat authored patch; retain the analytic box path only
+ // for genuinely flat patches.
+ return std::abs(p.base_height_m) > 1e-12 ||
+        std::abs(p.grade_x) > 1e-12 ||
+        std::abs(p.grade_y) > 1e-12 ||
+        std::abs(p.grade_xy_per_m) > 1e-12 || p.roughness > 0.0;
  });
  // Planar terrain can sit on MuJoCo's infinite plane and uses exact analytic
  // slabs below. Nonlinear relief, cross terms, and depressions replace the
