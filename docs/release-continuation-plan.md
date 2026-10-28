@@ -501,6 +501,12 @@
   `central_gate` 长测 49.23 s。`signal_town_big` 五目标、冰面、连续地形、四底盘、
   视觉资产、场景 manifest、experience catalog、truth isolation 和 ROBOT boundary
   均通过。
+- Release 定向门禁也已通过：`test_native_runtime`（profile handshake、watchdog、
+  typed MCU setpoint）、`test_multichassis_mission`（differential/Ackermann/
+  Mecanum/swerve）、`test_experience_catalog`、`test_scene_manifest`、
+  `test_asset_manifest` 和 `test_truth_isolation`；`python3 tests/check_boundary.py`
+  通过。Xvfb 已对全部 12 个物理 world 完成 `--3d --shot` smoke，且每个 world 的
+  40-step headless smoke 均能推进。
 
 下一步从这里继续：先将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
 发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的
