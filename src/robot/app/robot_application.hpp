@@ -173,6 +173,9 @@ class RobotApplication : public IRobot {
     double braking_distance_m = 0.0;
     std::string slip_quality = "Invalid";
     double slip_confidence = 0.0;
+    double slip_longitudinal_ratio = 0.0;
+    double slip_longitudinal_sigma = 0.0;
+    double motion_scale = 1.0;
     // Online grip factor in [min_grip, 1.0]: the ROBOT's own traction
     // belief (control-layer governor, measured slip evidence only).
     // Offline scoring reads it; nothing feeds it back into tick().

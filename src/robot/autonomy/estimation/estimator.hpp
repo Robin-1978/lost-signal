@@ -60,6 +60,14 @@ class IEstimator {
  double /*yaw_rad*/, double /*pos_sigma_m*/,
  double /*yaw_sigma_rad*/,
  core::MonotonicNs /*stamp_ns*/) {}
+ // Two poses in one causal scan-to-submap frame: the first is the wheel
+ // prediction since the submap anchor, the second is the geometrically
+ // observed displacement. This is ROBOT-only LiDAR evidence and detects
+ // straight-line wheel spin that the wheel/body pair cannot observe.
+ virtual void observe_scan_motion(
+     double /*estimated_dx_m*/, double /*estimated_dy_m*/,
+     double /*measured_dx_m*/, double /*measured_dy_m*/,
+     double /*position_sigma_m*/, core::MonotonicNs /*stamp_ns*/) {}
  // A rejected absolute scan match is still information about the current
  // belief: the proposed innovation was outside its declared covariance.
  // Estimators may fold that innovation into their uncertainty without
@@ -77,6 +85,9 @@ class IEstimator {
   // Default reports Invalid; estimators with a slip observer override it.
   // Consumers read quality/confidence, never thresholds.
   virtual SlipObservation last_slip() const { return SlipObservation{}; }
+ // Current wheel-to-body travel calibration used by prediction. 1.0 means
+ // encoder travel is accepted; lower values reflect measured LiDAR slip.
+ virtual double motion_scale() const { return 1.0; }
  // Optional traction-aware scale for dead-reckoned translation.
  virtual void set_motion_scale(double /*scale*/) {}
  // Map-frame navigation estimate. Absolute localization and loop closure
@@ -126,6 +137,11 @@ class FusedOdometryEstimator : public IEstimator {
     double pos_sigma_max_m = 100.0;
     double yaw_sigma_min_rad = 0.002;
     double yaw_sigma_max_rad = 3.141592653589793;
+    // Encoder-travel scale is a bounded belief, never a truth ratio. The
+    // limits are deployment policy so the estimator cannot silently invent
+    // a zero-motion state from one uncertain scan.
+    double motion_scale_min = 0.1;
+    double motion_scale_max = 1.0;
   };
 
   explicit FusedOdometryEstimator(Config config);
@@ -154,6 +170,10 @@ class FusedOdometryEstimator : public IEstimator {
  void correct_relative_pose(double x_m, double y_m, double yaw_rad,
  double pos_sigma_m, double yaw_sigma_rad,
  core::MonotonicNs stamp_ns) override;
+ void observe_scan_motion(double estimated_dx_m, double estimated_dy_m,
+                          double measured_dx_m, double measured_dy_m,
+                          double position_sigma_m,
+                          core::MonotonicNs stamp_ns) override;
  void note_absolute_rejection(double dx_m, double dy_m, double dyaw_rad,
  core::MonotonicNs stamp_ns) override;
   const EstimatedState& estimate() const override { return estimate_; }
@@ -163,6 +183,7 @@ class FusedOdometryEstimator : public IEstimator {
   // Latest slip observation (wheel twist vs estimator body twist). Updated
   // on every predict; consumers read quality/confidence, never thresholds.
   SlipObservation last_slip() const override { return last_slip_; }
+ double motion_scale() const override { return motion_scale_; }
  void set_motion_scale(double scale) override;
 
  private:
@@ -181,8 +202,17 @@ class FusedOdometryEstimator : public IEstimator {
   Quaternion attitude_{};
   bool has_prior_ = false;
   SlipObservation last_slip_{};
+  SlipObservation scan_slip_{};
+  // A scan-motion observation is valid for the sensor frame that produced it
+  // only. It is cleared when the next estimator frame arrives, so a missed or
+  // rejected scan cannot keep a stale traction alarm alive indefinitely.
+  core::MonotonicNs scan_slip_stamp_ns_ = core::kInvalidTime;
   iface::ObservationFrame prior_{};
  double motion_scale_ = 1.0;
+  // Posterior variance of the bounded encoder-travel scale. It starts as the
+  // variance of a uniform physical prior over the declared [0.1, 1] range and
+  // is fused with each independent scan-motion measurement.
+  double motion_scale_variance_ = 1.0;
  // Row-major covariance of [x, y, yaw] in each REP-105 frame. Public API
  // remains compact; EstimatedState derives radial position sigma from the
  // largest XY eigenvalue and heading sigma from P(yaw,yaw).

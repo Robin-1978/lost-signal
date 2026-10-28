@@ -152,6 +152,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  return estimator_->odometry_estimate();
  }
   SlipObservation last_slip() const { return estimator_->last_slip(); }
+  double motion_scale() const { return estimator_->motion_scale(); }
  const PerceptionResult& perception() const {
  return observations_.perception();
  }

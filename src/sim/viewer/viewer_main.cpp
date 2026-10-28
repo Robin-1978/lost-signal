@@ -2609,10 +2609,36 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
  DrawCircleLinesV(previous, radius_px, edge);
  }
  }
-  if (show_lidar && f.lidar_valid) {
+  // L is the physical sensor view: project the recorded rays from the
+  // MuJoCo body pose. The estimate-projected fan is part of E below, so a
+  // drifting estimator cannot make the real LiDAR appear to climb a ramp.
+  if (show_lidar && f.truth_lidar_valid) {
+    const auto o = view.world_to_screen(f.body.sens_x_m, f.body.sens_y_m);
+    const float oldest = f.truth_lidar_time_offsets_s.empty() ? 0.0f
+        : *std::min_element(f.truth_lidar_time_offsets_s.begin(),
+                            f.truth_lidar_time_offsets_s.end());
+    const float sweep_span = std::max(1e-6f, -oldest);
+    for (std::size_t i = 0; i < f.truth_lidar_hits.size(); ++i) {
+      const auto& hit = f.truth_lidar_hits[i];
+      const float phase = i < f.truth_lidar_time_offsets_s.size()
+          ? std::clamp((f.truth_lidar_time_offsets_s[i] - oldest) /
+                           sweep_span,
+                       0.0f, 1.0f)
+          : 1.0f;
+      const auto s = view.world_to_screen(hit.first, hit.second);
+      DrawLineV({o.x_px, o.y_px}, {s.x_px, s.y_px},
+                {64, 220, 225,
+                 static_cast<unsigned char>(35.0f + 105.0f * phase)});
+      DrawCircleV({s.x_px, s.y_px}, 1.0f + phase,
+                  {95, 245, 235,
+                   static_cast<unsigned char>(120.0f + 120.0f * phase)});
+    }
+  }
+  if (show_estimate && f.lidar_valid) {
  const auto o = view.world_to_screen(
  f.observation.projected_sensor_x_m,
  f.observation.projected_sensor_y_m);
+    DrawCircleV({o.x_px, o.y_px}, 4.0f, DARKGREEN);
  const float oldest = f.lidar_time_offsets_s.empty() ? 0.0f
  : *std::min_element(f.lidar_time_offsets_s.begin(),
  f.lidar_time_offsets_s.end());
@@ -2631,7 +2657,7 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
  {95, 245, 235, static_cast<unsigned char>(120.0f + 120.0f * phase)});
     }
   }
- if (show_truth_debug && f.truth_lidar_valid) {
+  if (show_truth_debug && !show_lidar && f.truth_lidar_valid) {
  const auto o = view.world_to_screen(f.body.sens_x_m, f.body.sens_y_m);
  const float oldest = f.truth_lidar_time_offsets_s.empty() ? 0.0f
  : *std::min_element(f.truth_lidar_time_offsets_s.begin(),
@@ -3518,11 +3544,38 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  {1.0f, 0.0f, 0.0f}, 90.0f, edge);
  }
  }
-  if (show_lidar && f.lidar_valid) {
+  if (show_lidar && f.truth_lidar_valid) {
+    const Vector3 o = to_raylib(
+        f.body.sens_x_m, f.body.sens_y_m, f.body.sens_z_m);
+    const std::size_t stride =
+        std::max<std::size_t>(1, f.truth_lidar_hits.size() / 72);
+    const float oldest = f.truth_lidar_time_offsets_s.empty() ? 0.0f
+        : *std::min_element(f.truth_lidar_time_offsets_s.begin(),
+                            f.truth_lidar_time_offsets_s.end());
+    const float sweep_span = std::max(1e-6f, -oldest);
+    for (std::size_t i = 0; i < f.truth_lidar_hits.size(); i += stride) {
+      const auto& hit = f.truth_lidar_hits[i];
+      const float phase = i < f.truth_lidar_time_offsets_s.size()
+          ? std::clamp((f.truth_lidar_time_offsets_s[i] - oldest) /
+                           sweep_span,
+                       0.0f, 1.0f)
+          : 1.0f;
+      const Vector3 endpoint =
+          to_raylib(hit.first, hit.second, f.body.sens_z_m);
+      DrawLine3D(o, endpoint,
+                 {64, 220, 225,
+                  static_cast<unsigned char>(25.0f + 70.0f * phase)});
+      DrawSphere(endpoint, 0.012f + 0.010f * phase,
+                 {95, 245, 235,
+                  static_cast<unsigned char>(95.0f + 145.0f * phase)});
+    }
+  }
+  if (show_estimate && f.lidar_valid) {
  const Vector3 o = to_raylib(
  f.observation.projected_sensor_x_m,
  f.observation.projected_sensor_y_m,
  f.observation.projected_sensor_z_m);
+    DrawSphereWires(o, 0.055f, 8, 8, DARKGREEN);
  const std::size_t stride =
  std::max<std::size_t>(1, f.lidar_hits.size() / 72);
  const float oldest = f.lidar_time_offsets_s.empty() ? 0.0f
@@ -3544,7 +3597,7 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  {95, 245, 235, static_cast<unsigned char>(95.0f + 145.0f * phase)});
     }
   }
- if (show_actor_routes && f.truth_lidar_valid) {
+ if (show_actor_routes && !show_lidar && f.truth_lidar_valid) {
  const Vector3 o = to_raylib(
  f.body.sens_x_m, f.body.sens_y_m, f.body.sens_z_m);
  const std::size_t stride =
@@ -4282,9 +4335,14 @@ void draw_frame_3d_direct(const Frame& frame,
  configure_scene_lighting(assets, scene, frame, camera);
  BeginMode3D(camera);
  if (IsShaderValid(assets.lighting)) BeginShaderMode(assets.lighting);
+ // The direct/Turbo path has no physical shadow map.  Do not draw the old
+ // flat contact discs here: they are a second, body-independent projection
+ // and visibly float or slide when E toggles the evidence layer or the camera
+ // follows a moving actor.  A fast frame may be shadowless; it must never
+ // fabricate a shadow that disagrees with MuJoCo contact geometry.
  draw_frame_3d(frame, world, camera, particles, surface_traces, show_lidar,
  show_estimate, show_actor_routes, show_places, &assets, scene,
- lidar_mount, show_physics_overlay, true);
+ lidar_mount, show_physics_overlay, false);
  if (IsShaderValid(assets.lighting)) EndShaderMode();
  EndMode3D();
 }
@@ -5857,7 +5915,7 @@ playback.turbo() || paused || !live_audio);
 	 draw_ui_text(target_hud, 12, 32, 14, Color{28, 72, 78, 255});
 	 }
  if (engineering_chrome && render_robot_evidence) {
- draw_ui_text("ROBOT OBS/AI  lidar=aqua costmap=amber/red/gray validator=lime safety=cyan/red",
+ draw_ui_text("ROBOT ESTIMATE VIEW  scan origin=estimate sensor (green); L shows physical sensor frame",
  12, 50, 13, Color{78, 54, 132, 255});
  draw_ui_text("ROBOT ESTIMATE  map<-odom correction=amber->cyan dynamic forecast=purple",
  12, 66, 13, Color{78, 54, 132, 255});

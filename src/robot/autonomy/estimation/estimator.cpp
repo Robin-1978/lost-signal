@@ -170,7 +170,14 @@ void FusedOdometryEstimator::reset() {
   has_prior_ = false;
   prior_ = iface::ObservationFrame{};
   last_slip_ = SlipObservation{};
- motion_scale_ = 1.0;
+  scan_slip_ = SlipObservation{};
+  scan_slip_stamp_ns_ = core::kInvalidTime;
+ motion_scale_ = std::clamp(1.0, config_.motion_scale_min,
+                             config_.motion_scale_max);
+ const double motion_scale_span = std::max(
+     0.0, config_.motion_scale_max - config_.motion_scale_min);
+ motion_scale_variance_ = std::max(
+     1.0e-6, motion_scale_span * motion_scale_span / 12.0);
 }
 
 void FusedOdometryEstimator::ensure_odom_origin(
@@ -187,6 +194,11 @@ void FusedOdometryEstimator::ensure_odom_origin(
 }
 
 void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
+  if (scan_slip_stamp_ns_ != core::kInvalidTime &&
+      obs.stamp_ns > scan_slip_stamp_ns_) {
+    scan_slip_ = SlipObservation{};
+    scan_slip_stamp_ns_ = core::kInvalidTime;
+  }
   if (!obs.odometry_valid && !obs.imu_valid) return;
   if (!has_prior_) {
     estimate_.valid = true;
@@ -234,6 +246,13 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
                     false,  // prediction rate == sensor rate: never stale here
                     estimate_.position_sigma_m + estimate_.heading_sigma_rad};
   last_slip_ = observe_slip(wheel, body);
+  if (scan_slip_.quality == SlipQuality::kObservable) {
+    last_slip_.longitudinal_ratio = scan_slip_.longitudinal_ratio;
+    last_slip_.longitudinal_sigma = scan_slip_.longitudinal_sigma;
+    last_slip_.confidence =
+        std::max(last_slip_.confidence, scan_slip_.confidence);
+    last_slip_.quality = SlipQuality::kObservable;
+  }
   if (obs.odometry_valid && obs.imu_valid) {
     // Fast path: sensor-level disagreement inside this frame (odom vs gyro)
     // reacts within one cycle to a step change. Estimate-level path: the
@@ -393,8 +412,65 @@ grow_uncertainty(odom_estimate_, odom_covariance_, odom_step);
 }
 
 void FusedOdometryEstimator::set_motion_scale(double scale) {
- if (!std::isfinite(scale)) return;
- motion_scale_ = std::clamp(scale, 0.1, 1.0);
+  if (!std::isfinite(scale)) return;
+  motion_scale_ = std::clamp(scale, config_.motion_scale_min,
+                             config_.motion_scale_max);
+}
+
+void FusedOdometryEstimator::observe_scan_motion(
+    double estimated_dx_m, double estimated_dy_m, double measured_dx_m,
+    double measured_dy_m, double position_sigma_m,
+    core::MonotonicNs stamp_ns) {
+  if (!std::isfinite(estimated_dx_m) || !std::isfinite(estimated_dy_m) ||
+      !std::isfinite(measured_dx_m) || !std::isfinite(measured_dy_m) ||
+      !std::isfinite(position_sigma_m) || !(position_sigma_m > 0.0) ||
+      stamp_ns == core::kInvalidTime) {
+    return;
+  }
+  if (scan_slip_stamp_ns_ != core::kInvalidTime &&
+      stamp_ns <= scan_slip_stamp_ns_) {
+    return;
+  }
+  const double estimated_distance =
+      std::hypot(estimated_dx_m, estimated_dy_m);
+  // Below one matcher resolution there is no trustworthy denominator for a
+  // ratio. The estimator keeps the last bounded scale and never manufactures
+  // slip evidence from a near-zero wheel displacement.
+  if (estimated_distance <= position_sigma_m) return;
+  const double measured_along =
+      (measured_dx_m * estimated_dx_m + measured_dy_m * estimated_dy_m) /
+      estimated_distance;
+  const double ratio = std::clamp(measured_along / estimated_distance, 0.0, 1.0);
+  const double ratio_sigma = position_sigma_m / estimated_distance;
+  // A three-sigma innovation is the conventional decision boundary for a
+  // scalar geometric measurement. It is derived from the matcher covariance,
+  // not a scenario speed or distance threshold.
+  constexpr double kSignificanceSigma = 3.0;
+  if (std::abs(1.0 - ratio) > kSignificanceSigma * ratio_sigma ||
+      ratio >= 1.0) {
+    // Slip only removes forward distance. Fuse the scan result as a bounded
+    // scalar measurement rather than replacing the estimate on one scan. The
+    // posterior variance makes recovery automatic when later scans show that
+    // the body is moving again and prevents a single ambiguous raster from
+    // freezing the odometry.
+    const double measurement_variance = std::max(
+        1.0e-6, ratio_sigma * ratio_sigma);
+    const double prior_variance = std::max(1.0e-6, motion_scale_variance_);
+    const double gain = prior_variance /
+        (prior_variance + measurement_variance);
+    motion_scale_ = std::clamp(
+        motion_scale_ + gain * (ratio - motion_scale_),
+        config_.motion_scale_min, config_.motion_scale_max);
+    motion_scale_variance_ = std::max(
+        1.0e-6, (1.0 - gain) * prior_variance);
+  }
+  scan_slip_.quality = SlipQuality::kObservable;
+  scan_slip_.longitudinal_ratio = std::clamp(1.0 - ratio, 0.0, 1.0);
+  scan_slip_.longitudinal_sigma = ratio_sigma;
+  scan_slip_.confidence =
+      estimated_distance / (estimated_distance + position_sigma_m);
+  last_slip_ = scan_slip_;
+  scan_slip_stamp_ns_ = stamp_ns;
 }
 
 void FusedOdometryEstimator::correct(const iface::ObservationFrame& obs) {

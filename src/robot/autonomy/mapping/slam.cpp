@@ -313,6 +313,9 @@ void SlamSession::reset() {
   last_track_s_ = -1.0e9;
   have_tracked_ = false;
   last_track_ = SlamTrackResult{};
+  last_motion_ = SlamMotionResult{};
+  motion_history_valid_ = false;
+  motion_history_ranges_.clear();
   track_submap_ = iface::MapSnapshot{};
   track_submap_id_ = 0;
  pending_track_correction_valid_ = false;
@@ -657,11 +660,17 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
   // observed occupied, ray interiors free — the survey's unknown cells
   // never appear here, so free-space evidence discriminates.
   const SlamKeyframe& anchor = keyframes_.back();
- if (fused_track_anchor_id_ == anchor.id) {
- out.diagnostic = "track rate limited by fused anchor";
- last_track_ = out;
- return out;
- }
+  // A keyframe and its live scan share the same historic evidence. Consume at
+  // most one accepted correction per causal anchor; repeated matches against
+  // the same raster would turn correlation into false absolute certainty and
+  // can walk a known-map estimate through a large repetitive aisle. Absolute
+  // scan-to-map localization and the independent scan-motion observer handle
+  // later drift/slip without reusing this anchor as a new measurement.
+  if (fused_track_anchor_id_ == anchor.id) {
+    out.diagnostic = "track rate limited by fused anchor";
+    last_track_ = out;
+    return out;
+  }
   if (track_submap_id_ != anchor.id) {
  track_submap_ = submap_ending_at(keyframes_.size() - 1);
     track_submap_id_ = anchor.id;
@@ -669,8 +678,19 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
   ScanMatcherConfig match_cfg;
  match_cfg.expected_range_validation = false;
  match_cfg.require_prior_improvement = true;
-  match_cfg.search_translation_m = config_.track_window_m;
-  match_cfg.search_heading_rad = config_.track_heading_rad;
+  // Search far enough to include the anchor pose when the wheel prior has
+  // accumulated slip. The result remains bounded by one keyframe spacing +
+  // the ordinary local window; it is evidence, not a relocalization search.
+  const double predicted_dx_m = est.x_m - anchor.pose.position.x;
+  const double predicted_dy_m = est.y_m - anchor.pose.position.y;
+  const double predicted_heading_rad = std::abs(core::wrap_angle(
+      est.yaw_rad - anchor.pose.heading_rad));
+  match_cfg.search_translation_m = std::max(
+      config_.track_window_m,
+      std::hypot(predicted_dx_m, predicted_dy_m) + config_.track_step_m);
+  match_cfg.search_heading_rad = std::max(
+      config_.track_heading_rad,
+      predicted_heading_rad + config_.track_heading_step_rad);
   match_cfg.translation_step_m = config_.track_step_m;
   match_cfg.heading_step_rad = config_.track_heading_step_rad;
   match_cfg.minimum_overlap = config_.track_min_overlap;
@@ -737,6 +757,14 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
  out.score_margin = match.score_margin;
  out.correction_m = correction_m;
  out.correction_rad = correction_rad;
+  // Publish the verified relative displacement before applying the stricter
+  // correction-size policy below. This gives the ROBOT independent evidence
+  // of wheel spin while deliberately declining a large pose jump.
+  out.scan_motion_valid = true;
+  out.scan_estimated_dx_m = predicted_dx_m;
+  out.scan_estimated_dy_m = predicted_dy_m;
+  out.scan_measured_dx_m = match.x_m - anchor.pose.position.x;
+  out.scan_measured_dy_m = match.y_m - anchor.pose.position.y;
  if (!std::isfinite(correction_m) || !std::isfinite(correction_rad) ||
  correction_m > config_.track_max_correction_m ||
  correction_rad > config_.track_max_correction_rad ||
@@ -832,6 +860,252 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
  fused_track_anchor_id_ = anchor.id;
   ++track_corrections_;
   last_track_ = out;
+  return out;
+}
+
+SlamMotionResult SlamSession::observe_motion(
+    const EstimatedState& est, const iface::ObservationFrame& obs) {
+  SlamMotionResult out;
+  if (!est.valid || !obs.scan_valid || obs.ranges_m.empty() ||
+      obs.stamp_ns == core::kInvalidTime) {
+    out.diagnostic = "motion evidence unavailable";
+    last_motion_ = out;
+    return out;
+  }
+  const double now_s = obs.stamp_ns * 1e-9;
+  if (!motion_history_valid_) {
+    motion_history_valid_ = true;
+    motion_history_stamp_s_ = now_s;
+    motion_history_pose_ = Pose2{{est.x_m, est.y_m}, est.yaw_rad};
+    motion_history_roll_rad_ = est.roll_rad;
+    motion_history_pitch_rad_ = est.pitch_rad;
+    motion_history_z_m_ = est.z_m;
+    motion_history_ranges_ = obs.ranges_m;
+    motion_history_angle_min_rad_ = obs.scan_angle_min_rad;
+    motion_history_angle_increment_rad_ = normalized_scan_increment(
+        obs.scan_angle_increment_rad, obs.ranges_m.size());
+    motion_history_forward_mps_ = obs.forward_mps;
+    motion_history_yaw_rate_radps_ = obs.yaw_rate_radps;
+    out.diagnostic = "motion baseline captured";
+    last_motion_ = out;
+    return out;
+  }
+  const double dt_s = now_s - motion_history_stamp_s_;
+  // Sensor timestamps and the configured scan period often differ only by a
+  // few floating-point ulps (for example, 0.2 s versus 0.199999999 s). Treat
+  // that representation error as an on-time sample; the guard only exists to
+  // bound computational work for genuinely higher-rate scans.
+  const double interval_tolerance_s = std::numeric_limits<double>::epsilon() *
+      std::max({1.0, std::abs(now_s), std::abs(motion_history_stamp_s_)});
+  if (!(dt_s + interval_tolerance_s >= config_.track_interval_s)) {
+    out.diagnostic = "motion evidence rate limited";
+    last_motion_ = out;
+    return out;
+  }
+  if (!obs.odometry_valid || !std::isfinite(obs.forward_mps) ||
+      !std::isfinite(obs.yaw_rate_radps)) {
+    out.diagnostic = "motion evidence needs wheel twist";
+    last_motion_ = out;
+    return out;
+  }
+  const double forward_m =
+      0.5 * (motion_history_forward_mps_ + obs.forward_mps) * dt_s;
+  const double turn_rad =
+      0.5 * (motion_history_yaw_rate_radps_ + obs.yaw_rate_radps) * dt_s;
+  if (std::abs(forward_m) < config_.track_min_translation_m &&
+      std::abs(turn_rad) < config_.track_min_heading_rad) {
+    out.diagnostic = "motion evidence below resolution";
+    last_motion_ = out;
+    return out;
+  }
+  out.attempted = true;
+
+  SlamKeyframe prior_scan;
+  prior_scan.id = 0;
+  prior_scan.stamp_s = motion_history_stamp_s_;
+  prior_scan.pose = motion_history_pose_;
+  prior_scan.roll_rad = motion_history_roll_rad_;
+  prior_scan.pitch_rad = motion_history_pitch_rad_;
+  prior_scan.z_m = motion_history_z_m_;
+  prior_scan.ranges_m = motion_history_ranges_;
+  prior_scan.angle_min_rad = motion_history_angle_min_rad_;
+  prior_scan.angle_increment_rad = motion_history_angle_increment_rad_;
+  const iface::MapSnapshot prior_map = submap_for(prior_scan);
+
+  const double mid_heading =
+      motion_history_pose_.heading_rad + 0.5 * turn_rad;
+  const double predicted_x_m = motion_history_pose_.position.x +
+      forward_m * std::cos(mid_heading);
+  const double predicted_y_m = motion_history_pose_.position.y +
+      forward_m * std::sin(mid_heading);
+  const double predicted_heading_rad = core::wrap_angle(
+      motion_history_pose_.heading_rad + turn_rad);
+
+  ScanMatcherConfig match_cfg;
+  match_cfg.expected_range_validation = false;
+  match_cfg.require_prior_improvement = true;
+  match_cfg.search_translation_m = std::max(
+      config_.track_window_m,
+      std::hypot(forward_m * std::cos(mid_heading),
+                 forward_m * std::sin(mid_heading)) +
+          config_.track_step_m);
+  match_cfg.search_heading_rad = std::max(
+      config_.track_heading_rad,
+      std::abs(turn_rad) + config_.track_heading_step_rad);
+  match_cfg.translation_step_m = config_.track_step_m;
+  match_cfg.heading_step_rad = config_.track_heading_step_rad;
+  match_cfg.minimum_overlap = config_.track_min_overlap;
+  match_cfg.minimum_score_margin = config_.track_min_margin;
+  match_cfg.minimum_returns = 4;
+  match_cfg.maximum_returns = config_.track_max_beams;
+  ScanMatcher matcher(match_cfg);
+  matcher.set_lidar_mount(base_from_lidar_);
+  const ScanMatchResult match = matcher.localize(
+      obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
+      predicted_x_m, predicted_y_m, predicted_heading_rad, prior_map,
+      obs.stamp_ns, est.roll_rad, est.pitch_rad, est.z_m);
+  if (!match.accepted) {
+    out.diagnostic = std::string("motion rejected: ") +
+        match.rejection_reason;
+    // A rejected/ambiguous scan is still a fresh sensor sample. Keeping a
+    // stale baseline would turn several unrelated views into one invented
+    // long displacement after the scene becomes observable again.
+    motion_history_stamp_s_ = now_s;
+    motion_history_pose_ = Pose2{{est.x_m, est.y_m}, est.yaw_rad};
+    motion_history_roll_rad_ = est.roll_rad;
+    motion_history_pitch_rad_ = est.pitch_rad;
+    motion_history_z_m_ = est.z_m;
+    motion_history_ranges_ = obs.ranges_m;
+    motion_history_angle_min_rad_ = obs.scan_angle_min_rad;
+    motion_history_angle_increment_rad_ = normalized_scan_increment(
+        obs.scan_angle_increment_rad, obs.ranges_m.size());
+    motion_history_forward_mps_ = obs.forward_mps;
+    motion_history_yaw_rate_radps_ = obs.yaw_rate_radps;
+    last_motion_ = out;
+    return out;
+  }
+
+  // A scalar scan score is insufficient for traction calibration. A long
+  // corridor can score a zero-motion or sideways alias while carrying no
+  // information along the wheel travel direction. Use the matcher Hessian's
+  // directional energy, with only floating-point relative tolerance, to
+  // refuse such a measurement instead of declaring false wheel slip.
+  double travel_information = 0.0;
+  double information_trace = 0.0;
+  if (match.pose_information_valid) {
+    const double dx = std::cos(mid_heading);
+    const double dy = std::sin(mid_heading);
+    travel_information =
+        dx * dx * match.pose_information[0] +
+        2.0 * dx * dy * match.pose_information[1] +
+        dy * dy * match.pose_information[4];
+    information_trace = match.pose_information[0] +
+        match.pose_information[4];
+  }
+  const double numerical_relative_tolerance =
+      std::sqrt(std::numeric_limits<double>::epsilon());
+  if (!match.pose_information_valid ||
+      !(travel_information > numerical_relative_tolerance *
+                              std::max(1.0, information_trace))) {
+    out.diagnostic = "motion rejected: travel direction unobservable";
+    motion_history_stamp_s_ = now_s;
+    motion_history_pose_ = Pose2{{est.x_m, est.y_m}, est.yaw_rad};
+    motion_history_roll_rad_ = est.roll_rad;
+    motion_history_pitch_rad_ = est.pitch_rad;
+    motion_history_z_m_ = est.z_m;
+    motion_history_ranges_ = obs.ranges_m;
+    motion_history_angle_min_rad_ = obs.scan_angle_min_rad;
+    motion_history_angle_increment_rad_ = normalized_scan_increment(
+        obs.scan_angle_increment_rad, obs.ranges_m.size());
+    motion_history_forward_mps_ = obs.forward_mps;
+    motion_history_yaw_rate_radps_ = obs.yaw_rate_radps;
+    last_motion_ = out;
+    return out;
+  }
+
+  // The previous keyframe scan must explain the new scan's raster at the
+  // forward solution. This two-sided check rejects a single-view alias as
+  // decisively as the main tracker does.
+  SlamKeyframe current_scan;
+  current_scan.id = 0;
+  current_scan.stamp_s = now_s;
+  current_scan.pose = Pose2{{match.x_m, match.y_m}, match.yaw_rad};
+  current_scan.roll_rad = est.roll_rad;
+  current_scan.pitch_rad = est.pitch_rad;
+  current_scan.z_m = est.z_m;
+  current_scan.ranges_m = obs.ranges_m;
+  current_scan.angle_min_rad = obs.scan_angle_min_rad;
+  current_scan.angle_increment_rad = normalized_scan_increment(
+      obs.scan_angle_increment_rad, obs.ranges_m.size());
+  const iface::MapSnapshot current_map = submap_for(current_scan);
+  ScanMatcherConfig reverse_cfg = match_cfg;
+  reverse_cfg.expected_range_validation = false;
+  reverse_cfg.require_prior_improvement = false;
+  ScanMatcher reverse_matcher(reverse_cfg);
+  reverse_matcher.set_lidar_mount(base_from_lidar_);
+  const ScanMatchResult reverse = reverse_matcher.localize(
+      motion_history_ranges_, motion_history_angle_min_rad_,
+      motion_history_angle_increment_rad_,
+      motion_history_pose_.position.x, motion_history_pose_.position.y,
+      motion_history_pose_.heading_rad, current_map, obs.stamp_ns,
+      motion_history_roll_rad_, motion_history_pitch_rad_,
+      motion_history_z_m_);
+  if (!reverse.accepted || reverse.overlap < config_.track_min_overlap ||
+      reverse.score < config_.track_min_score ||
+      reverse.score_margin < config_.track_min_margin) {
+    out.diagnostic = "motion rejected: reverse verification failed";
+    last_motion_ = out;
+    return out;
+  }
+
+  const double measured_dx_m = match.x_m - motion_history_pose_.position.x;
+  const double measured_dy_m = match.y_m - motion_history_pose_.position.y;
+  const double expected_dx_m = forward_m * std::cos(mid_heading);
+  const double expected_dy_m = forward_m * std::sin(mid_heading);
+  const double expected_distance_m = std::hypot(expected_dx_m, expected_dy_m);
+  const double lateral_residual_m = expected_distance_m > 0.0
+      ? std::abs(expected_dx_m * measured_dy_m -
+                 expected_dy_m * measured_dx_m) / expected_distance_m
+      : 0.0;
+  if (lateral_residual_m >
+      config_.motion_evidence_sigma * match.position_sigma_m) {
+    out.diagnostic = "motion rejected: displacement inconsistent with motion model";
+    last_motion_ = out;
+    return out;
+  }
+
+  out.valid = true;
+  out.estimated_dx_m = expected_dx_m;
+  out.estimated_dy_m = expected_dy_m;
+  out.measured_dx_m = measured_dx_m;
+  out.measured_dy_m = measured_dy_m;
+  // The occupancy submap is rasterized at a finite resolution and the scan
+  // matcher searches on the configured translation lattice. Its local
+  // curvature estimate is therefore optimistic by itself; expose at least
+  // one lattice cell as measurement uncertainty so a 5 cm quantization step
+  // cannot be mistaken for sustained wheel slip on a 10 cm scan interval.
+  out.position_sigma_m = std::max(match.position_sigma_m,
+                                  config_.track_step_m);
+  out.score = match.score;
+  out.overlap = std::min(match.overlap, reverse.overlap);
+  out.score_margin = match.score_margin;
+  out.diagnostic = "motion measured";
+
+  // Advance the comparison pose to the geometry, not to the encoder prior.
+  // A stationary wheel-spin sequence therefore keeps returning the same
+  // physical pose instead of accumulating a chain of invented positions.
+  motion_history_stamp_s_ = now_s;
+  motion_history_pose_ = Pose2{{match.x_m, match.y_m}, match.yaw_rad};
+  motion_history_roll_rad_ = est.roll_rad;
+  motion_history_pitch_rad_ = est.pitch_rad;
+  motion_history_z_m_ = est.z_m;
+  motion_history_ranges_ = obs.ranges_m;
+  motion_history_angle_min_rad_ = obs.scan_angle_min_rad;
+  motion_history_angle_increment_rad_ = normalized_scan_increment(
+      obs.scan_angle_increment_rad, obs.ranges_m.size());
+  motion_history_forward_mps_ = obs.forward_mps;
+  motion_history_yaw_rate_radps_ = obs.yaw_rate_radps;
+  last_motion_ = out;
   return out;
 }
 

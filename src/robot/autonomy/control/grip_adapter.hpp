@@ -115,6 +115,8 @@ class GripAdapter {
     // m/s^2 after filtering; sustained spin-up reads 10+). Missing IMU or
     // odometry freezes the channel without clearing it.
     bool long_observable = has_prev_wheel_v_;
+    bool scan_slip_observable = false;
+    bool scan_slip_fire = false;
     if (obs.odometry_valid && obs.imu_valid && has_prev_wheel_v_ &&
         std::isfinite(obs.forward_mps) &&
         std::isfinite(obs.imu_ax_mps2)) {
@@ -145,7 +147,15 @@ class GripAdapter {
       has_prev_wheel_v_ = true;
     }
     const double long_residual = std::abs(long_residual_mps2_);
-    if (!yaw_observable && !long_observable) {
+    if (slip.longitudinal_sigma > 0.0 &&
+        std::isfinite(slip.longitudinal_ratio)) {
+      scan_slip_observable = true;
+      constexpr double kSignificanceSigma = 3.0;
+      scan_slip_fire =
+          std::abs(slip.longitudinal_ratio) >
+          kSignificanceSigma * slip.longitudinal_sigma;
+    }
+    if (!yaw_observable && !long_observable && !scan_slip_observable) {
       long_fire_count_ = 0;  // no evidence: confirmation lapses too
       slip_firing_ = false;
       return;
@@ -158,13 +168,14 @@ class GripAdapter {
     const bool slip_fire =
         (yaw_observable &&
          yaw_residual > config_.slip_residual_threshold_radps) ||
-        long_fire_count_ >= config_.long_confirm_ticks;
+        long_fire_count_ >= config_.long_confirm_ticks || scan_slip_fire;
     slip_firing_ = slip_fire;  // owning module's verdict, exposed for memory
     // Relax needs EVERY observed channel clean: tightening on one channel
     // while relaxing on the other would dither the envelope.
     const bool clean =
         (!yaw_observable || yaw_residual < config_.release_residual_radps) &&
-        (!long_observable || long_residual < config_.long_release_accel_mps2);
+        (!long_observable || long_residual < config_.long_release_accel_mps2) &&
+        (!scan_slip_observable || !scan_slip_fire);
     if (slip_fire) {
       // Tighten even at low estimated speed when the observer fired: it
       // already proved motion via its own floor. The sensor pair above is

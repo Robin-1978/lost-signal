@@ -77,6 +77,9 @@ class LocalizationSystem {
   const SlamTrackResult& last_track_result() const {
     return slam_.last_track_result();
   }
+  const SlamMotionResult& last_motion_result() const {
+    return slam_.last_motion_result();
+  }
 
  private:
  bool run_localization(const iface::MapSnapshot& map,
@@ -91,6 +94,9 @@ class LocalizationSystem {
   // Bounded scan-to-submap tracking ahead of supervised corrections.
  void run_tracking(const iface::ObservationFrame& obs, bool has_observation,
  IEstimator& estimator);
+  void run_motion_evidence(const iface::ObservationFrame& obs,
+                           bool has_observation, bool map_has_known_occupancy,
+                           IEstimator& estimator);
   // Returns true when a loop closure rebuilt the map (caller replans).
  bool run_slam(const iface::MapSnapshot& map,
  bool map_has_known_occupancy,

@@ -90,6 +90,10 @@ struct SlamConfig {
   double track_interval_s = 0.2;
   double track_min_translation_m = 0.05;
   double track_min_heading_rad = 0.02;
+  // Relative scan motion is a physical displacement measurement. Candidate
+  // poses whose displacement leaves the matcher's position covariance along
+  // an unmodelled direction are aliases, not evidence of lateral skid.
+  double motion_evidence_sigma = 3.0;
 };
 
 struct SlamKeyframe {
@@ -152,6 +156,34 @@ struct SlamTrackResult {
   double score_margin = 0.0;
  double correction_m = 0.0;
  double correction_rad = 0.0;
+ // Independent scan motion evidence in the anchor frame. These fields are
+ // populated even when the pose correction itself is rejected for being too
+ // large to apply. The robot estimator compares this displacement with the
+ // wheel-predicted displacement over the exact same anchor interval.
+ bool scan_motion_valid = false;
+ double scan_estimated_dx_m = 0.0;
+ double scan_estimated_dy_m = 0.0;
+ double scan_measured_dx_m = 0.0;
+ double scan_measured_dy_m = 0.0;
+  std::string diagnostic = "no attempt";
+};
+
+// Relative scan-to-scan motion over one acquisition interval. Unlike a
+// keyframe correction, this evidence is anchored to the previous live scan
+// and never to a pose manufactured by wheel integration. It can therefore
+// detect straight-line wheel spin even when every generated keyframe agrees
+// with the drifting encoder pose.
+struct SlamMotionResult {
+  bool attempted = false;
+  bool valid = false;
+  double estimated_dx_m = 0.0;
+  double estimated_dy_m = 0.0;
+  double measured_dx_m = 0.0;
+  double measured_dy_m = 0.0;
+  double position_sigma_m = 0.0;
+  double score = 0.0;
+  double overlap = 0.0;
+  double score_margin = 0.0;
   std::string diagnostic = "no attempt";
 };
 
@@ -182,6 +214,12 @@ class SlamSession {
   SlamTrackResult track(const EstimatedState& est,
  const iface::ObservationFrame& obs,
  bool require_temporally_confirmed_correction = false);
+ // Compare the current scan with the previous live scan at a prior formed
+ // from the two raw wheel twists. Accepted geometric motion updates the
+ // comparison baseline; rejected geometry leaves it intact for the next
+ // independent view.
+  SlamMotionResult observe_motion(const EstimatedState& est,
+                                  const iface::ObservationFrame& obs);
 
   bool empty() const { return keyframes_.empty(); }
   std::size_t keyframe_count() const { return keyframes_.size(); }
@@ -195,6 +233,7 @@ class SlamSession {
   const PoseGraphBackend& graph() const { return graph_; }
   const SlamLoopResult& last_result() const { return last_result_; }
   const SlamTrackResult& last_track_result() const { return last_track_; }
+  const SlamMotionResult& last_motion_result() const { return last_motion_; }
 
  private:
  struct LoopSearchWork;
@@ -248,6 +287,18 @@ class SlamSession {
   double last_track_yaw_rad_ = 0.0;
   bool have_tracked_ = false;
   SlamTrackResult last_track_;
+  SlamMotionResult last_motion_;
+  bool motion_history_valid_ = false;
+  double motion_history_stamp_s_ = 0.0;
+  Pose2 motion_history_pose_;
+  double motion_history_roll_rad_ = 0.0;
+  double motion_history_pitch_rad_ = 0.0;
+  double motion_history_z_m_ = 0.0;
+  std::vector<float> motion_history_ranges_;
+  double motion_history_angle_min_rad_ = 0.0;
+  double motion_history_angle_increment_rad_ = 0.0;
+  double motion_history_forward_mps_ = 0.0;
+  double motion_history_yaw_rate_radps_ = 0.0;
   mutable iface::MapSnapshot track_submap_;
   mutable std::uint64_t track_submap_id_ = 0;
  // In mapless mode no surveyed frame can arbitrate a substantial scan

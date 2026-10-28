@@ -357,6 +357,11 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
   d.braking_distance_m = measurement_.braking().distance_m;
   d.slip_quality = autonomy::slip_quality_name(coordinator_.last_slip().quality);
   d.slip_confidence = coordinator_.last_slip().confidence;
+  d.slip_longitudinal_ratio =
+      coordinator_.last_slip().longitudinal_ratio;
+  d.slip_longitudinal_sigma =
+      coordinator_.last_slip().longitudinal_sigma;
+  d.motion_scale = coordinator_.motion_scale();
   d.grip_factor = coordinator_.grip_factor();
   d.goal = executive_.current_goal();
   d.health = channel_.health();

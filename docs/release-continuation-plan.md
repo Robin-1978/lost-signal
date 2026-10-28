@@ -69,6 +69,15 @@
 
 ## 当前恢复点
 
+### 工作区检查点（2026-10-28）
+
+- 无图 SLAM 增加了独立的 scan-to-scan 运动证据：预测只积分两帧原始轮速/IMU twist，几何位移只来自 ROBOT 自身 LiDAR 的双向 scan matcher；不会读取 MuJoCo 接触、摩擦、真值位姿、actor 或 score。
+- 运动证据使用 typed `SlamConfig::motion_evidence_sigma`、既有 matcher gate 和 `track_step_m` 栅格分辨率。匹配协方差至少覆盖一个搜索栅格，避免把占据栅格量化误判为滑移；方向不一致、重叠不足、分数边际不足或双向验证失败都会拒绝测量。
+- 只有 mapless SLAM 使用该相对运动证据更新轮速 motion scale；已有先验地图的绝对 scan-to-map 链不再重复消费相关 scan-to-submap 结果。motion scale 通过有界标量 Kalman 融合，仍受 typed min/max 限制。
+- L 图层显示 MuJoCo LiDAR 物理传感器起点和真实 raycast；E 图层显示 ROBOT 估计传感器起点与估计投影。两者不再混用，坡脚物理车不会因估计漂移而显示成已在坡上。
+- Fast/Turbo/direct 3D 路径移除无 shadow-map 时的假地面圆盘阴影；高质量路径继续使用物理 shadow map。
+- 回归：`test_slam`、`test_autonomy`、`test_localization`、`test_viewer_frame`、`test_experience_mission`、`test_slam_experience_mission` 已通过；无图路线首次回环在 east/north/west 三个目标完成后的真实重访阶段，2.5 m 路线 4/4、零碰撞。
+
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
 - `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
 - 当前阶段：第 8 项契约子阶段；第 1–7 项的主要交付已独立提交，不得重新实现或回退已经验收的边界。

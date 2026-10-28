@@ -293,6 +293,56 @@ int main() {
     assert(!tr2.accepted);
   }
 
+  // Relative scan motion detects straight-line wheel spin. The robot keeps
+  // seeing the same scene while encoders claim 0.2 m of travel; the verified
+  // scan pair must report near-zero measured displacement from the previous
+  // live scan, independently of any keyframe pose manufactured by odometry.
+  {
+    std::vector<Box> boxes{{-2.0, -2.0, 3.0, -1.8},
+                           {-2.0, -2.0, -1.8, 3.0},
+                           {2.6, -1.0, 3.0, 2.0},
+                           {0.5, 0.5, 0.9, 0.9}};
+    SlamSession session;
+    EstimatedState first;
+    first.valid = true;
+    first.stamp_ns = 1'000'000'000LL;
+    iface::ObservationFrame first_scan;
+    first_scan.scan_valid = true;
+    first_scan.odometry_valid = true;
+    first_scan.forward_mps = 1.0;
+    first_scan.ranges_m = scan_from(0.0, 0.0, 0.0, boxes);
+    first_scan.scan_angle_min_rad = -M_PI;
+    first_scan.scan_angle_increment_rad = 2.0 * M_PI / 72;
+    first_scan.stamp_ns = first.stamp_ns;
+    const SlamMotionResult baseline = session.observe_motion(first, first_scan);
+    assert(!baseline.valid);
+
+    EstimatedState slipped = first;
+    slipped.x_m = 0.2;
+    slipped.stamp_ns = 1'200'000'000LL;
+    iface::ObservationFrame same_scene = first_scan;
+    same_scene.stamp_ns = slipped.stamp_ns;
+    const SlamMotionResult spin = session.observe_motion(slipped, same_scene);
+    assert(spin.attempted);
+    if (!spin.valid) std::fprintf(stderr, "motion spin: %s\n",
+                                  spin.diagnostic.c_str());
+    assert(spin.valid);
+    assert(spin.estimated_dx_m > 0.15);
+    assert(std::hypot(spin.measured_dx_m, spin.measured_dy_m) < 0.08);
+
+    EstimatedState moving = slipped;
+    moving.x_m = 0.4;
+    moving.stamp_ns = 1'400'000'000LL;
+    iface::ObservationFrame moved_scan = same_scene;
+    moved_scan.stamp_ns = moving.stamp_ns;
+    moved_scan.ranges_m = scan_from(0.2, 0.0, 0.0, boxes);
+    const SlamMotionResult moved = session.observe_motion(moving, moved_scan);
+    if (!moved.valid) std::fprintf(stderr, "motion moved: %s\n",
+                                   moved.diagnostic.c_str());
+    assert(moved.valid);
+    assert(moved.measured_dx_m > 0.12);
+  }
+
  // An opposing scan correction is the expected signature when wheel
  // odometry overstates travel during longitudinal slip. One such scan stays
  // pending; a geometrically verified correction with the same sign from an

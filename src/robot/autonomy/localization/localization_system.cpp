@@ -81,6 +81,10 @@ LocalizationSystem::TickResult LocalizationSystem::update(
  mapper.reset();
 out.local_plan_reset_requested = true;
  }
+ if (!frame_reanchored) {
+   run_motion_evidence(obs, has_observation, cached_map_has_known_occupancy_,
+                       estimator);
+ }
  // Absolute survey matching and two-sided scan-to-submap tracking are both
  // heavy scan searches. Never stack them in one 20 ms control tick: the
  // absolute correction owns its due tick, and SLAM tracking uses intervening
@@ -127,6 +131,12 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
  supervisor_.startup_mode() == StartupMode::kSlamOnly;
  SlamTrackResult tr = slam_.track(
  estimator.estimate(), obs, mapless_slam);
+ if (mapless_slam && tr.scan_motion_valid) {
+   estimator.observe_scan_motion(
+       tr.scan_estimated_dx_m, tr.scan_estimated_dy_m,
+       tr.scan_measured_dx_m, tr.scan_measured_dy_m,
+       tr.position_sigma_m, obs.stamp_ns);
+ }
   if (!tr.accepted) return;
  if (mapless_slam) {
  // SlamSession releases at most one accepted observation per causal submap
@@ -148,6 +158,25 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
  estimator.correct_relative_pose(tr.x_m, tr.y_m, tr.yaw_rad,
  tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
  }
+}
+
+void LocalizationSystem::run_motion_evidence(
+    const iface::ObservationFrame& obs, bool has_observation,
+    bool map_has_known_occupancy, IEstimator& estimator) {
+  // A surveyed map already supplies an independent absolute scan constraint.
+  // Relative motion evidence is reserved for mapless SLAM, where wheel/IMU
+  // prediction is the only continuous prior and the live LiDAR pair is the
+  // robot's own observable traction witness. Running both chains on one known
+  // map correlated the same endpoints and made normal motion look like slip.
+  if (map_has_known_occupancy) return;
+  if (!supervisor_.localized() || !has_observation || !obs.scan_valid) return;
+  const SlamMotionResult motion =
+      slam_.observe_motion(estimator.estimate(), obs);
+  if (!motion.valid) return;
+  estimator.observe_scan_motion(
+      motion.estimated_dx_m, motion.estimated_dy_m,
+      motion.measured_dx_m, motion.measured_dy_m,
+      motion.position_sigma_m, obs.stamp_ns);
 }
 
 bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,

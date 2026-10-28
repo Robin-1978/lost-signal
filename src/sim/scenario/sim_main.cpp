@@ -555,7 +555,8 @@ int main(int argc, char** argv) {
  "clr=%.2f safety=%s loc=%s "
  "collision=%s/%s/%s dyn_clr=%.2f localized=%s "
  "loops=%zu loop_corr=%.3f/%.3f tracks=%zu "
- "track_corr=%.3f/%.3f grip=%.2f slip=%s\n",
+ "track_corr=%.3f/%.3f track=%s grip=%.2f slip=%s/%.3f(s=%.3f) "
+ "motion_scale=%.3f\n",
  ran, session->objectives().active_place().c_str(),
  session->current_goal().state ==
  robot::iface::GoalState::kActive ? "active" : "idle",
@@ -572,7 +573,10 @@ int main(int argc, char** argv) {
  diag.localized ? "yes" : "no", diag.slam_loops_closed,
  diag.slam_loop_correction_m, diag.slam_loop_correction_rad,
  diag.slam_tracks, diag.track_correction_m,
- diag.track_correction_rad, diag.grip_factor, diag.slip_quality.c_str());
+ diag.track_correction_rad, diag.track_diagnostic.c_str(),
+ diag.grip_factor, diag.slip_quality.c_str(),
+ diag.slip_longitudinal_ratio, diag.slip_longitudinal_sigma,
+ diag.motion_scale);
  if (localization_event) verbose_localization_event = localization_action;
  }
  }

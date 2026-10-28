@@ -47,6 +47,11 @@ struct SlipObservation {
   // exceed [-1, 1] when the denominator is floored — stated, not clamped.
   double longitudinal_ratio{0.0};
   double yaw_residual_rads{0.0};  // w_wheel - w_body.
+  // Standard uncertainty of longitudinal_ratio when that ratio came from a
+  // geometrically measured displacement. Zero means the ratio was produced
+  // by the wheel/body twist observer and carries no independent distance
+  // uncertainty.
+  double longitudinal_sigma{0.0};
   // Reporting carrier: 1/(1+trace) when observable, halved when stale,
   // 0 otherwise. No gate acts on it.
   double confidence{0.0};

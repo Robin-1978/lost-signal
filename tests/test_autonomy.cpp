@@ -252,6 +252,31 @@ int main() {
     assert(est.last_slip().yaw_residual_rads < -0.5);  // wheels lag the body
   }
 
+  // Straight-line wheel spin: encoders travel 0.40 m while a verified scan
+  // pair shows no body displacement. The estimator must reduce the wheel
+  // travel scale, publish the measured slip, and later recover when fresh
+  // scans show real motion. This path uses no simulator contact/slip truth.
+  {
+    FusedOdometryEstimator est;
+    est.reset();
+    est.observe_scan_motion(0.40, 0.0, 0.0, 0.0, 0.01,
+                            1'000'000'000LL);
+    assert(est.motion_scale() < 1.0);
+    assert(est.motion_scale() >= 0.1);
+    assert(est.last_slip().quality == SlipQuality::kObservable);
+    assert(std::abs(est.last_slip().longitudinal_ratio - 1.0) < 1e-9);
+    assert(est.last_slip().longitudinal_sigma > 0.0);
+    for (int k = 1; k <= 50; ++k) {
+      est.predict(make_odom(static_cast<std::uint64_t>(k),
+                            k * 20'000'000LL, 1.0));
+    }
+    assert(est.estimate().x_m < 0.75);  // raw wheels alone would give 1.0 m
+    const double slowed = est.motion_scale();
+    est.observe_scan_motion(0.40, 0.0, 0.40, 0.0, 0.01,
+                            2'000'000'000LL);
+    assert(est.motion_scale() > slowed);
+  }
+
   // Attitude: static tilt converges roll/pitch toward the gravity vector.
   {
     FusedOdometryEstimator est;
