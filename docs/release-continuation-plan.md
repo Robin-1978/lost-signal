@@ -507,6 +507,10 @@
   `test_asset_manifest` 和 `test_truth_isolation`；`python3 tests/check_boundary.py`
   通过。Xvfb 已对全部 12 个物理 world 完成 `--3d --shot` smoke，且每个 world 的
   40-step headless smoke 均能推进。
+- Release Viewer 对主战役 7 章和 5 个工程课程逐章执行 `--chapter ... --3d
+  --shot 8` smoke，全部成功退出并生成截图；这覆盖了第二章入口的 Enter/briefing
+  状态、无图 SLAM、连续坡面、冰面、复杂场、交通场和工业长图，避免把 UI 暂停误报
+  为仿真卡死。
 
 下一步从这里继续：先将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
 发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的
