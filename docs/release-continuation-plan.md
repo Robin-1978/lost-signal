@@ -328,6 +328,13 @@
 - `dc47513 feat: author town presentation scenes` 为 `signal_town` 与 `signal_town_big` 增加同名 authored scene。世界文件仍是唯一碰撞/物理来源；scene 中无碰撞的装饰只使用 `surface_only`，高度约束由 scene loader 强制检查。Viewer catalog 现在将两个世界标为 `scene=authored`。
 - 直接 `sim_viewer --map` 会执行该地图的全部 named places；当前 big town 运行到第 3/5 个目标时仍持续推进，未复现“第一目标后停住”。若 UI 处于 briefing/prediction，必须先完成首屏 walkaround 和 prediction 选择，暂停是教学流程状态，不是仿真卡死。
 - 当前下一步仍是第 7 项：继续把坡面、连续地形、工业和手动 sandbox 的 world 同名 scene 与可验证 GLB 环境资产补齐；随后完成 Release 1x/8x/64x/Turbo/headless 统一性能报告、代码重复清理和全量 CTest 串行门禁。
+
+### Release 性能复测（2026-10-28）
+
+- `build-release/sim_viewer --sandbox --3d --map configs/worlds/industrial_200k.json --quality fast --shot 120`：1x 实际 `1.00x / 50 steps/s`，ROBOT tick p99/max `19.61/20.72 ms`；8x 实际 `5.16x / 258 steps/s`、`8.07/9.47 ms`；64x 实际 `5.19x / 260 steps/s`、`7.67/9.13 ms`；Turbo 实际 `4.57x / 228 steps/s`、`8.31/11.39 ms`。请求倍率超过单线程 Viewer 吞吐时仍显示实际 RTF/LIMIT，不改变固定步长。
+- Release headless `signal_town` 完整五目标、`--profile`：5961 步、5/5、0 碰撞、RTF `5.38x`；physics p99/max `1.674/2.742 ms`，ROBOT tick p99/max `6.273/12.458 ms`，total p99/max `7.645/14.031 ms`。
+- 同一 Release 输入连续两次输出 summary JSON 的 SHA-256 均为
+  `d9f92110de56170fc8ad2cd85d5efd87ecb37cca0a705f0c4442c27ca6e48b6a`，证明 observation、command、终态和 score 在相同输入下可复现。
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
@@ -460,10 +467,31 @@
   不放宽到达条件。当前 Debug 定向回归（MuJoCo、DWA、SLAM、terrain、Viewer、
   assets、scene、catalog、boundary）通过，85 项非工业全量回归中仅旧的 20 万
   平方米长测需要单独串行采集。
-- 每个 catalog world 的 Xvfb 3D smoke 已通过；`industrial_200k`、
-  `orchard_hillside`、`proving_ground_map`、`slope_lab`、`stormglass_station`
-  和 `washout_canyon` 无专属装饰场景时仍使用合法的 `lab_default` fallback，
-  其碰撞/地形/粒子/物理模型路径不被省略。下一步只补发布门禁记录和必要的
-  authored scene 资产，不改变 fallback 的物理权威。
+- 每个 catalog world 的 Xvfb 3D smoke 已通过；`signal_town`、
+  `signal_town_big`、`industrial_200k`、`orchard_hillside`、
+  `proving_ground_map`、`slope_lab`、`stormglass_station` 和 `washout_canyon`
+  现在都有同名 authored scene。场景只增加灯光、地面材质和已验证的贴地
+  GLB 装饰，碰撞/地形/粒子/物理模型仍由 world 与 MuJoCo 权威驱动。
+- 代码整理已完成一项低风险收敛：ObjectiveDriver 在每个 tick 只采样一次
+  truth acceptance 数据，再更新稳定窗口，不重复计算同一物理状态；工业、冰面和
+  Experience 回归仍通过。下一步是把四底盘与手动 sandbox 纳入同一 Release 发布门禁，
+  同时继续清理真正私有的重复 helper，不删除公共 adapter/provider seam。
 
-下一步从这里继续：先完成本工作区的 Release/全量 CTest 记录，再对每个 catalog world 做一次 3D 启动 smoke test；随后补齐场景资产的 authored scene（当前 fallback 仍是合法但简化的工程视图），并把 Blender 资产检查、四底盘和手动 sandbox 作为发布门禁，而不是只依赖 `signal_town`。
+### 发布目录与代码整理阶段（工作区，待提交）
+
+- `test_experience_catalog` 现在严格检查全部 12 个发布章节：每个章节的
+  world、authored scene、asset manifest 和首个 ROBOT/SIM transition 都必须可加载；
+  不再使用 `>= 11` 这种会掩盖章节丢失的下限。
+- `test_scene_manifest` 严格检查全部 12 个物理 world 都有同名 authored scene；
+  `lab_default.scene.json` 仍只作为显式的开发 fallback，不会替代已发布 world 的
+  reviewed scene。
+- 局部匹配、SLAM 和全局搜索共用 `kMaximumScanMatchHypotheses` 的实现容量；
+  搜索策略仍由各自 typed config 决定，不再在三个算法文件中复制同一无名数字。
+- Debug 全量 CTest 已重新执行并通过 89/89；20 万平方米长测 269.54 s，直接
+  `central_gate` 长测 49.23 s。`signal_town_big` 五目标、冰面、连续地形、四底盘、
+  视觉资产、场景 manifest、experience catalog、truth isolation 和 ROBOT boundary
+  均通过。
+
+下一步从这里继续：先将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
+发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的
+坡面、冰面、复杂场和手动工程课程入口，不改变 robot 只能使用自身估计的边界。

@@ -548,7 +548,7 @@ struct GlobalSearcher::WorkState {
  if (candidate.score > existing->score) *existing = candidate;
  return;
  }
- constexpr std::size_t kMaxHypotheses = 24;
+ constexpr std::size_t kMaxHypotheses = kMaximumScanMatchHypotheses;
  if (refine_hypotheses.size() < kMaxHypotheses) {
  refine_hypotheses.push_back(candidate);
  return;

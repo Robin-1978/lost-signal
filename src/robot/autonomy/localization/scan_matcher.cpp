@@ -366,7 +366,7 @@ ScanMatchResult ScanMatcher::localize(
            std::abs(core::wrap_angle(a.heading - b.heading)) <
                config_.ambiguity_heading_rad;
   };
-  constexpr std::size_t kMaxHypotheses = 24;
+  constexpr std::size_t kMaxHypotheses = kMaximumScanMatchHypotheses;
   std::vector<Hypothesis> hypotheses;
   hypotheses.reserve(kMaxHypotheses);
   const int t_steps = static_cast<int>(

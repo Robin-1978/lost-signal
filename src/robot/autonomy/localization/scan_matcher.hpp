@@ -13,6 +13,12 @@
 
 namespace lost_signal::robot::autonomy {
 
+// Shared implementation capacity for bounded scan-hypothesis generation.
+// Public search policies still decide how many hypotheses are accepted; this
+// only keeps the local matcher, SLAM and global search from drifting into
+// unrelated hard-coded storage limits.
+inline constexpr std::size_t kMaximumScanMatchHypotheses = 24;
+
 // Deterministic known-map scan matcher: planar LiDAR scan vs static raster,
 // searched around an odometric prior. No truth, no actor identities, no map
 // mutation. Unknown cells score 0 (never false certainty); outside-map is

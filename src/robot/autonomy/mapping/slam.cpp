@@ -125,7 +125,7 @@ struct SlamSession::LoopSearchWork {
  if (candidate.score > existing->score) *existing = candidate;
  return;
  }
- constexpr std::size_t kMaxHypotheses = 24;
+ constexpr std::size_t kMaxHypotheses = kMaximumScanMatchHypotheses;
  if (hypotheses.size() < kMaxHypotheses) {
  hypotheses.push_back(candidate);
  return;
