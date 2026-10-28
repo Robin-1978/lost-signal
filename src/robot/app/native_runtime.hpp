@@ -5,10 +5,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include "robot/app/robot_application.hpp"
+#include "robot/iface/conformance.hpp"
 
 namespace lost_signal::robot::app {
 
@@ -26,6 +28,13 @@ class INativeAdapter {
  public:
  virtual ~INativeAdapter() = default;
  virtual const std::vector<iface::EndpointDescriptor>& endpoints() const = 0;
+ // Optional nominal acquisition rate used by the stream conformance monitor.
+ // Zero means the adapter does not want a rate/silence gate for that endpoint.
+ virtual double endpoint_nominal_rate_hz(
+     const std::string& endpoint_id) const {
+   (void)endpoint_id;
+   return 0.0;
+ }
  // Performs the deployment-specific profile/calibration handshake before
  // ROBOT lifecycle activation. The adapter may query a board over UART, CAN,
  // USB or another native link and compare ownership, units, joint layout,
@@ -63,6 +72,7 @@ struct NativeRuntimeStats {
  std::uint64_t actuator_writes = 0;
  std::uint64_t actuator_write_failures = 0;
  std::uint64_t watchdog_stops = 0;
+ std::uint64_t conformance_failures = 0;
 };
 
 // Provider-neutral native process loop. The decision thread drains all
@@ -98,6 +108,7 @@ class NativeRuntime {
  NativeRuntimeConfig config_;
  iface::ActuatorMode actuator_mode_ = iface::ActuatorMode::kDiffDuty;
  std::uint64_t chassis_sequence_ = 0;
+ iface::ProviderConformanceMonitor conformance_;
 
  std::atomic_bool active_{false};
  std::atomic_bool watchdog_exit_{false};

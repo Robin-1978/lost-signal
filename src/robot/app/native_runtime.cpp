@@ -59,6 +59,8 @@ bool NativeRuntime::start() {
  !application_.register_provider(endpoint)) {
  return false;
  }
+ conformance_.expect(
+     endpoint, adapter_.endpoint_nominal_rate_hz(endpoint.endpoint_id));
  }
  application_.set_decision_period(config_.decision_period_ns);
  if (!application_.configure() || !application_.activate()) {
@@ -94,6 +96,7 @@ bool NativeRuntime::cycle(core::MonotonicNs now_ns) {
  continue;
  }
  observation = iface::make_envelope(feedback);
+ conformance_.observe(observation, now_ns);
  if (application_.publish_observation(observation)) {
  std::lock_guard<std::mutex> lock(stats_mutex_);
  ++stats_.observations_accepted;
@@ -106,6 +109,7 @@ bool NativeRuntime::cycle(core::MonotonicNs now_ns) {
  std::lock_guard<std::mutex> lock(stats_mutex_);
  ++stats_.observations_polled;
  }
+ conformance_.observe(observation, now_ns);
  if (application_.publish_observation(observation)) {
  std::lock_guard<std::mutex> lock(stats_mutex_);
  ++stats_.observations_accepted;
@@ -114,11 +118,13 @@ bool NativeRuntime::cycle(core::MonotonicNs now_ns) {
  }
 
  application_.tick(now_ns);
+ conformance_.check_liveness(now_ns);
  const iface::ActuatorCommand command = application_.take_actuator(now_ns);
  const bool written = publish_output(command, now_ns);
  {
  std::lock_guard<std::mutex> lock(stats_mutex_);
  ++stats_.cycles;
+ stats_.conformance_failures = conformance_.report(now_ns).failures.size();
  }
  return written;
 }
