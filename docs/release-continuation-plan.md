@@ -98,7 +98,7 @@
  schema、机器人 description/profile pin、输入 digest、稳健 median wheel-scale
  拟合、静止 IMU bias 拟合、JSON round-trip，以及带确认窗口、步长/范围限制和
  checkpoint rollback 的在线更新。`test_calibration` 覆盖坏值、摘要保留和回滚。
- 真实记录文件和硬件启动 handshake 现在分别由 calibration artifact 与
+  真实记录文件现在可通过部署无关的 CSV reader 导入，再由 calibration artifact 与
  `INativeAdapter::validate_startup_profile()` 接入；具体板卡仍必须提供实测 profile，
  不用运行时猜测值替代标定结果。
 
