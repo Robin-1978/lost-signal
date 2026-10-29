@@ -80,6 +80,13 @@ class ProviderConformanceMonitor {
   // Reports sources that stopped publishing. Call at the deployment rate.
   void check_liveness(core::MonotonicNs now_ns);
 
+  // Records a boundary rejection that cannot be represented by an
+  // ObservationFrame (for example a typed MCU capability mismatch). Keeping
+  // it in the same report makes native and provider faults observable through
+  // one fail-closed conformance result.
+  void reject(core::MonotonicNs now_ns, const std::string& source,
+              const std::string& rule, const std::string& detail);
+
   ProviderConformanceReport report(core::MonotonicNs now_ns) const;
 
  private:

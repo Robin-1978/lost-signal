@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <deque>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "robot/app/native_runtime.hpp"
@@ -102,17 +104,28 @@ class FakeChassisMcu final : public iface::IChassisMcuTransport {
  bool send(const iface::ChassisSetpoint& setpoint) override {
  last = setpoint;
  ++sends;
- return true;
+ return !fail_sends;
  }
- bool poll_feedback(iface::MotionFeedback&) override { return false; }
+ bool poll_feedback(iface::MotionFeedback& out) override {
+  if (feedback.empty()) return false;
+  out = std::move(feedback.front());
+  feedback.pop_front();
+  return true;
+ }
  void mechanical_safe_stop(core::MonotonicNs) noexcept override {
  ++stops;
  }
 
+ void push_feedback(iface::MotionFeedback value) {
+  feedback.push_back(std::move(value));
+ }
+
  iface::ChassisCapabilities caps_{};
  iface::ChassisSetpoint last{};
+ std::deque<iface::MotionFeedback> feedback;
  int sends = 0;
  int stops = 0;
+ bool fail_sends = false;
 };
 
 class FakeMcuAdapter final : public FakeNativeAdapter {
@@ -152,6 +165,20 @@ iface::ObservationFrame imu(core::MonotonicNs now_ns) {
  out.frame = core::Frame::kImuLink;
  out.imu_valid = true;
  out.imu_az_mps2 = 9.80665;
+ return out;
+}
+
+iface::MotionFeedback mcu_feedback(core::MonotonicNs now_ns,
+                                   std::uint64_t sequence = 1) {
+ iface::MotionFeedback out;
+ out.sequence = sequence;
+ out.stamp_ns = now_ns;
+ out.source = "native.encoder";
+ out.frame = core::Frame::kBaseLink;
+ out.odometry_valid = true;
+ out.drive_count = 2;
+ out.forward_mps = 0.0;
+ out.yaw_rate_radps = 0.0;
  return out;
 }
 } // namespace
@@ -218,12 +245,123 @@ int main() {
  mcu_application, mcu_adapter, {.decision_period_ns = 1'000'000});
  assert(mcu_runtime.start());
  const core::MonotonicNs mcu_now_ns = app::native_monotonic_now_ns();
+ mcu_adapter.mcu.push_feedback(mcu_feedback(mcu_now_ns));
  assert(mcu_runtime.cycle(mcu_now_ns));
  assert(mcu_adapter.mcu.sends == 1);
  assert(mcu_adapter.mcu.last.kind == iface::ChassisSetpointKind::kActuatorDuty);
  assert(mcu_adapter.mcu.last.sequence == 1);
  assert(mcu_adapter.mcu.last.stamp_ns == mcu_now_ns);
  mcu_runtime.shutdown();
+
+ // A typed chassis cannot continue on a silent encoder stream. The timeout
+ // derives from the board's declared feedback period and command age rather
+ // than a scenario-specific constant.
+ {
+  app::RobotApplication timeout_application(nullptr);
+  FakeMcuAdapter timeout_adapter;
+  app::NativeRuntime timeout_runtime(
+      timeout_application, timeout_adapter, {.decision_period_ns = 1'000'000});
+  assert(timeout_runtime.start());
+  const core::MonotonicNs first_ns = app::native_monotonic_now_ns();
+  timeout_adapter.mcu.push_feedback(mcu_feedback(first_ns));
+  assert(timeout_runtime.cycle(first_ns));
+  const core::MonotonicNs liveness_ns =
+      std::max(timeout_adapter.mcu.caps_.feedback_period_ns * 3,
+               core::MonotonicNs{1'000'000});
+  assert(!timeout_runtime.cycle(first_ns + liveness_ns + 1));
+  assert(timeout_runtime.stats().conformance_failures > 0);
+  assert(timeout_adapter.mcu.stops >= 1);
+  timeout_runtime.shutdown();
+ }
+
+ // Replayed feedback is a transport fault, even when its values are finite.
+ {
+  app::RobotApplication ordering_application(nullptr);
+  FakeMcuAdapter ordering_adapter;
+  app::NativeRuntime ordering_runtime(
+      ordering_application, ordering_adapter, {.decision_period_ns = 1'000'000});
+  assert(ordering_runtime.start());
+  const core::MonotonicNs first_ns = app::native_monotonic_now_ns();
+  ordering_adapter.mcu.push_feedback(mcu_feedback(first_ns, 1));
+  assert(ordering_runtime.cycle(first_ns));
+  ordering_adapter.mcu.push_feedback(mcu_feedback(first_ns + 1'000'000, 1));
+  assert(!ordering_runtime.cycle(first_ns + 1'000'000));
+  assert(ordering_runtime.stats().conformance_failures > 0);
+  assert(ordering_adapter.mcu.stops >= 1);
+  ordering_runtime.shutdown();
+ }
+
+ // Joint layout is part of the board capability contract; a partial encoder
+ // packet must never be interpreted as a valid differential chassis sample.
+ {
+  app::RobotApplication layout_application(nullptr);
+  FakeMcuAdapter layout_adapter;
+  app::NativeRuntime layout_runtime(
+      layout_application, layout_adapter, {.decision_period_ns = 1'000'000});
+  assert(layout_runtime.start());
+  const core::MonotonicNs now = app::native_monotonic_now_ns();
+  auto malformed = mcu_feedback(now);
+  malformed.drive_count = 1;
+  layout_adapter.mcu.push_feedback(std::move(malformed));
+  assert(!layout_runtime.cycle(now));
+  assert(layout_runtime.stats().conformance_failures > 0);
+  assert(layout_adapter.mcu.stops >= 1);
+  layout_runtime.shutdown();
+ }
+
+ // The typed source identity is part of the hardware boundary. A packet from
+ // another endpoint is rejected before it can become ROBOT odometry.
+ {
+  app::RobotApplication source_application(nullptr);
+  FakeMcuAdapter source_adapter;
+  app::NativeRuntime source_runtime(
+      source_application, source_adapter, {.decision_period_ns = 1'000'000});
+  assert(source_runtime.start());
+  const core::MonotonicNs now = app::native_monotonic_now_ns();
+  auto wrong_source = mcu_feedback(now);
+  wrong_source.source = "native.imu";
+  source_adapter.mcu.push_feedback(std::move(wrong_source));
+  assert(!source_runtime.cycle(now));
+  assert(source_runtime.stats().conformance_failures > 0);
+  assert(source_adapter.mcu.stops >= 1);
+  source_runtime.shutdown();
+ }
+
+ // A feedback frame can be structurally valid and still be too old for the
+ // ROBOT clock. Provider freshness rejects it before a decision is made.
+ {
+  app::RobotApplication stale_application(nullptr);
+  FakeMcuAdapter stale_adapter;
+  app::NativeRuntime stale_runtime(
+      stale_application, stale_adapter, {.decision_period_ns = 1'000'000});
+  assert(stale_runtime.start());
+  const core::MonotonicNs now = app::native_monotonic_now_ns();
+  const core::MonotonicNs stale_age =
+      iface::ProviderConformanceConfig{}.maximum_sample_age_ns + 1;
+  stale_adapter.mcu.push_feedback(mcu_feedback(now - stale_age));
+  assert(!stale_runtime.cycle(now));
+  assert(stale_runtime.stats().conformance_failures > 0);
+  assert(stale_adapter.mcu.stops >= 1);
+  stale_runtime.shutdown();
+ }
+
+ // A transport send failure invokes both the typed MCU stop and the adapter's
+ // supervisory stop path before the failed cycle returns.
+ {
+  app::RobotApplication send_application(nullptr);
+  FakeMcuAdapter send_adapter;
+  app::NativeRuntime send_runtime(
+      send_application, send_adapter, {.decision_period_ns = 1'000'000});
+  assert(send_runtime.start());
+  const core::MonotonicNs now = app::native_monotonic_now_ns();
+  send_adapter.mcu.push_feedback(mcu_feedback(now));
+  send_adapter.mcu.fail_sends = true;
+  assert(!send_runtime.cycle(now));
+  assert(send_runtime.stats().actuator_write_failures == 1);
+  assert(send_adapter.mcu.stops >= 1);
+  assert(send_adapter.stops() >= 1);
+  send_runtime.shutdown();
+ }
 
  // Stop enforcement is independent of the decision thread. Once its
  // published command expires, the watchdog invokes the adapter's separate

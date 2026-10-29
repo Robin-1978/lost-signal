@@ -221,6 +221,13 @@ void ProviderConformanceMonitor::check_liveness(core::MonotonicNs now_ns) {
   }
 }
 
+void ProviderConformanceMonitor::reject(core::MonotonicNs now_ns,
+                                        const std::string& source,
+                                        const std::string& rule,
+                                        const std::string& detail) {
+  fail(now_ns, source.empty() ? "provider" : source, rule, detail);
+}
+
 ProviderConformanceReport ProviderConformanceMonitor::report(
     core::MonotonicNs now_ns) const {
   ProviderConformanceReport out;

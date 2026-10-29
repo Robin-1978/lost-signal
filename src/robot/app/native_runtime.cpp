@@ -11,6 +11,38 @@ namespace lost_signal::robot::app {
 namespace {
 using SteadyClock = std::chrono::steady_clock;
 
+core::MonotonicNs feedback_timeout_ns(
+    const iface::MotionCapabilities& capabilities,
+    core::MonotonicNs decision_period_ns) {
+ // Three feedback periods carry the same liveness meaning as the provider
+ // conformance monitor. The host release period prevents a faster board from
+ // expiring between two decision releases; the board's command age remains
+ // the hard upper bound from its typed profile.
+ constexpr core::MonotonicNs kLivenessPeriods = 3;
+ const core::MonotonicNs period = capabilities.feedback_period_ns;
+ const core::MonotonicNs max_ns =
+     std::numeric_limits<core::MonotonicNs>::max();
+ const core::MonotonicNs three_periods =
+     period > max_ns / kLivenessPeriods ? max_ns
+                                        : period * kLivenessPeriods;
+ return std::min(capabilities.maximum_command_age_ns,
+                 std::max(decision_period_ns, three_periods));
+}
+
+bool registered_encoder_endpoint(const INativeAdapter& adapter,
+                                 const iface::MotionFeedback& feedback) {
+ const std::string measured_frame = iface::frame_name(feedback.frame);
+ for (const auto& endpoint : adapter.endpoints()) {
+  if (endpoint.endpoint_id == feedback.source &&
+      endpoint.role == iface::EndpointRole::kEncoder &&
+      endpoint.backend == iface::ProviderBackend::kNative &&
+      (endpoint.frame_id.empty() || endpoint.frame_id == measured_frame)) {
+   return true;
+  }
+ }
+ return false;
+}
+
 SteadyClock::time_point steady_time_point(core::MonotonicNs stamp_ns) {
  return SteadyClock::time_point(std::chrono::duration_cast<
  SteadyClock::duration>(std::chrono::nanoseconds(stamp_ns)));
@@ -31,6 +63,10 @@ NativeRuntime::~NativeRuntime() { shutdown(); }
 
 bool NativeRuntime::start() {
  if (active_.load() || config_.decision_period_ns <= 0) return false;
+ chassis_mcu_feedback_required_ = false;
+ chassis_mcu_feedback_seen_ = false;
+ chassis_mcu_feedback_timeout_ns_ = core::kInvalidTime;
+ chassis_mcu_last_feedback_ns_ = core::kInvalidTime;
  // The adapter owns the physical handshake: this is where a real transport
  // verifies the board profile, calibration artifact, units and ownership
  // against the deployable ROBOT description. Do it before registering any
@@ -50,6 +86,11 @@ bool NativeRuntime::start() {
  return false;
  }
  application_.set_chassis_control_owner(caps.control_owner);
+ chassis_mcu_feedback_required_ = true;
+ chassis_mcu_feedback_seen_ = false;
+ chassis_mcu_feedback_timeout_ns_ =
+     feedback_timeout_ns(caps, config_.decision_period_ns);
+ chassis_mcu_last_feedback_ns_ = core::kInvalidTime;
  } else {
  application_.set_chassis_control_owner(
  iface::ChassisControlOwner::kHostMotionLoop);
@@ -66,6 +107,13 @@ bool NativeRuntime::start() {
  if (!application_.configure() || !application_.activate()) {
  application_.shutdown();
  return false;
+ }
+
+ if (adapter_.chassis_mcu() == nullptr) {
+  chassis_mcu_feedback_required_ = false;
+  chassis_mcu_feedback_seen_ = false;
+  chassis_mcu_feedback_timeout_ns_ = core::kInvalidTime;
+  chassis_mcu_last_feedback_ns_ = core::kInvalidTime;
  }
 
  const core::MonotonicNs now_ns = native_monotonic_now_ns();
@@ -85,6 +133,7 @@ bool NativeRuntime::cycle(core::MonotonicNs now_ns) {
  if (!active_.load() || now_ns < 0) return false;
  iface::ObservationFrame observation;
  if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
+ bool invalid_feedback = false;
  iface::MotionFeedback feedback;
  while (mcu->poll_feedback(feedback)) {
  {
@@ -92,8 +141,26 @@ bool NativeRuntime::cycle(core::MonotonicNs now_ns) {
  ++stats_.observations_polled;
  }
  if (!feedback.valid()) {
- feedback = {};
- continue;
+  conformance_.reject(now_ns, feedback.source, "motion_feedback",
+                      "typed MCU feedback failed structural validation");
+  invalid_feedback = true;
+  break;
+ }
+ const auto& caps = mcu->capabilities();
+ if (!registered_encoder_endpoint(adapter_, feedback)) {
+  conformance_.reject(now_ns, feedback.source, "motion_feedback_source",
+                      "feedback source is not a registered native encoder "
+                      "endpoint with the declared frame");
+  invalid_feedback = true;
+  break;
+ }
+ if (feedback.drive_count != caps.drive_count ||
+     feedback.steer_count != caps.steer_count) {
+  conformance_.reject(
+      now_ns, feedback.source, "motion_feedback_layout",
+      "feedback drive/steer joint count does not match MCU capabilities");
+  invalid_feedback = true;
+  break;
  }
  observation = iface::make_envelope(feedback);
  conformance_.observe(observation, now_ns);
@@ -101,7 +168,37 @@ bool NativeRuntime::cycle(core::MonotonicNs now_ns) {
  std::lock_guard<std::mutex> lock(stats_mutex_);
  ++stats_.observations_accepted;
  }
+ chassis_mcu_feedback_seen_ = true;
+ chassis_mcu_last_feedback_ns_ = now_ns;
  feedback = {};
+ }
+ if (invalid_feedback) {
+  const auto report = conformance_.report(now_ns);
+  {
+   std::lock_guard<std::mutex> lock(stats_mutex_);
+   stats_.conformance_failures = report.failures.size();
+  }
+  mechanical_stop(now_ns, false);
+  return false;
+ }
+ if (chassis_mcu_feedback_required_ &&
+     (!chassis_mcu_feedback_seen_ ||
+      chassis_mcu_last_feedback_ns_ == core::kInvalidTime ||
+      now_ns < chassis_mcu_last_feedback_ns_ ||
+      now_ns - chassis_mcu_last_feedback_ns_ >
+          chassis_mcu_feedback_timeout_ns_)) {
+  conformance_.reject(
+      now_ns, "chassis_mcu", "motion_feedback_timeout",
+      chassis_mcu_feedback_seen_
+          ? "no valid typed MCU feedback within the profile liveness window"
+          : "typed MCU produced no feedback before the first command");
+  const auto report = conformance_.report(now_ns);
+  {
+   std::lock_guard<std::mutex> lock(stats_mutex_);
+   stats_.conformance_failures = report.failures.size();
+  }
+  mechanical_stop(now_ns, false);
+  return false;
  }
  }
  while (adapter_.poll_observation(observation)) {
@@ -189,7 +286,12 @@ bool NativeRuntime::publish_output(const iface::ActuatorCommand& command,
   } else {
    ok = adapter_.write_actuator(output);
   }
- if (!ok) adapter_.mechanical_safe_stop(actuator_mode_, now_ns);
+ if (!ok) {
+  adapter_.mechanical_safe_stop(actuator_mode_, now_ns);
+  if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
+   mcu->mechanical_safe_stop(now_ns);
+  }
+ }
  }
  {
  std::lock_guard<std::mutex> lock(stats_mutex_);
@@ -242,6 +344,9 @@ void NativeRuntime::mechanical_stop(core::MonotonicNs now_ns,
  bool watchdog) {
  {
  std::lock_guard<std::mutex> io_lock(io_mutex_);
+  if (auto* mcu = adapter_.chassis_mcu(); mcu != nullptr) {
+   mcu->mechanical_safe_stop(now_ns);
+  }
  adapter_.mechanical_safe_stop(actuator_mode_, now_ns);
  }
  if (watchdog) {
@@ -257,6 +362,10 @@ void NativeRuntime::shutdown() {
  if (watchdog_thread_.joinable()) watchdog_thread_.join();
  mechanical_stop(native_monotonic_now_ns(), false);
  application_.shutdown();
+ chassis_mcu_feedback_required_ = false;
+ chassis_mcu_feedback_seen_ = false;
+ chassis_mcu_feedback_timeout_ns_ = core::kInvalidTime;
+ chassis_mcu_last_feedback_ns_ = core::kInvalidTime;
 }
 
 NativeRuntimeStats NativeRuntime::stats() const {

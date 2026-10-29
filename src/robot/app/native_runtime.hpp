@@ -109,6 +109,11 @@ class NativeRuntime {
  iface::ActuatorMode actuator_mode_ = iface::ActuatorMode::kDiffDuty;
  std::uint64_t chassis_sequence_ = 0;
  iface::ProviderConformanceMonitor conformance_;
+ bool chassis_mcu_feedback_required_ = false;
+ bool chassis_mcu_feedback_seen_ = false;
+ core::MonotonicNs chassis_mcu_feedback_timeout_ns_ =
+     core::kInvalidTime;
+ core::MonotonicNs chassis_mcu_last_feedback_ns_ = core::kInvalidTime;
 
  std::atomic_bool active_{false};
  std::atomic_bool watchdog_exit_{false};

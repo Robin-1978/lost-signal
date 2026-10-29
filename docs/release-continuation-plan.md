@@ -83,7 +83,7 @@
 
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
 - `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
-- 当前阶段：第 8 项契约子阶段；第 1–7 项的主要交付已独立提交，不得重新实现或回退已经验收的边界。
+- 当前阶段：第 9 项自动标定与硬件 profile；第 1–8 项的主要交付已独立提交，不得重新实现或回退已经验收的边界。
   `signal_town_big` 的地图目标安全契约已修复并在完整五目标回归中验收：
   `bb87c91`，5286 步、5/5、0 碰撞。直接使用 `sim_viewer --map` 会运行该地图
   的全部 named places，不再只验证首个目标。
@@ -125,6 +125,15 @@
   暴露到 native stats；适配器可声明每个 endpoint 的 nominal rate。出现 stream
   违规时 NativeRuntime 在下一次 ROBOT tick 前执行机械停车并 fail closed。监控只读取
   provider 测量，不改变 ROBOT 估计或引入 SIM 真值。
+- 8.9 已把 typed chassis MCU 反馈闭环设为运动输出的前置条件：反馈必须来自已注册
+  native encoder endpoint，frame、sequence、时间新鲜度和 drive/steer joint layout
+  必须匹配 board capabilities；首次反馈缺失、profile liveness window 超时、重放/回退
+  sequence、过期数据和 source/layout 不匹配都会在 ROBOT tick 前机械停车。反馈活性窗口
+  由 typed `feedback_period_ns`、host decision period 和 `maximum_command_age_ns`
+  推导，复用三周期 liveness 语义，不增加关卡阈值。MCU transport 与 adapter 的独立
+  mechanical stop 都会在发送失败、反馈故障和 watchdog 触发时执行。`test_native_runtime`
+  新增合法闭环、超时、重放、布局、source、过期和发送失败覆盖；`native_runtime`、
+  `virtual_mcu`、`motion_contract`、`conformance` 定向回归通过。
 
  - Sandbox 手动控制已接入同一 RobotApplication/ScenarioSession seam：Viewer 的
  `H` + `WASD`/方向键只发布限幅的 body command，仍经过 ROBOT validator、raw-scan
