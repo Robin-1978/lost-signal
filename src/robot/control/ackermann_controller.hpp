@@ -67,6 +67,12 @@ class AckermannController {
   AckermannControllerConfig config_;
   PID rear_left_pid_;
   PID rear_right_pid_;
+  // Integral state belongs to one continuous drive segment.  A commanded
+  // service stop (or a direction reversal) starts a new segment; retaining
+  // the old signed error would spend the actuator response window braking the
+  // new request and make the execution monitor report a false no-response.
+  double previous_target_v_mps_{0.0};
+  bool target_initialized_{false};
 };
 
 }  // namespace lost_signal::robot::control

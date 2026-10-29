@@ -657,10 +657,15 @@ void FusedOdometryEstimator::note_absolute_rejection(
  double dx_m, double dy_m, double dyaw_rad, core::MonotonicNs stamp_ns) {
  // A rejected map correction must never move the estimate. Its innovation is
  // nevertheless a conservative lower bound on the uncertainty that made the
- // innovation gate fail. Add the outer product of that observed residual to
- // the map-frame covariance; this is an evidence-derived update, rather than
- // a retry counter or a scenario-specific multiplier. Keep the continuous
- // odom frame untouched so controllers and external consumers never see a
+ // innovation gate fail: the current variance along each axis was too small
+ // for the displacement that was measured. Raise each axis to the observed
+ // squared residual and no further. Repeated views of the same evidence do
+ // not manufacture independent information, so replaying a residual cannot
+ // keep widening the belief; only a larger residual can. Adding a
+ // non-negative amount to the diagonal also keeps an already valid covariance
+ // positive semidefinite. This is an evidence-derived update, rather than a
+ // retry counter or a scenario-specific multiplier. Keep the continuous odom
+ // frame untouched so controllers and external consumers never see a
  // discontinuity from recovery bookkeeping.
  if (!std::isfinite(dx_m) || !std::isfinite(dy_m) ||
  !std::isfinite(dyaw_rad)) {
@@ -669,13 +674,14 @@ void FusedOdometryEstimator::note_absolute_rejection(
  ensure_odom_origin(stamp_ns);
  const double residual[3] = {dx_m, dy_m, dyaw_rad};
  for (int row = 0; row < 3; ++row) {
-  for (int column = 0; column < 3; ++column) {
-   estimate_covariance_[static_cast<std::size_t>(row * 3 + column)] +=
-    residual[row] * residual[column];
-  }
+  const std::size_t diagonal = static_cast<std::size_t>(row * 3 + row);
+  const double observed_variance = residual[row] * residual[row];
+  estimate_covariance_[diagonal] = std::max(
+      estimate_covariance_[diagonal],
+      observed_variance);
  }
- // Preserve symmetry against accumulated floating-point roundoff and the
- // estimator's declared physical floors/caps.
+ // Preserve symmetry against floating-point roundoff and the estimator's
+ // declared physical floors/caps.
  for (int row = 0; row < 3; ++row) {
   for (int column = row + 1; column < 3; ++column) {
    const double value = 0.5 * (
@@ -696,6 +702,41 @@ void FusedOdometryEstimator::note_absolute_rejection(
   config_.yaw_sigma_max_rad * config_.yaw_sigma_max_rad);
  estimate_.stamp_ns = stamp_ns;
  publish_covariance(estimate_covariance_, config_, estimate_);
+}
+
+void FusedOdometryEstimator::note_absolute_search_failure(
+    double position_radius_m, double heading_radius_rad,
+    core::MonotonicNs stamp_ns) {
+  // A search failure is useful only when the caller has already established
+  // that the scan contained geometry and searched the declared envelope. In
+  // that case, the envelope itself is a conservative uncertainty floor. It
+  // widens both planar axes because the failed search does not identify which
+  // direction contains the missing pose; it never changes the pose.
+  if (!std::isfinite(position_radius_m) ||
+      !std::isfinite(heading_radius_rad) ||
+      !(position_radius_m > 0.0) || !(heading_radius_rad > 0.0)) {
+    return;
+  }
+  ensure_odom_origin(stamp_ns);
+  const double position_variance = position_radius_m * position_radius_m;
+  const double heading_variance = heading_radius_rad * heading_radius_rad;
+  estimate_covariance_[0] = std::max(estimate_covariance_[0],
+                                     position_variance);
+  estimate_covariance_[4] = std::max(estimate_covariance_[4],
+                                     position_variance);
+  estimate_covariance_[8] = std::max(estimate_covariance_[8],
+                                     heading_variance);
+  estimate_covariance_[0] = std::clamp(
+      estimate_covariance_[0], config_.pos_sigma_min_m * config_.pos_sigma_min_m,
+      config_.pos_sigma_max_m * config_.pos_sigma_max_m);
+  estimate_covariance_[4] = std::clamp(
+      estimate_covariance_[4], config_.pos_sigma_min_m * config_.pos_sigma_min_m,
+      config_.pos_sigma_max_m * config_.pos_sigma_max_m);
+  estimate_covariance_[8] = std::clamp(
+      estimate_covariance_[8], config_.yaw_sigma_min_rad * config_.yaw_sigma_min_rad,
+      config_.yaw_sigma_max_rad * config_.yaw_sigma_max_rad);
+  estimate_.stamp_ns = stamp_ns;
+  publish_covariance(estimate_covariance_, config_, estimate_);
 }
 
 void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,

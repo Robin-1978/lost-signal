@@ -80,6 +80,13 @@ class IEstimator {
  // is a no-op for lightweight test estimators.
  virtual void note_absolute_rejection(double /*dx_m*/, double /*dy_m*/,
  double /*dyaw_rad*/, core::MonotonicNs /*stamp_ns*/) {}
+ // A bounded absolute search with sufficient geometric returns found no
+ // raycast-valid pose inside its covariance-supported envelope. The envelope
+ // itself is then a lower bound on map-frame uncertainty; implementations may
+ // widen covariance without moving either map or odom pose.
+ virtual void note_absolute_search_failure(
+     double /*position_radius_m*/, double /*heading_radius_rad*/,
+     core::MonotonicNs /*stamp_ns*/) {}
   // Deliberate deployment seeding (known dock, operator initialpose).
   // Default ignores; only estimators with a seed path override it.
   virtual void seed_pose(double /*x_m*/, double /*y_m*/, double /*yaw_rad*/,
@@ -180,6 +187,9 @@ class FusedOdometryEstimator : public IEstimator {
                           core::MonotonicNs stamp_ns) override;
  void note_absolute_rejection(double dx_m, double dy_m, double dyaw_rad,
  core::MonotonicNs stamp_ns) override;
+ void note_absolute_search_failure(
+     double position_radius_m, double heading_radius_rad,
+     core::MonotonicNs stamp_ns) override;
   const EstimatedState& estimate() const override { return estimate_; }
  const EstimatedState& odometry_estimate() const override {
  return odom_estimate_;

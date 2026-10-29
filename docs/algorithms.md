@@ -194,6 +194,24 @@ last word. Unknown planner names fail configuration.
  single-frame costmap changes therefore cannot alternate full left/right
  commands. Any recovery candidate that becomes unsafe is discarded
  immediately, so continuity never overrides the live safety class.
+ Every recovery sample is a constant-twist command within one decision period
+ of the measured twist, held at the localization-observation crawl. From that
+ crawl no sample can express an escape that needs the declared acceleration:
+ a mover that arrives sooner than the crawl can leave its lane leaves only
+ creeps that still meet it, and a stop is a predicted contact as well. When
+ stopping is itself predicted to be hit (the validator reports a dynamic
+ collision for the zero command, or behavior reports
+ `route-conflict-no-safe-hold`) and no window-limited sample is fully clear,
+ the pipeline also validates straight commands at the declared chassis limit
+ (reverse, and sideways for a holonomic base; the wheel-speed bound applies).
+ The validator replays the declared actuator delay and acceleration from the
+ measured twist, so these commands are judged by the motion the plant will
+ execute. They are accepted only as fully clear rollouts (never as
+ minimum-risk creeps), are published verbatim, and stay preferred until the
+ escape releases, because alternating with a momentarily clear window sample
+ would publish opposite drive demands. The observation crawl bounds ordinary
+ motion during a localization search; it does not bound an escape from a
+ predicted contact.
  DWA and TEB build the same two-stage `LocalCostmap` from the ROBOT-owned
  rolling map. The lethal layer expands measured occupancy by footprint plus
  the configured hard margin; the outer linear band is a preference that keeps
@@ -217,6 +235,12 @@ last word. Unknown planner names fail configuration.
 - Control emits the validated candidate verbatim with a 200 ms watchdog.
   Zero motion is always canonical `kStop`, never zero-valued `kYawRate`.
   Chassis clamping lives one layer out (`DifferentialRobot` + `IChassis`).
+  Ackermann's rear velocity loops treat a commanded stop and a signed drive
+  reversal as physical segment boundaries: the old PI integral is cleared at
+  that boundary, while a same-direction speed change keeps its accumulated
+  correction. This keeps a brake term from masking the next departure during
+  the declared actuator response window; it is derived from the command and
+  the chassis controller state, not from a scenario or map threshold.
 - Safety (`ISafetyMonitor`) is the last gate and the ONLY module allowed to
   override a command after the controller. It re-checks RAW evidence only
   (observation freshness, near-field scan range, channel health) — never

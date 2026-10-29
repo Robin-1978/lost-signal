@@ -17,6 +17,8 @@ void LocalizationSystem::reset() {
   slam_.reset();
   slam_origin_seeded_ = false;
  global_origin_valid_ = false;
+ global_search_radius_m_ = 0.0;
+ global_search_heading_radius_rad_ = 0.0;
  map_evidence_cached_ = false;
  cached_map_id_.clear();
  cached_map_revision_ = 0;
@@ -61,6 +63,8 @@ LocalizationSystem::TickResult LocalizationSystem::update(
  global_search_.cancel();
  recovery_hyps_.reset();
  global_origin_valid_ = false;
+ global_search_radius_m_ = 0.0;
+ global_search_heading_radius_rad_ = 0.0;
  }
  if (!map_evidence_cached_ || cached_map_id_ != map.map_id ||
  cached_map_revision_ != map.revision) {
@@ -452,12 +456,16 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  const double recovery_heading_radius_rad =
  supervisor_.global_recovery_heading_radius_rad(
  prior_heading_sigma_rad);
+ global_search_radius_m_ = recovery_radius_m;
+ global_search_heading_radius_rad_ = recovery_heading_radius_rad;
  global_search_.begin_near(
  obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
  map, now_ns, est.x_m, est.y_m, recovery_radius_m,
  est.yaw_rad, recovery_heading_radius_rad,
  est.roll_rad, est.pitch_rad, est.z_m);
  } else {
+ global_search_radius_m_ = 0.0;
+ global_search_heading_radius_rad_ = 0.0;
  global_search_.begin(
  obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
  map, now_ns, est.roll_rad, est.pitch_rad, est.z_m);
@@ -601,6 +609,22 @@ global.heading_sigma_rad, correction_stamp_ns);
  global.x_m - est.x_m, global.y_m - est.y_m,
  core::wrap_angle(global.yaw_rad - est.yaw_rad), correction_stamp_ns);
  }
+ // A localized search can also fail before producing a raycast-valid pose.
+ // When it evaluated real geometric returns and no runner-up belief exists,
+ // the frozen covariance envelope is still a measured lower bound on the
+ // missing pose. Feed that envelope back once so the next retry expands
+ // adaptively; sparse/empty scans have zero coarse evaluations and remain
+ // diagnostic only.
+ if (supervisor_.localized() && !global.accepted &&
+     global.runner_ups.empty() && global.coarse_evaluations > 0 &&
+     global.usable_returns > 0 && global_search_radius_m_ > 0.0 &&
+     global_search_heading_radius_rad_ > 0.0) {
+   estimator.note_absolute_search_failure(
+       global_search_radius_m_, global_search_heading_radius_rad_,
+       correction_stamp_ns);
+ }
+ global_search_radius_m_ = 0.0;
+ global_search_heading_radius_rad_ = 0.0;
  supervisor_.record_global(accept_global, ScanMatchResult{});
  if (accept_global) {
  action = std::string("global_relocalization:accepted score=") +

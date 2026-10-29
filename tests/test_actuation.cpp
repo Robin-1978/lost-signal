@@ -204,6 +204,41 @@ int main() {
      zero.is_safe_stop());
   }
 
+  // A stop begins a new velocity-loop segment.  The controller must not
+  // carry the old signed integral into the next low-speed departure, or a
+  // valid command can be reported as no-response while the stale brake term
+  // unwinds.  The post-stop output matches a fresh controller for the same
+  // feedback and target.
+  {
+    control::AckermannController warm;
+    control::AckermannController fresh;
+    control::AckermannFeedback moving;
+    moving.valid = true;
+    moving.rear_left_radps = 11.0;
+    moving.rear_right_radps = 11.0;
+    for (int i = 0; i < 40; ++i) {
+      (void)warm.update(1.6, 0.0, moving, 0.02);
+    }
+    (void)warm.update(0.0, 0.0, moving, 0.02);
+    const auto restarted = warm.update(0.18, 0.0, moving, 0.02);
+    const auto reference = fresh.update(0.18, 0.0, moving, 0.02);
+    assert(std::abs(restarted.rear_left_duty - reference.rear_left_duty) <
+           1e-12);
+    assert(std::abs(restarted.rear_right_duty - reference.rear_right_duty) <
+           1e-12);
+
+    const auto forward = fresh.update(0.8, 0.0, moving, 0.02);
+    const auto reverse = fresh.update(-0.8, 0.0, moving, 0.02);
+    control::AckermannController reverse_reference;
+    const auto reverse_zero = reverse_reference.update(
+        -0.8, 0.0, moving, 0.02);
+    (void)forward;
+    assert(std::abs(reverse.rear_left_duty - reverse_zero.rear_left_duty) <
+           1e-12);
+    assert(std::abs(reverse.rear_right_duty - reverse_zero.rear_right_duty) <
+           1e-12);
+  }
+
   // Holonomic swerve controller: lateral+yaw resolve to 4 duties; a pure
   // spin gives symmetric magnitudes with mirrored steers.
   {

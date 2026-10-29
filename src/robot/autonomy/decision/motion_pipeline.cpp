@@ -34,6 +34,7 @@ void MotionDecisionPipeline::reset() {
  escape_active_ = false;
  escape_command_ = LocalCandidate{};
  escape_release_count_ = 0;
+ escape_reach_active_ = false;
  recovery_active_ = false;
  recovery_command_ = LocalCandidate{};
  recovery_release_count_ = 0;
@@ -86,6 +87,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  escape_active_ = false;
  escape_release_count_ = 0;
  escape_command_ = LocalCandidate{};
+ escape_reach_active_ = false;
  recovery_active_ = false;
  recovery_command_ = LocalCandidate{};
  recovery_release_count_ = 0;
@@ -179,9 +181,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
  };
  std::stable_sort(planner_valid.begin(), planner_valid.end(), planner_better);
 
- const bool dynamic_escape_required = escape_active_ ||
- hold_dynamically_unsafe ||
+ // Stopping in place is itself a predicted contact: the shared prediction
+ // meets the held pose, or the behavior policy reports the same conflict.
+ const bool stop_is_unsafe = hold_dynamically_unsafe ||
  out.behavior.reason == "route-conflict-no-safe-hold";
+ const bool dynamic_escape_required = escape_active_ || stop_is_unsafe;
  const bool planner_requested = route.valid && !route.points.empty();
  const auto commands_resolvable_motion = [&](const LocalCandidate& candidate) {
  const double horizon_s = std::max(
@@ -405,6 +409,49 @@ MotionDecisionResult MotionDecisionPipeline::run(
  add_recovery(-crawl, 0.0, -slide);
  }
 
+ // Reachable-speed escape set. Every sample above is a constant-twist command
+ // within one decision period of the measured twist, held at the observation
+ // crawl. From a crawl, none of them can express an escape that needs the
+ // declared acceleration: a track that arrives sooner than the crawl can leave
+ // its path leaves only the minimum-risk creeps, which still meet it, and the
+ // robot stops inside the path. A stop is an occupied future pose, not a
+ // fallback. The validator replays the declared actuator envelope
+ // (acceleration, braking, response delay) from the measured twist toward any
+ // command it is given, so a straight command at the declared chassis limit is
+ // validated exactly as the plant will execute it, and is published verbatim
+ // like every other validated candidate. Only a stop that is itself predicted
+ // to be hit opens this set, or a reachable-speed escape already under way,
+ // and it is consulted only when the window-limited set above has no fully
+ // clear candidate. A reachable-speed escape that was started is consulted
+ // first until the escape releases: the plant needs several decision periods
+ // to execute it, and alternating with a window-limited sample that is
+ // momentarily clear publishes opposite drive demands. No new speed, distance
+ // or time constant is introduced: the targets are the chassis limits.
+ const bool reach_committed = escape_active_ && escape_reach_active_;
+ std::array<LocalCandidate, 4> reachable{};
+ std::size_t reachable_count = 0;
+ if (stop_is_unsafe || reach_committed) {
+ const auto add_reachable = [&](double forward, double lateral) {
+ if (std::abs(forward) < 1e-9 && std::abs(lateral) < 1e-9) return;
+ LocalCandidate candidate;
+ candidate.forward_mps = forward;
+ candidate.lateral_mps = lateral;
+ candidate.feasible = true;
+ reachable[reachable_count++] = candidate;
+ };
+ double forward_limit = std::max(0.0, limits.max_forward_mps);
+ if (limits.max_wheel_speed_mps > 0.0) {
+ forward_limit = std::min(forward_limit, limits.max_wheel_speed_mps);
+ }
+ add_reachable(forward_limit, 0.0);
+ add_reachable(-forward_limit, 0.0);
+ const double lateral_limit = std::max(0.0, limits.max_lateral_mps);
+ if (lateral_limit > 0.0) {
+ add_reachable(0.0, lateral_limit);
+ add_reachable(0.0, -lateral_limit);
+ }
+ }
+
  const bool local_evidence =
  local_map.valid && local_map.provenance != LocalMapProvenance::kUnknown;
  ValidatedCandidate best_recovery;
@@ -457,16 +504,23 @@ MotionDecisionResult MotionDecisionPipeline::run(
  // braking and terrain validator before it can reach the controller.
  if (recovery_required && est.valid &&
  (local_evidence || forward_blocked)) {
- for (std::size_t i = 0; i < recovery_count; ++i) {
+ const auto consider_recovery = [&](const LocalCandidate& candidate,
+ std::size_t order, bool reachable_speed) {
  const ValidationResult verdict = validator.validate(
- recovery[i], est, perception, prediction, observation, survey);
- if (!verdict.accepted) continue;
+ candidate, est, perception, prediction, observation, survey);
+ if (!verdict.accepted) return;
+ // The minimum-risk exception admits a slow creep that still meets a
+ // predicted track. A reachable-speed candidate has no such exception:
+ // it is used only when its whole rollout is clear.
+ if (reachable_speed && verdict.verdict != TrajectoryVerdict::kAccepted) {
+ return;
+ }
 
  RecoveryQuality quality;
  quality.nominally_safe =
  verdict.verdict == TrajectoryVerdict::kAccepted;
  quality.clears_forward_block =
- !forward_blocked || recovery[i].forward_mps <= 1e-6;
+ !forward_blocked || candidate.forward_mps <= 1e-6;
  quality.dynamic_clearance_m = verdict.min_dynamic_clearance_m;
  quality.escape_gain_m = verdict.escape_clearance_gain_m;
  quality.static_clearance_m = verdict.min_clearance_m;
@@ -476,21 +530,21 @@ MotionDecisionResult MotionDecisionPipeline::run(
  return current * committed > 0.0;
  };
  quality.continuity_axes += same_direction(
- recovery[i].forward_mps, recovery_command_.forward_mps);
+ candidate.forward_mps, recovery_command_.forward_mps);
  quality.continuity_axes += same_direction(
- recovery[i].yaw_rate_radps, recovery_command_.yaw_rate_radps);
+ candidate.yaw_rate_radps, recovery_command_.yaw_rate_radps);
  quality.continuity_axes += same_direction(
- recovery[i].lateral_mps, recovery_command_.lateral_mps);
+ candidate.lateral_mps, recovery_command_.lateral_mps);
  }
  if (route.valid && !route.points.empty()) {
  const double horizon_s = std::max(
  0.0, config_.recovery_projection_horizon_s);
  const double px = est.x_m +
- (recovery[i].forward_mps * std::cos(est.yaw_rad) -
- recovery[i].lateral_mps * std::sin(est.yaw_rad)) * horizon_s;
+ (candidate.forward_mps * std::cos(est.yaw_rad) -
+ candidate.lateral_mps * std::sin(est.yaw_rad)) * horizon_s;
  const double py = est.y_m +
- (recovery[i].forward_mps * std::sin(est.yaw_rad) +
- recovery[i].lateral_mps * std::cos(est.yaw_rad)) * horizon_s;
+ (candidate.forward_mps * std::sin(est.yaw_rad) +
+ candidate.lateral_mps * std::cos(est.yaw_rad)) * horizon_s;
  const auto& target = route.points.back();
  quality.route_distance_m =
  std::hypot(target.x_m - px, target.y_m - py);
@@ -498,7 +552,24 @@ MotionDecisionResult MotionDecisionPipeline::run(
  if (!have_recovery || better_quality(quality, best_quality)) {
  have_recovery = true;
  best_quality = quality;
- best_recovery = {recovery[i], verdict, i};
+ best_recovery = {candidate, verdict, order};
+ }
+ };
+ bool reachable_considered = false;
+ const auto consider_reachable = [&]() {
+ reachable_considered = true;
+ for (std::size_t i = 0; i < reachable_count; ++i) {
+ consider_recovery(reachable[i], recovery_count + i, true);
+ }
+ };
+ if (reach_committed) consider_reachable();
+ if (!have_recovery) {
+ for (std::size_t i = 0; i < recovery_count; ++i) {
+ consider_recovery(recovery[i], i, false);
+ }
+ if (!reachable_considered &&
+ !(have_recovery && best_quality.nominally_safe)) {
+ consider_reachable();
  }
  }
  }
@@ -511,6 +582,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  escape_active_ = true;
  if (starting_escape) escape_release_count_ = 0;
  escape_command_ = best_recovery.candidate;
+ escape_reach_active_ = best_recovery.order >= recovery_count;
  out.constraint = "dynamic_escape";
  } else if (dynamic_recovery_relevant) {
  out.constraint = "dynamic_clearance";

@@ -116,6 +116,11 @@ class LocalizationSystem {
  double global_origin_odom_x_m_ = 0.0;
  double global_origin_odom_y_m_ = 0.0;
  double global_origin_odom_yaw_rad_ = 0.0;
+ // Bounds of the currently frozen covariance-supported search. A completed
+ // search with sufficient geometry but no valid candidate feeds these same
+ // bounds back as ROBOT-only uncertainty evidence before the next retry.
+ double global_search_radius_m_ = 0.0;
+ double global_search_heading_radius_rad_ = 0.0;
  // MapSnapshot revisions are immutable. Cache the O(cells) evidence query
  // once per revision instead of rescanning the survey on every control tick.
  bool map_evidence_cached_ = false;

@@ -80,6 +80,11 @@ class MotionDecisionPipeline {
  bool escape_active_ = false;
  LocalCandidate escape_command_{};
  std::size_t escape_release_count_ = 0;
+ // True while the running escape was selected from the reachable-speed set.
+ // The plant needs several decision periods to execute such a command, so it
+ // stays preferred until the escape releases; a window-limited sample that is
+ // momentarily clear must not cancel an acceleration that has just started.
+ bool escape_reach_active_ = false;
  // Recovery is a closed-loop manoeuvre, not an independent one-tick sample.
  // Retain its direction as a tie-break while every higher-priority safety
  // metric remains equal, preventing left/right chatter near symmetric walls.

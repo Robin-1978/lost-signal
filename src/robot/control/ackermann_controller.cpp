@@ -19,6 +19,8 @@ AckermannController::AckermannController(AckermannControllerConfig config)
 void AckermannController::reset() {
   rear_left_pid_.reset();
   rear_right_pid_.reset();
+  previous_target_v_mps_ = 0.0;
+  target_initialized_ = false;
 }
 
 AckermannCommand AckermannController::update(double target_v_mps,
@@ -30,6 +32,22 @@ AckermannCommand AckermannController::update(double target_v_mps,
       !std::isfinite(target_steer_rad)) {
     return out;
   }
+  // Do not carry a signed velocity-loop integral through a stop or across a
+  // direction change.  This is a physical control-segment boundary, not a
+  // mission- or scenario-specific exception: a new request must be allowed
+  // to use the configured feed-forward and proportional response immediately.
+  const bool target_stop = std::abs(target_v_mps) <= 1e-12;
+  const bool previous_stop =
+      target_initialized_ && std::abs(previous_target_v_mps_) <= 1e-12;
+  const bool direction_reversal =
+      target_initialized_ && !target_stop && !previous_stop &&
+      target_v_mps * previous_target_v_mps_ < 0.0;
+  if (target_stop || direction_reversal) {
+    rear_left_pid_.reset();
+    rear_right_pid_.reset();
+  }
+  previous_target_v_mps_ = target_v_mps;
+  target_initialized_ = true;
   const double steer =
       std::clamp(target_steer_rad, -config_.max_steer_rad, config_.max_steer_rad);
   const auto angles = platform::ackermann_steering_angles(

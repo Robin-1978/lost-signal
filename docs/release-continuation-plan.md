@@ -782,7 +782,7 @@ ROBOT。
   0.23 s，余量 0.27 s。这是按声明参数的算术结果，实测偏航尾部没有取；十变体矩阵与相位
   扫描各运行（独立构建目录中）的终态里没有不带接触的 `uncommanded-motion` 锁存。结论：
   目前没有失败证据，实测尾部需要验证。
-- 未入库候选的当前状态：F-C 以 `d6a9612` 保存在本地分支 `wip/ackermann-integral-reset`
+- 历史记录：F-C 曾以 `d6a9612` 保存在本地分支 `wip/ackermann-integral-reset`
   （只含 `ackermann_controller.{hpp,cpp}` 与 `test_actuation.cpp`，基于 `c51292c`）。
   在 `c51292c` 加 F-C 的独立导出（无任何探针，RelWithDebInfo，`ctest -j6`）上，全量
   89/90，661 s，唯一失败是 `industrial_200k_mission`：steps=100000，3/5，碰撞 58 步，
@@ -796,6 +796,24 @@ ROBOT。
   待定计划期间不沿陈旧路线行驶；动态逃逸与定位观察限速的关系；局部 resolved 恢复的
   时间确认；短于 `cusp_capture_m` 的相邻换挡段如何处理（D1 证据 A 的规划侧触发：该倒车段
   在 2 个决策内被穿过，设定值一步跳 +0.37 m/s）。
+
+### 自适应拒绝证据与 Ackermann 控制段修复（2026-10-30，待本阶段提交）
+
+- 当前工作区已经 supersede 上述历史记录：`FusedOdometryEstimator` 对已经被上层接受、
+  但随后因创新门拒绝的绝对证据，只按 `[x,y,yaw]` 逐轴取
+  `max(当前方差, 残差²)`，重复同一墙面证据幂等；局部拒绝仍不改变位姿或连续 odom。
+  当全局搜索在现有协方差支持范围内没有候选时，`LocalizationSystem` 将本次实际搜索包络
+  回馈为下一轮不确定度下界。它只使用 ROBOT 的 LiDAR 几何和既有搜索包络，不读取 SIM 真值，
+  也没有新增关卡阈值。
+- `AckermannController` 现在把命令停车和带符号驱动反转视为物理控制段边界，清除旧段后轮
+  PI 积分；同向调速继续保留积分。这样在服务制动释放后，新的低速请求不会被旧的反向积分
+  遮住，执行监控仍按声明的响应延迟、反应时间和制动能力判定真实无响应。
+- 新增 `test_actuation` 覆盖停车重启与反向重启的逐位等价性；`test_localization` 覆盖重复
+  拒绝证据幂等；`test_motion_pipeline` 覆盖可达速度逃逸必须经过同一 Validator。Release
+  50,000 步工业回归已不再在 `east_terminal` 以 `no-response` 锁存，前三个目标零碰撞通过；
+  完整五目标长测在本阶段提交前继续执行。
+- 该段落将取代本节早先“局部拒绝不更新协方差”和“F-C 未进入当前分支”的工作区描述；
+  历史结果保留用于解释此前失败，不作为当前验收结论。
 
 ### NativeRuntime 关闭竞态（2026-10-29）
 

@@ -144,6 +144,55 @@ int main() {
     assert(!r.accepted);
   }
 
+  // 2a. A rejected absolute innovation widens only the observed covariance
+  // directions. Replaying the same correlated wall evidence is idempotent;
+  // it must not turn a valid localized estimate into an unbounded goal hold.
+  {
+    FusedOdometryEstimator estimator;
+    estimator.reset();
+    estimator.seed_pose(2.0, -1.0, 0.3, 0.05, 0.02, 1);
+    const double x_before = estimator.estimate().x_m;
+    const double y_before = estimator.estimate().y_m;
+    const double yaw_before = estimator.estimate().yaw_rad;
+    const auto odom_before = estimator.odometry_estimate();
+
+    estimator.note_absolute_rejection(1.0, 2.0, 0.4, 2);
+    const double sigma_after_first = estimator.estimate().position_sigma_m;
+    const double heading_after_first = estimator.estimate().heading_sigma_rad;
+    assert(std::abs(sigma_after_first - 2.0) < 1e-12);
+    assert(std::abs(heading_after_first - 0.4) < 1e-12);
+    assert(std::abs(estimator.estimate().x_m - x_before) < 1e-12);
+    assert(std::abs(estimator.estimate().y_m - y_before) < 1e-12);
+    assert(std::abs(estimator.estimate().yaw_rad - yaw_before) < 1e-12);
+
+    estimator.note_absolute_rejection(1.0, 2.0, 0.4, 3);
+    assert(std::abs(estimator.estimate().position_sigma_m -
+                    sigma_after_first) < 1e-12);
+    assert(std::abs(estimator.estimate().heading_sigma_rad -
+                    heading_after_first) < 1e-12);
+    assert(std::abs(estimator.odometry_estimate().x_m - odom_before.x_m) <
+           1e-12);
+    assert(std::abs(estimator.odometry_estimate().y_m - odom_before.y_m) <
+           1e-12);
+    assert(std::abs(estimator.odometry_estimate().yaw_rad - odom_before.yaw_rad) <
+           1e-12);
+
+    estimator.note_absolute_rejection(3.0, 0.5, 0.1, 4);
+    assert(estimator.estimate().position_sigma_m > sigma_after_first);
+    assert(std::abs(estimator.estimate().heading_sigma_rad -
+                    heading_after_first) < 1e-12);
+
+    const double sigma_before_search_failure =
+        estimator.estimate().position_sigma_m;
+    estimator.note_absolute_search_failure(4.0, 0.8, 5);
+    assert(estimator.estimate().position_sigma_m >= 4.0);
+    assert(estimator.estimate().heading_sigma_rad >= 0.8);
+    estimator.note_absolute_search_failure(4.0, 0.8, 6);
+    assert(std::abs(estimator.estimate().position_sigma_m - 4.0) < 1e-12);
+    assert(std::abs(estimator.estimate().heading_sigma_rad - 0.8) < 1e-12);
+    assert(estimator.estimate().position_sigma_m >= sigma_before_search_failure);
+  }
+
   // 2b. Uniform wall alone is legitimately ambiguous along its length:
   // shifted hypotheses score identically, so the matcher must refuse
   // rather than drag the estimate to a corridor twin.
