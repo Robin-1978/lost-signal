@@ -380,8 +380,8 @@
 | 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
 | 7. 模型与场景升级 | 已完成 | `525116c`, `53bd9cf`, `d9cebd6`, `f2e3a5b`, `e6e17fd`, `904f0cb`, `4e3a75a`, `8fa94cb`, `62d741a` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk`、叉车六分部件 link 绑定、Blender 环境资产、碰撞几何/COM/joint/contact 工程视图和姿态回归均已完成；当前只保留发布后的场景体验扩展 |
-| 8. MCU 确定性控制域与真机适配 | 进行中 | `7fcef12` + 工作区 | UART/CAN/SPI/USB transport、虚拟 MCU、STM32 reference、typed chassis ownership、native profile startup handshake 和 ROBOT 执行反馈故障闭环已接入；仍需板卡级实测 profile/HIL 验收 |
-| 9. 自动标定与 hardware profile | 第一切已完成 | `5f5cb25` 及既有 calibration 提交 | 离线 median wheel-scale/IMU bias、artifact digest/JSON、在线有界更新和 rollback 已通过单测；真实记录文件导入、温度/载荷 profile 和 HIL 仍待接入 |
+| 8. MCU 确定性控制域与真机适配 | native HIL 契约已完成，实板待验 | `b235727` + 既有提交 | UART/CAN/SPI/USB transport、虚拟 MCU、STM32 reference、typed chassis ownership、native profile startup handshake、ROBOT 执行反馈故障闭环和固定时间 HIL replay 已接入；仍需按具体板卡实测 profile/急停/负载验收 |
+| 9. 自动标定与 hardware profile | 记录质量门禁已完成，实板 profile 待验 | `d3cbd12` + 既有 calibration 提交 | 离线 median wheel-scale/IMU bias、artifact digest/JSON、在线有界更新、rollback、温度/载荷/过期 gate、CSV 记录导入和乱序/NaN/负残差拒绝已通过单测；具体硬件 profile 仍需真实记录验收 |
 
 ### 阶段 7 叉车 link 子阶段（已完成，`f2e3a5b`）
 
