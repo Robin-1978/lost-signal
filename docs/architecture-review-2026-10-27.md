@@ -98,6 +98,30 @@ SIM 已有 MuJoCo 接触、被动制动、轮胎载荷/打滑、3D LiDAR、IMU �
 
 这套架构可以继续作为产品主干，不需要回到 master 的旧耦合方式。它已经满足“新框架优先、真值不穿透、算法下沉、SIM 可加速、真机可替换”的根本要求。发布前必须把上面的缺口作为工程验收项处理，尤其不能把接口存在误认为 MCU/HIL、标定和执行安全已经完成。
 
+## 状态增量（2026-10-30）
+
+上面的审查保留为当日基线；截至当前分支，以下闭环已经从“接口存在”推进到可在
+CI 重放的契约测试：
+
+- A 的 native fake board 已扩展为 `tests/test_native_hil.cpp`：固定
+  `MonotonicNs` release、采集延迟、单次丢包恢复、连续丢包停车、sequence replay、
+  typed setpoint 重放和 board expiry watchdog 都在同一 `NativeRuntime` seam 验证。
+  两次固定脚本的 cycle result/setpoint body 字段/watchdog 结果一致；真实板卡急停、
+  负载和 transport latency 仍需现场 HIL，不能由该测试代替。
+- B 的 native provider conformance 已在 `NativeRuntime` 运行期 fail-closed；profile
+  接口现在在注册 provider 前执行。设备级重连策略和非阻塞 I/O 线程仍属于具体 adapter，
+  尚未被抽象成通用恢复状态机。
+- C 的 artifact JSON、CSV 实测记录、原子保存/加载、温度/载荷/过期 gate、online
+  checkpoint/journal 已代码化；`validate_native_hardware_profile()` 将 typed chassis
+  capability 与 calibration artifact 一起校验。CSV/solver 还会拒绝乱序、重复时间戳、
+  NaN 和负 residual。具体设备 profile 仍必须来自实测。
+- E 的 execution monitor 已成为独立故障闭环，持续无响应、反向/失控运动和反馈过期会
+  latch safe stop，恢复需要显式 acknowledgement；它不读取 MuJoCo contact、碰撞真值或
+  actor identity。
+
+因此当前真正的外部依赖只剩具体硬件 profile/急停/负载的实测验收，以及 D/F/G 的产品
+范围扩展；SIM、回放和 native contract 层不应通过猜测数据伪造这些结果。
+
 ## Git 仓库与发布边界
 
 当前阶段保持一个 monorepo，使用目录、CMake target、边界检查和 CI 区分产品面：
