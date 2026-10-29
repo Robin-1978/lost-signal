@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "robot/core/json.hpp"
+#include "robot/iface/motion.hpp"
 
 namespace lost_signal::robot::platform {
 
@@ -131,6 +132,28 @@ struct CalibrationProfileRequirements {
 bool validate_calibration_profile(const CalibrationArtifact& artifact,
                                   const CalibrationProfileRequirements& req,
                                   std::string* error = nullptr);
+
+// Host-side deployment profile assembled from the board handshake and the
+// calibration artifact. This is a validation seam for native adapters; it is
+// not a new ROBOT data source and contains no simulator state.
+struct NativeHardwareProfile {
+ iface::ChassisCapabilities chassis;
+ CalibrationArtifact calibration;
+};
+
+struct NativeHardwareProfileRequirements {
+ CalibrationProfileRequirements calibration;
+ std::string profile_id;
+ std::optional<iface::MotionControlOwner> control_owner;
+ std::optional<iface::ActuatorMode> chassis_mode;
+ std::optional<std::uint8_t> drive_count;
+ std::optional<std::uint8_t> steer_count;
+};
+
+bool validate_native_hardware_profile(
+    const NativeHardwareProfile& profile,
+    const NativeHardwareProfileRequirements& req,
+    std::string* error = nullptr);
 
 // Writes a complete artifact to a same-directory temporary file and replaces
 // the destination with one rename. A truncated or malformed file is never

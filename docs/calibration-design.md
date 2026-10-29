@@ -59,7 +59,10 @@ be revalidated offline.
 
 Bring-up checks the robot description hash, calibration artifact version,
 profile revision, units, ownership and applicability range before enabling
-motion. The MCU receives only the accepted actuator profile and typed
-setpoints; it does not receive SIM state, map truth or calibration solver
-internals. A missing, stale, out-of-range or incompatible artifact enters safe
-hold.
+motion. Native adapters can use the platform
+`validate_native_hardware_profile()` seam to validate the board's typed
+chassis capabilities and calibration artifact together, including profile id,
+revision, ownership, joint layout, temperature, load and expiry. The MCU
+receives only the accepted actuator profile and typed setpoints; it does not
+receive SIM state, map truth or calibration solver internals. A missing,
+stale, out-of-range or incompatible artifact enters safe hold.

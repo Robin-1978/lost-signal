@@ -9,8 +9,11 @@
 #include "robot/platform/calibration.hpp"
 #include "robot/platform/description.hpp"
 
+namespace iface = lost_signal::robot::iface;
+
 int main() {
  using namespace lost_signal::robot::platform;
+ using namespace lost_signal::robot::iface;
  using lost_signal::robot::core::Json;
  const auto description = default_robot_description();
  OfflineCalibrationConfig config;
@@ -79,6 +82,35 @@ int main() {
  requirements.load_kg = 7.0;
  requirements.now_unix_s = 1100.0;
  requirements.maximum_age_s = 200.0;
+
+ iface::ChassisCapabilities chassis;
+ chassis.control_owner = iface::MotionControlOwner::kHostMotionLoop;
+ chassis.chassis_mode = iface::ActuatorMode::kDiffDuty;
+ chassis.drive_count = 2;
+ chassis.control_period_ns = 20'000'000;
+ chassis.feedback_period_ns = 20'000'000;
+ chassis.maximum_command_age_ns = 300'000'000;
+ chassis.profile_id = "ro1.native";
+ chassis.profile_revision = config.profile_revision;
+ NativeHardwareProfile native_profile{chassis, fitted.artifact};
+ NativeHardwareProfileRequirements native_requirements;
+ native_requirements.calibration = requirements;
+ native_requirements.profile_id = chassis.profile_id;
+ native_requirements.control_owner = chassis.control_owner;
+ native_requirements.chassis_mode = chassis.chassis_mode;
+ native_requirements.drive_count = chassis.drive_count;
+ native_requirements.steer_count = chassis.steer_count;
+ assert(validate_native_hardware_profile(native_profile, native_requirements,
+                                         &error));
+ native_requirements.drive_count = 4;
+ assert(!validate_native_hardware_profile(native_profile, native_requirements,
+                                          &error));
+ native_requirements.drive_count = chassis.drive_count;
+ native_profile.chassis.profile_revision = config.profile_revision + 1;
+ assert(!validate_native_hardware_profile(native_profile, native_requirements,
+                                          &error));
+ native_profile.chassis.profile_revision = config.profile_revision;
+
  CalibrationArtifact accepted_profile;
  assert(load_calibration_profile(artifact_path.string(), requirements,
                                  accepted_profile, &error));

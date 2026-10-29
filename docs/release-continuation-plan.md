@@ -868,6 +868,10 @@ ROBOT。
 - `OnlineCalibrator` 同样拒绝负 residual/baseline residual；已有 confirmation window、
   bounded step、range、checkpoint 和 journal 语义不变。`test_calibration` 增加乱序、
   NaN、负残差和 CSV 回退时间戳覆盖。
+- `validate_native_hardware_profile()` 将 typed chassis capabilities 与 calibration
+  artifact 组成一个 adapter 可复用的 bring-up gate，校验 profile id/revision、ownership、
+  chassis mode、驱动/转向关节布局以及 calibration 的 robot hash、温度、载荷和过期条件。
+  它只处理部署配置和实测 artifact，不把校准求解器或 SIM 状态带入 ROBOT tick。
 
 下一步从这里继续：完成真实硬件 profile/HIL 记录导入与验收，再将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
 发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的

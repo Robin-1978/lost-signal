@@ -421,6 +421,46 @@ bool validate_calibration_profile(const CalibrationArtifact& artifact,
  return true;
 }
 
+bool validate_native_hardware_profile(
+    const NativeHardwareProfile& profile,
+    const NativeHardwareProfileRequirements& req,
+    std::string* error) {
+ if (!iface::valid_chassis_capabilities(profile.chassis)) {
+  fail(error, "native hardware chassis capability is invalid");
+  return false;
+ }
+ if (req.profile_id.empty() || profile.chassis.profile_id != req.profile_id) {
+  fail(error, "native hardware profile id does not match the board");
+  return false;
+ }
+ if (profile.chassis.profile_revision != req.calibration.profile_revision) {
+  fail(error, "native hardware profile revision does not match calibration");
+  return false;
+ }
+ if (req.control_owner.has_value() &&
+     profile.chassis.control_owner != *req.control_owner) {
+  fail(error, "native hardware ownership does not match the profile");
+  return false;
+ }
+ if (req.chassis_mode.has_value() &&
+     profile.chassis.chassis_mode != *req.chassis_mode) {
+  fail(error, "native hardware chassis mode does not match the profile");
+  return false;
+ }
+ if (req.drive_count.has_value() &&
+     profile.chassis.drive_count != *req.drive_count) {
+  fail(error, "native hardware drive layout does not match the profile");
+  return false;
+ }
+ if (req.steer_count.has_value() &&
+     profile.chassis.steer_count != *req.steer_count) {
+  fail(error, "native hardware steer layout does not match the profile");
+  return false;
+ }
+ return validate_calibration_profile(profile.calibration, req.calibration,
+                                     error);
+}
+
 bool save_calibration_artifact_atomic(const std::string& path,
                                       const CalibrationArtifact& artifact,
                                       std::string* error) {
