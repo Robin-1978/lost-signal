@@ -79,6 +79,9 @@ class ExecutionMonitor {
   double pending_forward_mps_ = 0.0;
   double pending_lateral_mps_ = 0.0;
   double pending_yaw_rate_radps_ = 0.0;
+  // Measured speed when the current disagreement episode began. The braking
+  // allowance is derived from it and stays fixed for the episode.
+  double pending_speed_mps_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy::diagnostics

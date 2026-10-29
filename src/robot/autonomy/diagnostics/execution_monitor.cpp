@@ -50,6 +50,7 @@ void ExecutionMonitor::reset() {
   pending_forward_mps_ = 0.0;
   pending_lateral_mps_ = 0.0;
   pending_yaw_rate_radps_ = 0.0;
+  pending_speed_mps_ = 0.0;
 }
 
 void ExecutionMonitor::clear_fault() {
@@ -59,6 +60,7 @@ void ExecutionMonitor::clear_fault() {
   pending_forward_mps_ = 0.0;
   pending_lateral_mps_ = 0.0;
   pending_yaw_rate_radps_ = 0.0;
+  pending_speed_mps_ = 0.0;
 }
 
 ExecutionMonitorReport ExecutionMonitor::update(
@@ -172,25 +174,6 @@ ExecutionMonitorReport ExecutionMonitor::update(
     return out;
   }
 
-  double fault_window_s = response_window_s +
-      std::max(0.0, config_.safety_reaction_time_s);
-  if ((observed == ExecutionFault::kDirectionMismatch ||
-       observed == ExecutionFault::kUncommandedMotion) &&
-      config_.brake_deceleration_mps2 > 0.0) {
-    const double speed = std::hypot(estimate.forward_mps,
-                                   estimate.lateral_mps);
-    const double translational_stop_s =
-        speed / config_.brake_deceleration_mps2;
-    fault_window_s = std::max(
-        fault_window_s,
-        std::max(0.0, config_.response_delay_s) +
-            std::max(0.0, config_.safety_reaction_time_s) +
-            translational_stop_s +
-            std::max(0.0, config_.confirmation_s));
-  }
-  const core::MonotonicNs fault_window_ns =
-      static_cast<core::MonotonicNs>(std::llround(fault_window_s * 1e9));
-
   // Feedback age has already exceeded the complete response+confirmation
   // window when this class is observed. Requiring another confirmation
   // interval would leave the robot blind and moving for twice the declared
@@ -215,7 +198,35 @@ ExecutionMonitorReport ExecutionMonitor::update(
     pending_forward_mps_ = requested_forward;
     pending_lateral_mps_ = requested_lateral;
     pending_yaw_rate_radps_ = requested_yaw;
+    pending_speed_mps_ = clamp_nonnegative(
+        std::hypot(estimate.forward_mps, estimate.lateral_mps));
   }
+
+  // The window is the budget for the whole episode, so the braking allowance
+  // is derived from the speed at which the episode began. Motion opposite to
+  // a new request, or motion under a stop command, is allowed to dissipate
+  // under the declared brake deceleration after the declared delay. Deriving
+  // the allowance from the current speed instead would shrink it as fast as
+  // a healthy stop slows the robot and latch any stop from above
+  // brake * (reaction + confirmation). The same rule means a robot that
+  // accelerates without a request does not earn more time by speeding up.
+  double fault_window_s = response_window_s +
+      std::max(0.0, config_.safety_reaction_time_s);
+  if ((observed == ExecutionFault::kDirectionMismatch ||
+       observed == ExecutionFault::kUncommandedMotion) &&
+      config_.brake_deceleration_mps2 > 0.0) {
+    const double translational_stop_s =
+        pending_speed_mps_ / config_.brake_deceleration_mps2;
+    fault_window_s = std::max(
+        fault_window_s,
+        std::max(0.0, config_.response_delay_s) +
+            std::max(0.0, config_.safety_reaction_time_s) +
+            translational_stop_s +
+            std::max(0.0, config_.confirmation_s));
+  }
+  const core::MonotonicNs fault_window_ns =
+      static_cast<core::MonotonicNs>(std::llround(fault_window_s * 1e9));
+
   out.pending_fault = pending_fault_;
   out.pending_elapsed_s =
       static_cast<double>(now_ns - pending_since_ns_) * 1e-9;

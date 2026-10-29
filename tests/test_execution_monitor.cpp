@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 
@@ -201,6 +202,111 @@ int main() {
     }
     assert(report.stop_required);
     assert(report.fault == ExecutionFault::kUncommandedMotion);
+  }
+
+  // A hard stop from cruise speed is a braking transient the machine
+  // description promises to complete: the measured speed holds for the
+  // actuator delay and then falls at the declared brake deceleration. The
+  // braking allowance belongs to the disagreement episode and is fixed when
+  // it begins. If it were recomputed from the speed that is decaying, it
+  // would shrink as fast as the robot slows, and any stop from above
+  // brake * (reaction + confirmation) would be latched as a brake failure
+  // before a healthy stop could finish.
+  {
+    constexpr double kCruiseMps = 1.6;
+    constexpr double kPeriodS = 0.02;
+    ExecutionMonitor monitor(config);
+    const iface::MotionCommand stop =
+        iface::MotionCommand::SafeStop(stationary.stamp_ns);
+    EstimatedState braking = stationary;
+    ExecutionMonitorReport report;
+    for (int i = 0; i <= 80; ++i) {
+      const auto now = stationary.stamp_ns + i * kPeriod;
+      const double elapsed_s = static_cast<double>(i) * kPeriodS;
+      braking.stamp_ns = now;
+      braking.forward_mps = std::max(
+          0.0, kCruiseMps - config.brake_deceleration_mps2 *
+                                std::max(0.0, elapsed_s -
+                                                  config.response_delay_s));
+      report = monitor.update(stop, braking, now);
+      assert(!report.stop_required);
+    }
+    assert(braking.forward_mps == 0.0);
+    assert(report.fault == ExecutionFault::kNone);
+    assert(report.pending_fault == ExecutionFault::kNone);
+  }
+
+  // The same allowance still catches a brake that does not meet the declared
+  // deceleration, and not before the declared budget has elapsed: actuator
+  // delay + safety reaction + stopping time from the speed at which the
+  // episode began + confirmation.
+  {
+    constexpr double kCruiseMps = 1.6;
+    constexpr double kPeriodS = 0.02;
+    const double budget_s = config.response_delay_s +
+                            config.safety_reaction_time_s +
+                            kCruiseMps / config.brake_deceleration_mps2 +
+                            config.confirmation_s;
+    ExecutionMonitor monitor(config);
+    const iface::MotionCommand stop =
+        iface::MotionCommand::SafeStop(stationary.stamp_ns);
+    EstimatedState braking = stationary;
+    ExecutionMonitorReport report;
+    double latched_at_s = -1.0;
+    for (int i = 0; i <= 100; ++i) {
+      const auto now = stationary.stamp_ns + i * kPeriod;
+      const double elapsed_s = static_cast<double>(i) * kPeriodS;
+      braking.stamp_ns = now;
+      // Half the declared deceleration: the stop completes at 1.7 s, after
+      // the budget.
+      braking.forward_mps = std::max(
+          0.0, kCruiseMps - 0.5 * config.brake_deceleration_mps2 *
+                                std::max(0.0, elapsed_s -
+                                                  config.response_delay_s));
+      report = monitor.update(stop, braking, now);
+      if (report.stop_required && latched_at_s < 0.0) latched_at_s = elapsed_s;
+    }
+    assert(report.stop_required);
+    assert(report.fault == ExecutionFault::kUncommandedMotion);
+    assert(latched_at_s >= budget_s - 1e-9);
+    assert(latched_at_s <= budget_s + kPeriodS + 1e-9);
+  }
+
+  // A robot that accelerates under a stop command is a runaway, not a
+  // braking transient. Its allowance is fixed by the speed at which the
+  // disagreement was first seen, so accelerating does not buy more time.
+  {
+    constexpr double kPeriodS = 0.02;
+    ExecutionMonitor monitor(config);
+    const iface::MotionCommand stop =
+        iface::MotionCommand::SafeStop(stationary.stamp_ns);
+    EstimatedState runaway = stationary;
+    ExecutionMonitorReport report;
+    double first_seen_s = -1.0;
+    double first_seen_speed_mps = 0.0;
+    double latched_at_s = -1.0;
+    for (int i = 0; i <= 150; ++i) {
+      const auto now = stationary.stamp_ns + i * kPeriod;
+      const double elapsed_s = static_cast<double>(i) * kPeriodS;
+      runaway.stamp_ns = now;
+      runaway.forward_mps = config.brake_deceleration_mps2 *
+                            std::max(0.0, elapsed_s - config.response_delay_s);
+      report = monitor.update(stop, runaway, now);
+      if (first_seen_s < 0.0 &&
+          report.pending_fault == ExecutionFault::kUncommandedMotion) {
+        first_seen_s = elapsed_s;
+        first_seen_speed_mps = runaway.forward_mps;
+      }
+      if (report.stop_required && latched_at_s < 0.0) latched_at_s = elapsed_s;
+    }
+    assert(first_seen_s >= 0.0);
+    assert(report.stop_required);
+    assert(report.fault == ExecutionFault::kUncommandedMotion);
+    const double budget_s =
+        config.response_delay_s + config.safety_reaction_time_s +
+        first_seen_speed_mps / config.brake_deceleration_mps2 +
+        config.confirmation_s;
+    assert(latched_at_s - first_seen_s <= budget_s + kPeriodS + 1e-9);
   }
 
   // Lost feedback after operation is a fault: without a fresh measurement
