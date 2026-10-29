@@ -558,6 +558,35 @@
 - `test_dwa`、`test_localization`、`test_autonomy` 和 `test_terrain_mission` 定向回归
   通过；冰面仍验证滑移与抓地力收紧，2500 步、零碰撞、完整目标完成。
 
+### NativeRuntime 关闭竞态（2026-10-29）
+
+全量 Release CTest 中 `native_runtime` 挂住，728 s 后被手动终止；CMake 没有为该测试设置
+`TIMEOUT`。`src/robot/app/` 相对 `191d3a8` 没有改动，该挂住在 RelWithDebInfo（`build/`
+和独立构建）与 Release 中都出现。复现方式是反复启动旧版 `test_native_runtime`（每次
+8 s 超时）：本次复测的单次进程挂住率为 3/30 与 4/12，早先的长序列统计约 3–4%，随
+机器负载变化。
+
+- 现象：以 gdb 子进程方式运行测试并在挂住时发送 SIGINT，主线程停在
+  `NativeRuntime::shutdown()` 的 `watchdog_thread_.join()`（`native_runtime.cpp:362`），
+  看门狗线程停在 `watchdog_loop` 的 `watchdog_cv_.wait`（`native_runtime.cpp:323`）。
+- 根因：`shutdown()` 在不持有 `state_mutex_` 的情况下写 `watchdog_exit_` 并
+  `notify_all()`，而看门狗线程在持有该互斥锁时求值等待谓词。通知落在谓词求值之后、线程
+  真正阻塞之前时，没有等待者可唤醒，线程随后阻塞，`join()` 不再返回。`start()` 在创建
+  线程之前写该标志，`publish_output()` 在锁内修改 `armed_expiry_ns_` 与
+  `watchdog_fired_`，只有 `shutdown()` 这一处在锁外发布状态。
+- 窗口位置：独立构建中的探针（未入库，`LD_BIND_NOW=1` 以排除惰性符号绑定的影响）按纳秒
+  级随机延时在 `start()` 之后调用 `shutdown()`。延时范围 0–4 µs 与 0–8 µs 各 8 次运行
+  全部命中，首次命中的循环序号在 1–1680 之间，命中延时集中在 2–5 µs（最小 1.98 µs，
+  最大 7.0 µs）；延时范围 30–100 µs 的 6 次运行只有 2 次命中。这说明看门狗线程的第一次
+  等待紧随 `start()` 返回；该位置只在本机测得，其他机器需要验证。
+- 处理：`shutdown()` 在 `state_mutex_` 下写 `watchdog_exit_`，再通知。
+- 测试：`test_native_runtime` 新增 3000 轮 start → 0–16 µs 随机延时 → shutdown 的扫描，
+  并在 5 s 内无进展时以诊断信息中止，卡住不再拖到套件超时。未修复代码上
+  RelWithDebInfo 20/20、Release 10/10 次以退出码 134 中止；修复后两种构建各连续运行
+  300 次全部通过，单次约 0.37 s。
+- 局限：该用例靠延时扫描覆盖窗口，不是对线程交错的确定性控制；窗口位置不同的机器上
+  检出率需要验证。
+
 下一步从这里继续：先将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
 发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的
 坡面、冰面、复杂场和手动工程课程入口，不改变 robot 只能使用自身估计的边界。

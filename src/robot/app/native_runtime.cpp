@@ -357,7 +357,15 @@ void NativeRuntime::mechanical_stop(core::MonotonicNs now_ns,
 
 void NativeRuntime::shutdown() {
  if (!active_.exchange(false)) return;
+ {
+ // The watchdog thread evaluates its wait predicate while holding
+ // state_mutex_. Publishing the exit request under the same mutex orders it
+ // strictly before or after that check; without the mutex the notification
+ // can fall between the check and the wait, be lost, and leave join() below
+ // blocked forever.
+ std::lock_guard<std::mutex> lock(state_mutex_);
  watchdog_exit_.store(true);
+ }
  watchdog_cv_.notify_all();
  if (watchdog_thread_.joinable()) watchdog_thread_.join();
  mechanical_stop(native_monotonic_now_ns(), false);

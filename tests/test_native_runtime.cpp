@@ -1,7 +1,11 @@
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <mutex>
 #include <thread>
@@ -181,10 +185,56 @@ iface::MotionFeedback mcu_feedback(core::MonotonicNs now_ns,
  out.yaw_rate_radps = 0.0;
  return out;
 }
+
+// A blocked join() has to fail this test promptly and say why, rather than
+// waiting for the suite-level timeout. A healthy run reports progress every
+// few hundred microseconds; the monitor aborts after a whole idle `limit`.
+class IdleDeadman {
+ public:
+  explicit IdleDeadman(std::chrono::milliseconds limit)
+      : monitor_([this, limit] { watch(limit); }) {}
+  ~IdleDeadman() {
+   {
+    std::lock_guard<std::mutex> lock(mutex_);
+    done_ = true;
+   }
+   wake_.notify_all();
+   monitor_.join();
+  }
+  IdleDeadman(const IdleDeadman&) = delete;
+  IdleDeadman& operator=(const IdleDeadman&) = delete;
+
+  void progress() { progress_.fetch_add(1, std::memory_order_relaxed); }
+
+ private:
+  void watch(std::chrono::milliseconds limit) {
+   std::unique_lock<std::mutex> lock(mutex_);
+   std::uint64_t seen = progress_.load(std::memory_order_relaxed);
+   while (!wake_.wait_for(lock, limit, [this] { return done_; })) {
+    const std::uint64_t now = progress_.load(std::memory_order_relaxed);
+    if (now == seen) {
+     std::fprintf(stderr,
+                  "test_native_runtime: no progress for %lld ms; a "
+                  "NativeRuntime call is blocked (lost watchdog wakeup?)\n",
+                  static_cast<long long>(limit.count()));
+     std::abort();
+    }
+    seen = now;
+   }
+  }
+
+  std::mutex mutex_;
+  std::condition_variable wake_;
+  bool done_ = false;
+  std::atomic<std::uint64_t> progress_{0};
+  // Declared last so the monitor starts after every member it reads exists.
+  std::thread monitor_;
+};
 } // namespace
 
 int main() {
  using namespace lost_signal::robot;
+ IdleDeadman deadman(std::chrono::seconds(5));
 
  // A native adapter must be able to reject an unacknowledged board profile
  // or calibration artifact before any provider is registered or actuator
@@ -422,6 +472,35 @@ int main() {
  runtime.shutdown();
  assert(adapter.stops() == stops_before_shutdown + 1);
  assert(!runtime.active());
+
+ // The watchdog thread evaluates its wait predicate under the runtime's state
+ // mutex, so shutdown() has to publish the exit request under that mutex as
+ // well. Otherwise the notification can fall between the predicate check and
+ // the wait: the wakeup is lost and join() never returns. The thread reaches
+ // its first wait shortly after start() returns, so close the runtime after a
+ // pseudo-random delay of up to 16 microseconds to sweep across that window.
+ {
+  constexpr int kCycles = 3000;
+  constexpr std::uint64_t kMaxCloseDelayNs = 16'000;
+  std::uint64_t rng = 0x9E3779B97F4A7C15ull;
+  for (int cycle_index = 0; cycle_index < kCycles; ++cycle_index) {
+   rng ^= rng << 13;
+   rng ^= rng >> 7;
+   rng ^= rng << 17;
+   app::RobotApplication race_application(nullptr);
+   FakeNativeAdapter race_adapter;
+   app::NativeRuntime race_runtime(
+       race_application, race_adapter, {.decision_period_ns = 1'000'000});
+   assert(race_runtime.start());
+   const auto close_at = std::chrono::steady_clock::now() +
+       std::chrono::nanoseconds(rng % (kMaxCloseDelayNs + 1));
+   while (std::chrono::steady_clock::now() < close_at) {
+   }
+   race_runtime.shutdown();
+   assert(!race_runtime.active());
+   deadman.progress();
+  }
+ }
 
  std::printf("native_runtime ok\n");
  return 0;
