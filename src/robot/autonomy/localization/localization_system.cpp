@@ -723,17 +723,19 @@ bool LocalizationSystem::try_local_correction(
  innovation_m > position_limit || innovation_rad > heading_limit;
  }
  if (innovation_rejected) {
-   // A bounded scan match outside the current innovation gate is still
-   // positive evidence that the map-frame covariance is too optimistic. Feed
-   // the rejected innovation into the estimator's uncertainty model without
-   // moving the pose. This preserves REP-105 odom continuity and lets the
-   // supervisor escalate to a wider recovery search only when the measured
-   // residual has actually grown the belief beyond its loss envelope.
-   if (std::isfinite(innovation_m) && std::isfinite(innovation_rad)) {
-     estimator.note_absolute_rejection(
-         match.x_m - est.x_m, match.y_m - est.y_m,
-         core::wrap_angle(match.yaw_rad - est.yaw_rad), obs.stamp_ns);
-   }
+   // A rejected local match is weak negative evidence (see
+   // LocalizationSupervisor::next): it neither moves the pose nor widens the
+   // covariance. Wheel/IMU odometry stays well constrained in feature-poor
+   // space, and global recovery may begin only when the fused covariance
+   // itself crosses the loss envelope. Folding the residual back in would
+   // turn that weak evidence into a recovery trigger. A rank-deficient ridge
+   // leaves the residual along its unobservable axis arbitrary, and the local
+   // search window grows with covariance, so repeated corridor scans ratchet
+   // sigma past the envelope and let whole-map recovery promote an aliased
+   // pose. Rejecting an already accepted global candidate or a promoted
+   // recovery hypothesis is different: that evidence has passed the matcher's
+   // and tracker's own gates, and it still widens the belief through
+   // IEstimator::note_absolute_rejection.
  supervisor_.record_local(false, match);
  action = partial_observation
  ? "local_correction:partial innovation rejected"

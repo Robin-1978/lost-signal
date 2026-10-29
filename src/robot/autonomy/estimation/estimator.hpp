@@ -68,12 +68,16 @@ class IEstimator {
      double /*estimated_dx_m*/, double /*estimated_dy_m*/,
      double /*measured_dx_m*/, double /*measured_dy_m*/,
      double /*position_sigma_m*/, core::MonotonicNs /*stamp_ns*/) {}
- // A rejected absolute scan match is still information about the current
- // belief: the proposed innovation was outside its declared covariance.
- // Estimators may fold that innovation into their uncertainty without
- // moving the pose. This keeps REP-105 odom continuous while allowing a
- // later recovery search to widen from evidence instead of a fixed retry
- // radius. The default is a no-op for lightweight test estimators.
+ // An absolute match that the matcher or the recovery tracker already
+ // accepted, but the covariance innovation gate rejected, is information
+ // about the current belief: the proposed innovation was outside its declared
+ // covariance. Estimators may fold that innovation into their uncertainty
+ // without moving the pose. This keeps REP-105 odom continuous while allowing
+ // a later recovery search to widen from evidence instead of a fixed retry
+ // radius. Rejected local scan matches are not reported here: they are weak
+ // negative evidence for the supervisor only, because the residual of a
+ // rank-deficient match along its unobservable axis is arbitrary. The default
+ // is a no-op for lightweight test estimators.
  virtual void note_absolute_rejection(double /*dx_m*/, double /*dy_m*/,
  double /*dyaw_rad*/, core::MonotonicNs /*stamp_ns*/) {}
   // Deliberate deployment seeding (known dock, operator initialpose).

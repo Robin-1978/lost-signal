@@ -550,13 +550,80 @@
 - DWA 在原始终点位置已被估计捕获、但置信半径仍宽于到达包络时，继续允许可执行的
   航向观测动作；这只改变控制可观测性，不改变 `GoalArrivalPolicy` 的置信包络、稳定
   停车或完成条件。
-- 有限地图匹配被创新门拒绝时，定位系统只把 ROBOT 自身匹配残差累积进协方差，不移动
-  位姿、不改写连续 `odom`，并仍由既有 covariance loss gate 决定何时全局恢复。
+- 局部扫描匹配被创新门拒绝时，`try_local_correction` 不移动位姿，也不改写协方差，只向
+  supervisor 记录一次弱负证据（`record_local(false, match)`）；全局恢复仍只在融合协方差
+  自身越过 loss envelope 时开始（`supervisor.cpp:89`）。此前把这类残差经
+  `IEstimator::note_absolute_rejection` 回灌协方差的做法（`20aaf74`）已撤回，不得重新
+  引入，证据见下节“局部拒绝回灌撤回与制动窗口回归”。已被匹配器或恢复追踪器接受、
+  但被协方差创新门拒绝的全局候选/恢复假设仍通过该接口扩大协方差
+  （`localization_system.cpp` 两处调用）。
 - 冰面教学路线补充了不侵入行驶通道的稀疏几何地标。此前的空旷冰面终点只有不足以
   区分位姿的激光回波，低摩擦原地转向产生的真值漂移属于可解释的不可观测失败；地标
   使路线具备真实可观测条件，未向 ROBOT 注入地形或物理真值。
 - `test_dwa`、`test_localization`、`test_autonomy` 和 `test_terrain_mission` 定向回归
   通过；冰面仍验证滑移与抓地力收紧，2500 步、零碰撞、完整目标完成。
+
+### 局部拒绝回灌撤回与制动窗口回归（2026-10-29）
+
+输入 revision 为 `191d3a8` 加未提交的 max 形式 `estimator.cpp` 改动。该工作区的全量
+CTest 为 88/90：`industrial_200k_mission` 与 `multichassis_mission` 失败；把
+`estimator.cpp` 换回 HEAD 版本后 `multichassis_mission` 仍失败。复现与对照均在
+`build/` 和独立构建中完成；SIM 真值只用于离线断言，没有进入 ROBOT。
+
+- 失败 1：`build/test_multichassis_mission`。差速底盘的真值停在距目标 (6, 0) 约 0.25 m
+  处，定位 σ 为 0.503 m，越过 lost 阈值 0.45 m，也宽于到达包络 0.25 m，`done` 断言失败。
+  只关闭局部拒绝回灌后，四种底盘全部通过。
+- 失败 2：`build/test_industrial_200k_mission --trace --trace-interval=500`。前往
+  `central_gate` 时 step 25951 的 σ 为 0.451 m，随后增长到 step 29226 的 5.215 m；
+  step 29247 `recovery-promoted` 采纳的估计相对真值为 (+2.783, +0.026) m，σ 只有
+  0.300 m，该目标最终以 `no-response` 锁存。关闭同一条回灌后 `central_gate` 到达，
+  任务推进到第 5 个目标（4/5，零碰撞）。
+- 根因（失败 1、2 相同）：被拒绝的局部匹配残差沿 rank-deficient 走廊 ridge 的不可观测
+  方向取值任意，而局部搜索窗为 `clamp(4σ, floor, cap)`，随 σ 增大。回灌使 σ、搜索窗和
+  残差相互放大，反复的走廊扫描把 σ 推过 loss envelope，整图恢复随后采纳了错误位姿。
+  `supervisor.cpp:89` 已规定被拒绝的扫描匹配只是弱负证据。
+- 处理：移除 `try_local_correction` 中的第三处 `note_absolute_rejection`；
+  `test_localization` 的 partial ridge 用例改为断言被拒绝后位姿、σ 和航向都不变，并
+  连续重放 4 次（间隔 6 s）仍不变；`IEstimator::note_absolute_rejection` 的接口注释写明
+  只有已被匹配器/追踪器接受的绝对证据才会上报。
+- 失败 3（失败 1、2 修复后暴露）：`signal_town_mission` 与工业长图最后一个目标以
+  `execution_fault/latched: uncommanded-motion` 结束，估计与真值只差 0.14–0.23 m
+  （工业终态 0.139 m，signal_town 全程最大 0.231 m）。
+  signal_town 日志中 step 3765 路线失效、新规划挂起（`route_hold/global-plan-pending`），
+  命令归零，此时估计速度 1.41 m/s、偏航率 −0.42 rad/s；锁存发生在 step 3790–3795 之间
+  的制动尾部（估计速度 0.08 m/s、偏航率 −0.20 rad/s，仍大于 2 倍到达带 0.16 rad/s）。
+  旧 `ExecutionMonitor` 每个 tick 用当前速度重算允许时间
+  `delay + reaction + |v|/brake + confirmation`（差速配置为 0.1 + 0.2 + |v|/2.0 + 0.2 s），
+  该时间随机器人减速同步缩短到基线 0.5 s，被制动尾部越过；同一公式下，加速度达到制动
+  减速的失控车辆会让自己的允许时间同步增长（算术结果，未在仿真中观测）。
+- 处理：允许时间在分歧事件开始时由测得速度固定（`pending_speed_mps_`）；
+  `test_execution_monitor` 新增三个用例：1.6 m/s 健康制动不锁存、半减速制动在预算处
+  锁存、持续加速不延长预算。
+- 独立验证方式：`git archive HEAD` 导出到 `build-verify/src`，依赖通过
+  `-DFETCHCONTENT_FULLY_DISCONNECTED=ON` 与 `FETCHCONTENT_SOURCE_DIR_*` 复用
+  `build/_deps/*-src`，在工作区同时被其他会话修改时仍能得到可归因的结果。
+- 结果：执行监控修复为 `e1b4150`；局部拒绝回灌撤回的提交主题为
+  `fix: stop feeding rejected local scan matches into covariance`。Release 验证中发现的
+  `native_runtime` 挂住是独立缺陷，已由 `4da2bc1` 修复（见下节）。
+  - HEAD + 执行监控修复（不含撤回）：除三个 `industrial_200k*` 任务外 86/87，仅
+    `multichassis_mission` 失败（进程中止，5.80 s）。
+  - HEAD + 撤回（不含监控修复）：同口径 86/87，仅 `signal_town_mission` 失败（27.87 s）。
+  - 两者合并（RelWithDebInfo）：全量 90/90，536.65 s；`industrial_200k_mission` 362.92 s、
+    `signal_town_mission` 25.27 s、`multichassis_mission` 5.29 s 均通过。
+  - Release（-O3）：89/90，唯一失败是下节的 `native_runtime` 挂住（728 s 后手动终止）；
+    `industrial_200k_mission` 通过：steps=70292，5/5，零碰撞，max_pos_err=2.175 m；
+    `industrial_200k_direct_mission` 55.92 s、`signal_town_mission` 24.03 s、
+    `signal_town_big_mission` 14.64 s、`ice_lab_mission` 5.07 s 均通过。
+- 未入库的 max 形式候选：工作区中的另一份未提交改动把
+  `FusedOdometryEstimator::note_absolute_rejection` 改为将每个对角元提到
+  `max(方差, 残差²)`，并配有 `test_localization` 用例 2a。在与上面相同的基线（撤回 +
+  监控修复，RelWithDebInfo）上，`industrial_200k_mission` 为 4/5：`south_yard` 以
+  `execution_fault/latched: no-response` 结束，steps=100000，max_pos_err=5.082 m；同一
+  基线的累加形式（HEAD）为 5/5。这份改动没有入库，重新设计后必须通过
+  `industrial_200k_mission` 才能进入；恶化的机理没有定位，需要验证。
+- 未验证的风险：`pending_speed_mps_` 只含平移速度，纯原地转向停车的偏航尾部只有 0.5 s
+  基线预算，目前没有失败证据，需要验证；step 3765 路线失效的触发条件（路线偏离或请求
+  变化）没有定位，需要验证。
 
 ### NativeRuntime 关闭竞态（2026-10-29）
 

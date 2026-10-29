@@ -213,6 +213,8 @@ int main() {
  separated_estimator.seed_pose(2.0, 0.4, 0.0, 0.4, 0.1, 1);
  const double separated_sigma_before =
      separated_estimator.estimate().position_sigma_m;
+ const double separated_heading_before =
+     separated_estimator.estimate().heading_sigma_rad;
  RayClearingMapper separated_mapper;
  const auto separated = separated_localization.update(
  map, observation, observation.stamp_ns, true,
@@ -221,8 +223,33 @@ int main() {
  "local_correction:partial innovation rejected");
  assert(std::abs(separated_estimator.estimate().x_m - 2.0) < 1e-9);
  assert(std::abs(separated_estimator.estimate().y_m - 0.4) < 1e-9);
- assert(separated_estimator.estimate().position_sigma_m >
-        separated_sigma_before);
+ // A rejected ridge is weak negative evidence. It neither moves the pose nor
+ // widens the covariance: its residual along the unobservable corridor axis
+ // is arbitrary, and the local search window grows with covariance.
+ assert(std::abs(separated_estimator.estimate().position_sigma_m -
+                 separated_sigma_before) < 1e-12);
+ assert(std::abs(separated_estimator.estimate().heading_sigma_rad -
+                 separated_heading_before) < 1e-12);
+ // Replaying the same rejected ridge must leave the belief where it was. The
+ // supervisor may only start whole-map recovery when covariance itself
+ // crosses the loss envelope, never because rejections accumulated: a
+ // feedback of rejected residuals into sigma ratchets a long corridor past
+ // that envelope and lets recovery promote an aliased pose.
+ for (int replay_index = 1; replay_index <= 4; ++replay_index) {
+   auto replay = observation;
+   replay.sequence = observation.sequence + replay_index;
+   replay.stamp_ns = observation.stamp_ns + replay_index * 6'000'000'000LL;
+   const auto again = separated_localization.update(
+       map, replay, replay.stamp_ns, true, separated_estimator,
+       separated_mapper);
+   assert(again.action == "local_correction:partial innovation rejected");
+   assert(std::abs(separated_estimator.estimate().x_m - 2.0) < 1e-9);
+   assert(std::abs(separated_estimator.estimate().y_m - 0.4) < 1e-9);
+   assert(std::abs(separated_estimator.estimate().position_sigma_m -
+                   separated_sigma_before) < 1e-12);
+   assert(std::abs(separated_estimator.estimate().heading_sigma_rad -
+                   separated_heading_before) < 1e-12);
+ }
 
  // A decisive global candidate entering temporal recovery must survive the
  // same wall ridge. Later scans validate the observable wall normal and yaw;
