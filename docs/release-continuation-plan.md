@@ -624,11 +624,152 @@ CTest 为 88/90：`industrial_200k_mission` 与 `multichassis_mission` 失败；
   `max(方差, 残差²)`，并配有 `test_localization` 用例 2a。在与上面相同的基线（撤回 +
   监控修复，RelWithDebInfo）上，`industrial_200k_mission` 为 4/5：`south_yard` 以
   `execution_fault/latched: no-response` 结束，steps=100000，max_pos_err=5.082 m；同一
-  基线的累加形式（HEAD）为 5/5。这份改动没有入库，重新设计后必须通过
-  `industrial_200k_mission` 才能进入；恶化的机理没有定位，需要验证。
-- 未验证的风险：`pending_speed_mps_` 只含平移速度，纯原地转向停车的偏航尾部只有 0.5 s
-  基线预算，目前没有失败证据，需要验证；step 3765 路线失效的触发条件（路线偏离或请求
-  变化）没有定位，需要验证。
+  基线的累加形式（HEAD）为 5/5。这份改动没有入库。恶化的机理、触发它的两项独立缺陷、
+  以及两项原先未验证的风险（纯原地转向停车预算、step 3765 路线失效的触发条件）已在下节
+  给出证据与结论。
+
+### max 形式候选的回归归因与任务门禁的相位依赖（2026-10-29）
+
+输入 revision 为 `c51292c`。工作区另有两组未入库改动：其他会话的 max 形式
+`estimator.cpp` 与 `test_localization` 用例 2a；本节的积分重置候选 F-C
+（`ackermann_controller.{hpp,cpp}` 与 `test_actuation` 新增块，见缺陷 D1）。所有运行都在
+`build-verify/` 的独立 RelWithDebInfo 构建中完成。探针与环境开关只存在于该目录（未入库）：
+`LS_FORM=acc|max` 选择协方差形式，`LS_NOFC=1` 还原 HEAD 的控制器，`LS_TRACE_CTRL` 打印
+速度环内部量，`LS_TRACE_MONITOR`/`LS_TRACE_ROUTE` 打印监控与路线状态，`LS_CONFIG_DIR`
+指向只改动 SIM 侧 actors sidecar 的配置副本。SIM 真值只用于离线断言与 trace，没有进入
+ROBOT。
+
+- 规范任务（`test_industrial_200k_mission`，5 个目标）在六种代码组合下的结果：
+
+  | 代码 | 结果 |
+  |---|---|
+  | HEAD（累加形式） | 5/5，steps=70292，零碰撞，max_pos_err=2.175 m |
+  | max 形式 | 4/5，`south_yard` 以 `execution_fault/latched: no-response` 结束，steps=100000，max_pos_err=5.082 m |
+  | max + F-C（仅方向反转时重置） | 5/5，steps=81570，零碰撞，max_pos_err=3.216 m |
+  | 累加 + F-C（仅方向反转时重置） | 4/5，同样在 `south_yard` 以 `no-response` 结束，max_pos_err=3.329 m |
+  | 累加 + F-C（停车与反转时重置） | 3/5，碰撞 58 步，max_pos_err=1.689 m，第 4 个目标途中被 `east_shuttle` 撞停 |
+  | max + F-C（停车与反转时重置） | 3/5，碰撞 68 步，max_pos_err=1.971 m，现象同上 |
+
+  任一环节变化都会使结果在这六种之间翻转，规范任务没有鲁棒余量。第 2、4 行的失败是
+  D1，第 5、6 行的失败是 D2；第 1 行的 5/5 与 D2 并不矛盾，HEAD 在 m03 的相位扫描中
+  同样有一个相位被撞（见 D2）。两种协方差形式都落入过 D1（证据 A 为 max 形式，证据 B
+  为累加形式），差别只在触发位置，所以这些运行没有证明 max 形式本身是恶化的原因。
+- 缺陷 D1：速度环 PI 积分在制动或停车之后残留，造成 `no-response` 误锁存。
+  - 机理：`AckermannController::update` 的两个后轮速度环是 PI（`kp=0.6`、`ki=2.0`、
+    `integral_limit=2.0`、`ConditionalIntegration`，`ackermann_controller.hpp:24-29`、
+    `ackermann_controller.cpp:12-17`）。设定值下降或停车时被测速度滞后，积分累积出维持
+    制动斜坡的负占空比；设定值随后反向或同向再起步时这份积分仍在，驱动占空比停在制动
+    侧，要等积分以约 `ki·err` 的速率退回才转正。`ExecutionMonitor` 的窗口是响应延迟 0.1
+    + 确认 0.2 + 反应 0.2 = 0.5 s（`execution_monitor.cpp:93-95,213-214`），退回时间超过
+    它就锁存。
+  - 证据 A（max 形式的 4/5 失败，速度环内部量）：t=1800.42 s 设定 0.076、实测
+    0.276 m/s，`i_l=-0.345`、`duty_l=-0.544`；t=1800.58 s 设定跳到 +0.277，实测
+    0.077，`i_l=-0.320`、`duty_l=-0.106`，`no-response` episode 从这里开始；`duty_l`
+    随后为 −0.044（1800.74）、+0.032（1800.90）、+0.114（1801.06）；实测速度保持
+    ≤0.054 m/s，窗口在 1801.08 s 耗尽并锁存。同一运行锁存时估计与真值相差 0.18 m，
+    不是定位丢失。
+  - 证据 B（累加形式 + 仅反向版 F-C 的 4/5 失败）：t=1931.20 s 从 1.043 m/s 停车
+    （设定 0，`duty_l` 饱和在 −1.0），`i_l` 由 −0.273 退到 −0.405（t=1931.34）；
+    t=1931.56 s 同向设定 +0.208 到来，`i_l=-0.408`、`duty_l=-0.212`，之后每 0.12 s 为
+    −0.164、−0.121、−0.065、−0.023，整个 0.5 s 窗口内驱动占空比没有转正，实测
+    ≤0.038 m/s，t=1932.06 s 锁存。这一路径不经过方向反转，所以仅反向版 F-C 覆盖不到。
+  - F-C 的处理（候选，未入库）：设定为 0（停车或保持）或与上一个非零设定反号时，重置两个
+    后轮 PID，前馈与比例项立即作用于新需求。`test_actuation` 新增块断言：反向与停车之后
+    的输出与全新控制器逐位相同（1e-12）；同向减速到 0.05 m/s 仍保留积分
+    （`rear_left_duty < reference − 0.05`）。红绿验证：HEAD 控制器在反向断言
+    （候选分支上的 `test_actuation.cpp:188`）中止；只含反向规则的控制器在停车断言
+    （`:203`）中止；含两条规则的控制器输出 `actuation ok`。
+  - F-C 的副作用测量：在没有 actor 交互的相位下，m03 在 F-C 上 29773 步完成，HEAD 为
+    31754 步（−6.2%）。
+  - 另有证据指向同一类机理但没有取速度环内部量：HEAD 的 m04、m09 都在
+    (214.344, 31.392) 以 `no-response` 锁存（两者终态逐位相同），F-C 下 m09 在该位置
+    之后全程通过；该位置的内部量需要验证。
+- 缺陷 D2：定位恢复后的爬行速度上限使机器人停在非让行车辆的车道里，被撞。
+  - SIM 侧事实：`east_shuttle` 半径 0.7 m、1.4 m/s，在 y=72 上 x∈[310,470] 往返，没有
+    `yield_to_robot`（`configs/worlds/industrial_200k.actors.json`）；激光 72 束、最大
+    量程 10 m（`configs/sim/default.json:16`）。ROBOT 侧常数：
+    `dynamic_escape_speed_cap_mps = 0.3`（`safety.hpp:115`）。
+  - 失败轨迹（累加 + F-C 停车版，规范任务，`--trace-interval=25`）：step 54825–54875 一次
+    定位恢复把估计误差从 1.54 m 拉到 0.38 m（σ 由 5.821 m 降到 0.836 m）；step 54900
+    路线被清除（`route_hold/global-plan-pending`，速度 1.09 m/s）；重规划后从 step 54975
+    起速度被限在 0.25 m/s（`loc=recovery-tracking hypotheses=4`，`speed_cap`）。step 55200
+    `tracks=0`，shuttle 中心距机器人 6.2 m；step 55250 `tracks=1`、`dynamic=0.048`，进入
+    `dynamic_escape`（命令 0.25 m/s，距 4.7 m）；step 55325 `candidates rejected: dynamic
+  collision on hold` 加 `safety:dynamic-proximity` 停车，机器人在 (403.0, 72.8)，距车道
+  轴 y=72 为 0.8 m，小于 shuttle 与机器人半径之和 1.1 m，shuttle 距约 2.4 m；step 55425
+  接触并锁存 `uncommanded-motion+safety:contact`，累计碰撞 58 步。
+  - 相位扫描（m03 = `central_gate east_terminal`；只改 SIM 侧 sidecar 中 shuttle 的初始 x，
+    取 310…470 共 17 个点，间隔 10 m 约 7.1 s）：HEAD 控制器 16/17 无碰撞，x=440 一次
+    碰撞（25 步）；F-C 15/17，x=340 与 x=350 碰撞，规范任务的 x=350 落在其中。相位不
+    触发交互的运行轨迹逐位相同（HEAD 恒 31754 步，F-C 恒 29773 步）；HEAD 控制器在
+    x=350 复现了独立基线（31754 步，2/2）。
+  - 结论：D2 存在于 HEAD。规范任务过或不过，取决于该控制器版本进入车道的时刻是否落在
+    车辆的碰撞窗口内。1/17 与 2/17 的差别在该样本量下不能区分，需要验证；规范任务本身
+    没有做相位扫描（单次约 5 分钟），需要验证。
+- 十变体矩阵（目标序列 `m01`…`m10` 共 22 个目标）。完成的目标数：HEAD 14/22，max 形式
+  14/22，累加 + F-C 18/22，max + F-C 18/22；完整通过的任务数分别为 5、5、7、6。
+  F-C 列为停车与反转版：
+
+  | 任务 | HEAD | max 形式 | 累加 + F-C | max + F-C |
+  |---|---|---|---|---|
+  | m01 `west_hub north_depot` | 2/2 | 2/2 | 2/2 | 2/2 |
+  | m02 `north_depot central_gate` | 2/2 | 2/2 | 2/2 | 2/2 |
+  | m03 `central_gate east_terminal` | 2/2 | 2/2 | 1/2 车道碰撞 | 1/2 车道碰撞 |
+  | m04 `east_terminal south_yard` | 0/2 `no-response` | 0/2 `no-response` | 1/2 估计误差 44.4 m | 1/2 估计误差 50.7 m |
+  | m05 `south_yard central_gate` | 1/2 误差 40.3 m | 1/2 误差 40.3 m | 2/2 | 1/2 误差 414.2 m |
+  | m06 `west_hub central_gate east_terminal` | 3/3 | 3/3 | 1/3 误差 156.4 m | 3/3 |
+  | m07 `central_gate south_yard` | 2/2 | 2/2 | 2/2 | 2/2 |
+  | m08 `north_depot east_terminal south_yard` | 1/3 `no-response` | 1/3 `no-response` | 3/3 | 3/3 |
+  | m09 `east_terminal central_gate` | 0/2 `no-response` | 0/2 `no-response` | 2/2 | 2/2 |
+  | m10 `south_yard north_depot` | 1/2 误差 233.8 m | 1/2 误差 389.3 m | 2/2 | 1/2 误差 18.1 m |
+
+  F-C 消除了 HEAD 上三处 `no-response` 终态（m04、m08、m09 都不再在该处锁存）。四个
+  版本都在 m04、m05、m06、m10 的若干个任务上出现 18.1–414.2 m 的估计误差（终态
+  `global-plan-failed`、`hold/no-plan` 或 `speed_cap/recovery`），丢失的任务随协方差
+  形式与时序翻转，机理没有定位，需要验证。
+- 缺陷 D3：局部 `global recovery resolved` 的过度自信。累加 + 仅反向版 F-C 的 m07
+  （steps=28090，1/2，max_pos_err=4.982 m）中，全局重定位事件 step 22466、22666、22866
+  都是 `insufficient geometric returns`（回波 2、7、11，低于 `minimum_returns=12`，
+  `global_search.hpp:63`、`global_search.cpp:282`），σ 从 12.285 m 增长到 13.156 m，估计
+  误差约 4.8 m；step 22987 `local_correction:global recovery resolved` 之后 σ 降为
+  0.212 m，误差仍是 4.33 m（truth (440.331, −144.876)，estimate (439.918, −149.187)），
+  最终 `south_yard` 以 `robot_done=yes truth_arrived=no miss=3.342` 结束。其他位置的
+  同类事件需要验证。
+- 缺陷 D4：路线失效与瞬时停车。`signal_town` 在 HEAD 上有 5 次 `route_deviated`：偏离
+  距离 0.800–0.803 m，对应管道宽度 0.800 m（`2.0 × footprint_radius_m`，
+  `autonomy_pipeline.cpp:25-28`），速度 1.41–1.86 m/s；step 3765 是第 4 次
+  （0.803 m，1.687 m/s，目标 (1.5, 2.0)）。触发条件是 `route_deviated`，不是
+  `request_changed`（探针中 `request_changed=0`）。`begin` 在无待定计划时清除路线
+  （`route_pipeline.cpp:100-115`），保持分支随后下发零速命令
+  （`motion_pipeline.cpp:265-275`），机器人从行驶速度瞬时转入停车。DWA 的横向误差储备
+  限速只在 `car_like && route_tracking_valid` 时生效（`dwa_planner.cpp:715,732-746`），
+  差速底盘没有这条限速。已否决的实验变体 `LS_SHORTCUT=nocancel` 在车式底盘上走到更坏
+  的结果：待定计划期间继续沿陈旧路线行驶，偏离距离最长一段从 0.845 m 增长到
+  3.107 m（1.91 m/s，目标 `south_yard`）；step 59198 起 `service_brake=1.0`，真值速度
+  1.913 → 0.444 m/s 用时 1.08 s（平均 −1.36 m/s²，低于声明的 2.0 m/s²），位置在湿滑
+  停车区（μ=0.42，x 410–470、y 85–185），最终以不带接触的 `uncommanded-motion` 锁存
+  （真值 (453.98, 149.75)）。
+- 纯原地转向停车的监控预算：窗口 0.5 s 不含平移项，因为 `pending_speed_mps_` 只取
+  平移速度（`execution_monitor.cpp:201-202`）。按声明的偏航加速度 8.0 rad/s²
+  （`configs/robot/*.json`）、响应延迟 0.1 s 与到达带 0.08 rad/s（判定阈值 0.16 rad/s，
+  `description.hpp:65-66`、`coordinator.cpp:104-109`）估算，最大偏航率 2.0 rad/s 的停车
+  需要 0.1 + (2.0 − 0.16)/8.0 = 0.33 s，余量 0.17 s；履带底盘上限 1.2 rad/s 需要
+  0.23 s，余量 0.27 s。这是按声明参数的算术结果，实测偏航尾部没有取；十变体矩阵与相位
+  扫描各运行（独立构建目录中）的终态里没有不带接触的 `uncommanded-motion` 锁存。结论：
+  目前没有失败证据，实测尾部需要验证。
+- 未入库候选的当前状态：F-C 以 `d6a9612` 保存在本地分支 `wip/ackermann-integral-reset`
+  （只含 `ackermann_controller.{hpp,cpp}` 与 `test_actuation.cpp`，基于 `c51292c`）。
+  在 `c51292c` 加 F-C 的独立导出（无任何探针，RelWithDebInfo，`ctest -j6`）上，全量
+  89/90，661 s，唯一失败是 `industrial_200k_mission`：steps=100000，3/5，碰撞 58 步，
+  max_pos_err=1.689 m，与带探针的构建逐位相同。F-C 与 max 形式都没有进入当前分支：
+  max 形式单独应用使规范任务翻到 4/5（原因是 D1），F-C 单独应用使它翻到 3/5（原因是
+  D2）；两个翻转的原因都已定位，且各自在对照运行中独立存在（D1 在两种协方差形式中都
+  出现，D2 在 HEAD 的相位扫描中也出现）。
+- 未实现的补救方向（均需要验证，没有改动）：保持分支按声明的制动减速度斜坡下降而不是
+  瞬时零速加服务制动（`add_recovery` 的 `clamp_next_velocity`/`clamp_next_symmetric`，
+  `motion_pipeline.cpp:13-25,330-340` 是已有先例）；把横向误差储备限速扩展到非车式底盘；
+  待定计划期间不沿陈旧路线行驶；动态逃逸与定位观察限速的关系；局部 resolved 恢复的
+  时间确认。
 
 ### NativeRuntime 关闭竞态（2026-10-29）
 
