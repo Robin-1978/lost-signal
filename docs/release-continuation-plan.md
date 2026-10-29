@@ -113,6 +113,13 @@
   真实记录文件现在可通过部署无关的 CSV reader 导入，再由 calibration artifact 与
  `INativeAdapter::validate_startup_profile()` 接入；具体板卡仍必须提供实测 profile，
  不用运行时猜测值替代标定结果。
+- 第 9 项的 profile 生命周期已补齐：artifact 现在可带温度/载荷适用范围和创建时间，
+  `validate_calibration_profile()` 严格校验 robot description hash、profile revision、
+  温度/载荷和显式最大年龄；缺少创建时间、超期或身份不匹配都会 fail closed。原子
+  same-directory rename 持久化避免半写文件成为活动 profile；HIL online update 可写
+  append-only JSONL journal，并在读取时校验 entry schema 与单调 sequence。新增
+  `test_calibration` 覆盖 atomic save/load、profile mismatch/stale、temperature/load
+  gate 和 journal round-trip。校验仍只使用实测输入，不读取 SIM truth、actor 或 score。
 
 - 8.7 已把真实硬件 handshake 变成 `INativeAdapter::validate_startup_profile()`
   的显式 seam。`NativeRuntime` 在注册 endpoint、配置 ROBOT 或启动 watchdog

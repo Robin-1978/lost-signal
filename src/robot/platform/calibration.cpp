@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <numeric>
@@ -119,7 +120,11 @@ bool CalibrationArtifact::valid(std::string* error) const {
  !finite(lidar_time_offset_s) || !finite(residual_rms) || residual_rms < 0.0 ||
  sample_count == 0 || !finite(valid_temperature_min_c) ||
  !finite(valid_temperature_max_c) ||
- valid_temperature_min_c >= valid_temperature_max_c) {
+ valid_temperature_min_c >= valid_temperature_max_c ||
+ !finite(valid_load_min_kg) || !finite(valid_load_max_kg) ||
+ ((valid_load_min_kg != 0.0 || valid_load_max_kg != 0.0) &&
+  (valid_load_min_kg < 0.0 || valid_load_max_kg <= valid_load_min_kg)) ||
+ !finite(created_unix_s) || created_unix_s < 0.0) {
  fail(error, "calibration value is outside its physical bounds");
  return false;
  }
@@ -146,7 +151,10 @@ core::Json CalibrationArtifact::to_json() const {
  {"residual_rms", core::Json::Num(residual_rms)},
  {"sample_count", core::Json::Num(static_cast<double>(sample_count))},
  {"valid_temperature_min_c", core::Json::Num(valid_temperature_min_c)},
- {"valid_temperature_max_c", core::Json::Num(valid_temperature_max_c)}});
+ {"valid_temperature_max_c", core::Json::Num(valid_temperature_max_c)},
+ {"valid_load_min_kg", core::Json::Num(valid_load_min_kg)},
+ {"valid_load_max_kg", core::Json::Num(valid_load_max_kg)},
+ {"created_unix_s", core::Json::Num(created_unix_s)}});
 }
 
 OfflineCalibrationResult calibrate_offline(
@@ -163,7 +171,15 @@ OfflineCalibrationResult calibrate_offline(
  config.minimum_reference_distance_m <= 0.0 ||
  !finite(config.maximum_scale_deviation) ||
  config.maximum_scale_deviation <= 0.0 ||
- config.maximum_scale_deviation >= 1.0) {
+ config.maximum_scale_deviation >= 1.0 ||
+ !finite(config.valid_temperature_min_c) ||
+ !finite(config.valid_temperature_max_c) ||
+ config.valid_temperature_min_c >= config.valid_temperature_max_c ||
+ !finite(config.valid_load_min_kg) || !finite(config.valid_load_max_kg) ||
+ ((config.valid_load_min_kg != 0.0 || config.valid_load_max_kg != 0.0) &&
+  (config.valid_load_min_kg < 0.0 ||
+   config.valid_load_max_kg <= config.valid_load_min_kg)) ||
+ !finite(config.created_unix_s) || config.created_unix_s < 0.0) {
  result.diagnostic = "invalid offline calibration configuration";
  return result;
  }
@@ -214,6 +230,11 @@ OfflineCalibrationResult calibrate_offline(
  return result;
  }
  result.artifact.wheel_radius_scale = scale;
+ result.artifact.valid_temperature_min_c = config.valid_temperature_min_c;
+ result.artifact.valid_temperature_max_c = config.valid_temperature_max_c;
+ result.artifact.valid_load_min_kg = config.valid_load_min_kg;
+ result.artifact.valid_load_max_kg = config.valid_load_max_kg;
+ result.artifact.created_unix_s = config.created_unix_s;
  for (std::size_t axis = 0; axis < 3; ++axis) {
  result.artifact.imu_accel_bias_mps2[axis] = accel_sum[axis] /
  static_cast<double>(stationary_count);
@@ -291,6 +312,10 @@ bool calibration_from_json(const core::Json& value,
  error) || !integer(value, "profile_revision", integer_value, error)) {
  return false;
  }
+ if (integer_value > std::numeric_limits<std::uint32_t>::max()) {
+  fail(error, "calibration profile revision is out of range");
+  return false;
+ }
  parsed.profile_revision = static_cast<std::uint32_t>(integer_value);
  if (!number(value, "wheel_radius_scale", parsed.wheel_radius_scale, error) ||
  !number(value, "track_width_scale", parsed.track_width_scale, error) ||
@@ -299,7 +324,21 @@ bool calibration_from_json(const core::Json& value,
  !number(value, "valid_temperature_min_c", parsed.valid_temperature_min_c,
  error) || !number(value, "valid_temperature_max_c",
  parsed.valid_temperature_max_c, error)) return false;
+ const auto optional_number = [&](const char* key, double& destination) {
+  const core::Json* field = value.find(key);
+  if (field == nullptr) return true;
+  return number(value, key, destination, error);
+ };
+ if (!optional_number("valid_load_min_kg", parsed.valid_load_min_kg) ||
+     !optional_number("valid_load_max_kg", parsed.valid_load_max_kg) ||
+     !optional_number("created_unix_s", parsed.created_unix_s)) {
+  return false;
+ }
  if (!integer(value, "sample_count", integer_value, error)) return false;
+ if (integer_value > std::numeric_limits<std::size_t>::max()) {
+  fail(error, "calibration sample count is out of range");
+  return false;
+ }
  parsed.sample_count = static_cast<std::size_t>(integer_value);
  const auto parse_array = [&](const char* key, auto& destination) {
  const core::Json* array = value.find(key);
@@ -317,6 +356,262 @@ bool calibration_from_json(const core::Json& value,
  !parsed.valid(error)) {
  if (error != nullptr && error->empty()) *error = "invalid calibration arrays";
  return false;
+ }
+ out = std::move(parsed);
+ return true;
+}
+
+bool validate_calibration_profile(const CalibrationArtifact& artifact,
+                                  const CalibrationProfileRequirements& req,
+                                  std::string* error) {
+ if (!artifact.valid(error)) return false;
+ if (req.robot_id.empty() || req.robot_description_hash == 0 ||
+     req.profile_revision == 0) {
+  fail(error, "calibration profile requirements are incomplete");
+  return false;
+ }
+ if (artifact.robot_id != req.robot_id ||
+     artifact.robot_description_hash != req.robot_description_hash ||
+     artifact.profile_revision != req.profile_revision) {
+  fail(error, "calibration artifact identity does not match the robot profile");
+  return false;
+ }
+ if (req.temperature_c.has_value()) {
+  const double temperature = *req.temperature_c;
+  if (!finite(temperature) ||
+      temperature < artifact.valid_temperature_min_c ||
+      temperature > artifact.valid_temperature_max_c) {
+   fail(error, "calibration artifact is outside its temperature range");
+   return false;
+  }
+ }
+ if (req.load_kg.has_value()) {
+  const double load = *req.load_kg;
+  if (!finite(load) ||
+      (artifact.valid_load_min_kg == 0.0 &&
+       artifact.valid_load_max_kg == 0.0) ||
+      load < artifact.valid_load_min_kg ||
+      load > artifact.valid_load_max_kg) {
+   fail(error, "calibration artifact is outside its load range");
+   return false;
+  }
+ }
+ if (req.maximum_age_s.has_value()) {
+  if (!req.now_unix_s.has_value() || !finite(*req.maximum_age_s) ||
+      *req.maximum_age_s <= 0.0 || !finite(*req.now_unix_s) ||
+      artifact.created_unix_s <= 0.0 ||
+      *req.now_unix_s < artifact.created_unix_s ||
+      *req.now_unix_s - artifact.created_unix_s > *req.maximum_age_s) {
+   fail(error, "calibration artifact is stale or has no creation timestamp");
+   return false;
+  }
+ }
+ return true;
+}
+
+bool save_calibration_artifact_atomic(const std::string& path,
+                                      const CalibrationArtifact& artifact,
+                                      std::string* error) {
+ if (path.empty() || !artifact.valid(error)) return false;
+ const std::filesystem::path destination(path);
+ const std::filesystem::path temporary = destination.string() + ".tmp";
+ {
+  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+  if (!output.is_open()) {
+   fail(error, "cannot open temporary calibration artifact");
+   return false;
+  }
+  output << core::json_dump(artifact.to_json()) << '\n';
+  output.flush();
+  if (!output.good()) {
+   output.close();
+   std::error_code ignored;
+   std::filesystem::remove(temporary, ignored);
+   fail(error, "cannot write temporary calibration artifact");
+   return false;
+  }
+ }
+ std::error_code rename_error;
+ std::filesystem::rename(temporary, destination, rename_error);
+ if (rename_error) {
+  std::error_code ignored;
+  std::filesystem::remove(temporary, ignored);
+  if (error != nullptr) {
+   *error = "cannot atomically publish calibration artifact: " +
+            rename_error.message();
+  }
+  return false;
+ }
+ return true;
+}
+
+bool load_calibration_artifact(const std::string& path,
+                               CalibrationArtifact& out,
+                               std::string* error) {
+ if (path.empty()) {
+  fail(error, "calibration artifact path is empty");
+  return false;
+ }
+ std::ifstream input(path, std::ios::binary);
+ if (!input.is_open()) {
+  fail(error, "cannot open calibration artifact");
+  return false;
+ }
+ std::ostringstream text;
+ text << input.rdbuf();
+ if (!input.good() && !input.eof()) {
+  fail(error, "cannot read calibration artifact");
+  return false;
+ }
+ std::string parse_error;
+ const auto parsed = core::json_parse(text.str(), &parse_error);
+ if (parsed == nullptr || !calibration_from_json(*parsed, out, error)) {
+  if (error != nullptr && error->empty()) *error = parse_error;
+  return false;
+ }
+ return true;
+}
+
+bool load_calibration_profile(const std::string& path,
+                             const CalibrationProfileRequirements& req,
+                             CalibrationArtifact& out,
+                             std::string* error) {
+ CalibrationArtifact loaded;
+ if (!load_calibration_artifact(path, loaded, error) ||
+     !validate_calibration_profile(loaded, req, error)) {
+  return false;
+ }
+ out = std::move(loaded);
+ return true;
+}
+
+bool CalibrationJournalEntry::valid(std::string* error) const {
+ if (sequence == 0 || !finite(timestamp_s) || timestamp_s < 0.0 ||
+     artifact_digest.empty() || event.empty() || !finite(temperature_c) ||
+     !finite(load_kg) || load_kg < 0.0 || !finite(wheel_radius_scale) ||
+     !finite(residual) || residual < 0.0) {
+  fail(error, "calibration journal entry is invalid");
+  return false;
+ }
+ return true;
+}
+
+core::Json CalibrationJournalEntry::to_json() const {
+ return core::Json::Obj({
+     {"sequence", core::Json::Num(static_cast<double>(sequence))},
+     {"timestamp_s", core::Json::Num(timestamp_s)},
+     {"artifact_digest", core::Json::Str(artifact_digest)},
+     {"event", core::Json::Str(event)},
+     {"temperature_c", core::Json::Num(temperature_c)},
+     {"load_kg", core::Json::Num(load_kg)},
+     {"wheel_radius_scale", core::Json::Num(wheel_radius_scale)},
+     {"residual", core::Json::Num(residual)},
+     {"accepted", core::Json::Bool(accepted)},
+     {"diagnostic", core::Json::Str(diagnostic)}});
+}
+
+namespace {
+
+bool calibration_journal_from_json(const core::Json& value,
+                                   CalibrationJournalEntry& out,
+                                   std::string* error) {
+ if (!value.is_object()) {
+  fail(error, "calibration journal entry must be an object");
+  return false;
+ }
+ CalibrationJournalEntry parsed;
+ std::uint64_t sequence = 0;
+ if (!integer(value, "sequence", sequence, error) ||
+     !number(value, "timestamp_s", parsed.timestamp_s, error) ||
+     !string(value, "artifact_digest", parsed.artifact_digest, error) ||
+     !string(value, "event", parsed.event, error) ||
+     !number(value, "temperature_c", parsed.temperature_c, error) ||
+     !number(value, "load_kg", parsed.load_kg, error) ||
+     !number(value, "wheel_radius_scale", parsed.wheel_radius_scale, error) ||
+     !number(value, "residual", parsed.residual, error)) {
+  return false;
+ }
+ const core::Json* accepted = value.find("accepted");
+ if (accepted == nullptr || !accepted->is_bool()) {
+  fail(error, "calibration journal accepted field is invalid");
+  return false;
+ }
+ parsed.sequence = sequence;
+ parsed.accepted = accepted->as_bool();
+ const core::Json* diagnostic = value.find("diagnostic");
+ if (diagnostic != nullptr) {
+  if (!diagnostic->is_str()) {
+   fail(error, "calibration journal diagnostic field is invalid");
+   return false;
+  }
+  parsed.diagnostic = diagnostic->as_str();
+ }
+ if (!parsed.valid(error)) return false;
+ out = std::move(parsed);
+ return true;
+}
+
+} // namespace
+
+bool append_calibration_journal(const std::string& path,
+                                const CalibrationJournalEntry& entry,
+                                std::string* error) {
+ if (path.empty() || !entry.valid(error)) return false;
+ std::ofstream output(path, std::ios::out | std::ios::app);
+ if (!output.is_open()) {
+  fail(error, "cannot open calibration journal");
+  return false;
+ }
+ output << core::json_dump(entry.to_json()) << '\n';
+ output.flush();
+ if (!output.good()) {
+  fail(error, "cannot append calibration journal");
+  return false;
+ }
+ return true;
+}
+
+bool load_calibration_journal(const std::string& path,
+                              std::vector<CalibrationJournalEntry>& out,
+                              std::string* error) {
+ if (path.empty()) {
+  fail(error, "calibration journal path is empty");
+  return false;
+ }
+ std::ifstream input(path);
+ if (!input.is_open()) {
+  fail(error, "cannot open calibration journal");
+  return false;
+ }
+ std::vector<CalibrationJournalEntry> parsed;
+ std::string line;
+ std::size_t line_number = 0;
+ while (std::getline(input, line)) {
+  ++line_number;
+  const auto first = line.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) continue;
+  std::string parse_error;
+  const auto value = core::json_parse(line.substr(first), &parse_error);
+  CalibrationJournalEntry entry;
+  if (value == nullptr ||
+      !calibration_journal_from_json(*value, entry, &parse_error)) {
+   if (error != nullptr) {
+    *error = "calibration journal line " + std::to_string(line_number) +
+             " is invalid: " + parse_error;
+   }
+   return false;
+  }
+  if (!parsed.empty() && entry.sequence <= parsed.back().sequence) {
+   if (error != nullptr) {
+    *error = "calibration journal sequence is not strictly increasing";
+   }
+   return false;
+  }
+  parsed.push_back(std::move(entry));
+ }
+ if (!input.eof() && input.fail()) {
+  fail(error, "cannot read calibration journal");
+  return false;
  }
  out = std::move(parsed);
  return true;

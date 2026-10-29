@@ -16,6 +16,11 @@ int main() {
  config.robot_id = description.robot_id;
  config.robot_description_hash = hash_robot_description(description);
  config.profile_revision = 7;
+ config.valid_temperature_min_c = 0.0;
+ config.valid_temperature_max_c = 45.0;
+ config.valid_load_min_kg = 5.0;
+ config.valid_load_max_kg = 10.0;
+ config.created_unix_s = 1000.0;
 
  std::vector<CalibrationMeasurement> samples;
  for (int index = 0; index < 5; ++index) {
@@ -44,6 +49,36 @@ int main() {
  assert(calibration_from_json(encoded, decoded, &error));
  assert(decoded.robot_description_hash == config.robot_description_hash);
  assert(decoded.input_digest == fitted.artifact.input_digest);
+ assert(decoded.valid_load_min_kg == 5.0);
+ assert(decoded.created_unix_s == 1000.0);
+
+ const auto artifact_path = std::filesystem::temp_directory_path() /
+                            "lost_signal_calibration_artifact.json";
+ assert(save_calibration_artifact_atomic(artifact_path.string(),
+                                         fitted.artifact, &error));
+ CalibrationArtifact loaded_artifact;
+ assert(load_calibration_artifact(artifact_path.string(), loaded_artifact,
+                                  &error));
+ assert(loaded_artifact.input_digest == fitted.artifact.input_digest);
+ CalibrationProfileRequirements requirements;
+ requirements.robot_id = config.robot_id;
+ requirements.robot_description_hash = config.robot_description_hash;
+ requirements.profile_revision = config.profile_revision;
+ requirements.temperature_c = 25.0;
+ requirements.load_kg = 7.0;
+ requirements.now_unix_s = 1100.0;
+ requirements.maximum_age_s = 200.0;
+ CalibrationArtifact accepted_profile;
+ assert(load_calibration_profile(artifact_path.string(), requirements,
+                                 accepted_profile, &error));
+ requirements.profile_revision = 8;
+ assert(!load_calibration_profile(artifact_path.string(), requirements,
+                                  accepted_profile, &error));
+ requirements.profile_revision = config.profile_revision;
+ requirements.now_unix_s = 1301.0;
+ assert(!load_calibration_profile(artifact_path.string(), requirements,
+                                  accepted_profile, &error));
+ std::filesystem::remove(artifact_path);
 
  CalibrationArtifact invalid = decoded;
  invalid.wheel_radius_scale = 1.5;
@@ -93,5 +128,30 @@ int main() {
  assert(!load_calibration_measurements_csv(bad_csv.string(), loaded, &error));
  assert(!error.empty());
  std::filesystem::remove(bad_csv);
+
+ const auto journal_path = std::filesystem::temp_directory_path() /
+                           "lost_signal_calibration_hil.jsonl";
+ CalibrationJournalEntry first_entry;
+ first_entry.sequence = 1;
+ first_entry.timestamp_s = 10.0;
+ first_entry.artifact_digest = fitted.artifact.input_digest;
+ first_entry.event = "online_update";
+ first_entry.temperature_c = 22.0;
+ first_entry.load_kg = 7.0;
+ first_entry.wheel_radius_scale = fitted.artifact.wheel_radius_scale;
+ first_entry.residual = 0.2;
+ first_entry.accepted = true;
+ first_entry.diagnostic = "confirmed";
+ assert(append_calibration_journal(journal_path.string(), first_entry, &error));
+ auto second_entry = first_entry;
+ second_entry.sequence = 2;
+ second_entry.accepted = false;
+ second_entry.diagnostic = "rollback";
+ assert(append_calibration_journal(journal_path.string(), second_entry, &error));
+ std::vector<CalibrationJournalEntry> journal;
+ assert(load_calibration_journal(journal_path.string(), journal, &error));
+ assert(journal.size() == 2 && journal.front().accepted &&
+        !journal.back().accepted);
+ std::filesystem::remove(journal_path);
  return 0;
 }
