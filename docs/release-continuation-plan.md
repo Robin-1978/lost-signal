@@ -602,8 +602,8 @@ CTest 为 88/90：`industrial_200k_mission` 与 `multichassis_mission` 失败；
 - 独立验证方式：`git archive HEAD` 导出到 `build-verify/src`，依赖通过
   `-DFETCHCONTENT_FULLY_DISCONNECTED=ON` 与 `FETCHCONTENT_SOURCE_DIR_*` 复用
   `build/_deps/*-src`，在工作区同时被其他会话修改时仍能得到可归因的结果。
-- 结果：执行监控修复为 `e1b4150`；局部拒绝回灌撤回的提交主题为
-  `fix: stop feeding rejected local scan matches into covariance`。Release 验证中发现的
+- 结果：执行监控修复为 `e1b4150`；局部拒绝回灌撤回为 `0fef7b5`
+  （`fix: stop feeding rejected local scan matches into covariance`）。Release 验证中发现的
   `native_runtime` 挂住是独立缺陷，已由 `4da2bc1` 修复（见下节）。
   - HEAD + 执行监控修复（不含撤回）：除三个 `industrial_200k*` 任务外 86/87，仅
     `multichassis_mission` 失败（进程中止，5.80 s）。
@@ -614,6 +614,11 @@ CTest 为 88/90：`industrial_200k_mission` 与 `multichassis_mission` 失败；
     `industrial_200k_mission` 通过：steps=70292，5/5，零碰撞，max_pos_err=2.175 m；
     `industrial_200k_direct_mission` 55.92 s、`signal_town_mission` 24.03 s、
     `signal_town_big_mission` 14.64 s、`ice_lab_mission` 5.07 s 均通过。
+  - 三个提交（`e1b4150`、`4da2bc1`、`0fef7b5`）之后的 HEAD：独立导出，RelWithDebInfo，
+    `ctest -j6` 全量 90/90，439.93 s；`industrial_200k_mission` 273.06 s、
+    `industrial_200k_direct_mission` 61.25 s、`signal_town_mission` 24.22 s、
+    `signal_town_big_mission` 15.68 s、`multichassis_mission` 4.41 s、
+    `native_runtime` 0.36 s 均通过。
 - 未入库的 max 形式候选：工作区中的另一份未提交改动把
   `FusedOdometryEstimator::note_absolute_rejection` 改为将每个对角元提到
   `max(方差, 残差²)`，并配有 `test_localization` 用例 2a。在与上面相同的基线（撤回 +
