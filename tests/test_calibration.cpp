@@ -2,6 +2,7 @@
 #include <cmath>
 #include <fstream>
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,16 @@ int main() {
  assert(std::abs(fitted.artifact.wheel_radius_scale - 1.05) < 1e-9);
  assert(fitted.artifact.sample_count == samples.size());
  assert(fitted.artifact.valid());
+
+ // Field logs are ordered acquisition streams. A repeated timestamp or a
+ // non-finite value must be rejected before it can change fit weighting.
+ auto unordered = samples;
+ unordered[2].timestamp_s = unordered[1].timestamp_s;
+ assert(!calibrate_offline(config, unordered).accepted);
+ auto non_finite = samples;
+ non_finite.back().gyro_radps[0] =
+     std::numeric_limits<double>::quiet_NaN();
+ assert(!calibrate_offline(config, non_finite).accepted);
 
  std::string error;
  const auto encoded = fitted.artifact.to_json();
@@ -100,6 +111,7 @@ int main() {
  assert(std::abs(online.artifact().wheel_radius_scale - 1.05) < 1e-9);
  assert(updated != online.artifact().wheel_radius_scale);
  assert(!online.update_wheel_scale(0.5, 0.5));
+ assert(!online.update_wheel_scale(-0.1, 0.5));
 
  const auto csv = std::filesystem::temp_directory_path() /
                   "lost_signal_calibration_measurements.csv";
@@ -128,6 +140,19 @@ int main() {
  assert(!load_calibration_measurements_csv(bad_csv.string(), loaded, &error));
  assert(!error.empty());
  std::filesystem::remove(bad_csv);
+
+ const auto unordered_csv = std::filesystem::temp_directory_path() /
+                            "lost_signal_unordered_calibration.csv";
+ {
+  std::ofstream output(unordered_csv);
+  assert(output.is_open());
+  output << "0,10,10.5,0,0,9.8,0,0,0,1\n";
+  output << "0,10.1,10.605,0,0,9.8,0,0,0,0\n";
+ }
+ assert(!load_calibration_measurements_csv(unordered_csv.string(), loaded,
+                                           &error));
+ assert(!error.empty());
+ std::filesystem::remove(unordered_csv);
 
  const auto journal_path = std::filesystem::temp_directory_path() /
                            "lost_signal_calibration_hil.jsonl";

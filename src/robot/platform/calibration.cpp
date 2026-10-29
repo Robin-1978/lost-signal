@@ -97,6 +97,24 @@ std::string digest(const std::vector<CalibrationMeasurement>& samples) {
  return std::to_string(hash);
 }
 
+bool valid_measurement_sample(const CalibrationMeasurement& sample,
+                              const CalibrationMeasurement* previous) {
+ if (!finite(sample.timestamp_s) || sample.timestamp_s < 0.0 ||
+     !finite(sample.wheel_distance_m) ||
+     !finite(sample.reference_distance_m)) {
+  return false;
+ }
+ for (std::size_t axis = 0; axis < 3; ++axis) {
+  if (!finite(sample.accel_mps2[axis]) ||
+      !finite(sample.gyro_radps[axis])) {
+   return false;
+  }
+ }
+ // A field log is an ordered acquisition stream. Rejecting a repeated or
+ // regressed stamp is safer than silently changing offline-fit weighting.
+ return previous == nullptr || sample.timestamp_s > previous->timestamp_s;
+}
+
 } // namespace
 
 bool CalibrationArtifact::valid(std::string* error) const {
@@ -187,27 +205,20 @@ OfflineCalibrationResult calibrate_offline(
  std::array<double, 3> accel_sum{};
  std::array<double, 3> gyro_sum{};
  std::size_t stationary_count = 0;
+ const CalibrationMeasurement* previous = nullptr;
  for (const auto& sample : samples) {
- if (!finite(sample.timestamp_s) || !finite(sample.wheel_distance_m) ||
- !finite(sample.reference_distance_m)) {
- result.diagnostic = "non-finite calibration measurement";
+ if (!valid_measurement_sample(sample, previous)) {
+ result.diagnostic = "calibration measurements are not finite and strictly "
+                     "time ordered";
  return result;
  }
+ previous = &sample;
  if (std::abs(sample.wheel_distance_m) >= kScaleFloor &&
  std::abs(sample.reference_distance_m) >= config.minimum_reference_distance_m) {
  const double scale = sample.reference_distance_m / sample.wheel_distance_m;
  if (finite(scale)) scales.push_back(scale);
  }
  if (sample.stationary) {
- bool valid_imu = true;
- for (std::size_t axis = 0; axis < 3; ++axis) {
- valid_imu = valid_imu && finite(sample.accel_mps2[axis]) &&
- finite(sample.gyro_radps[axis]);
- }
- if (!valid_imu) {
- result.diagnostic = "non-finite stationary IMU measurement";
- return result;
- }
  for (std::size_t axis = 0; axis < 3; ++axis) {
  accel_sum[axis] += sample.accel_mps2[axis];
  gyro_sum[axis] += sample.gyro_radps[axis];
@@ -265,6 +276,7 @@ void OnlineCalibrator::seed(const CalibrationArtifact& artifact) {
 bool OnlineCalibrator::update_wheel_scale(double residual,
  double baseline_residual) {
  if (!finite(residual) || !finite(baseline_residual) ||
+ residual < 0.0 || baseline_residual < 0.0 ||
  baseline_residual - residual < config_.minimum_residual_improvement ||
  config_.confirmation_samples == 0 || !finite(config_.gain) ||
  !finite(config_.maximum_step) || config_.gain <= 0.0 ||
@@ -679,6 +691,15 @@ bool load_calibration_measurements_csv(
       if (error != nullptr) {
         *error = "calibration CSV line " + std::to_string(line_number) +
                  " has an invalid stationary flag";
+      }
+      return false;
+    }
+    const CalibrationMeasurement* previous =
+        parsed.empty() ? nullptr : &parsed.back();
+    if (!valid_measurement_sample(sample, previous)) {
+      if (error != nullptr) {
+        *error = "calibration CSV line " + std::to_string(line_number) +
+                 " is not finite and strictly time ordered";
       }
       return false;
     }

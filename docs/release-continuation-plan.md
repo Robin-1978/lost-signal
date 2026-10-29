@@ -859,6 +859,16 @@ ROBOT。
   STM32 已完成 HIL。真实板卡仍需按 profile 实测 control/feedback period、传输延迟、
   急停、驱动负载和 expiry，再通过同一回放与现场测试门禁。
 
+### Calibration record quality gate（2026-10-30）
+
+- 第 9 项的现场记录入口现在在 CSV 读取和离线拟合两层都要求有限、非负且严格递增的
+  acquisition timestamp；加速度、陀螺、轮行程和外部参考距离的每个轴/字段都必须是有限
+  数值。重复或回退的记录会在进入 median wheel-scale/IMU-bias solver 前拒绝，不会通过
+  重排悄悄改变证据权重。
+- `OnlineCalibrator` 同样拒绝负 residual/baseline residual；已有 confirmation window、
+  bounded step、range、checkpoint 和 journal 语义不变。`test_calibration` 增加乱序、
+  NaN、负残差和 CSV 回退时间戳覆盖。
+
 下一步从这里继续：完成真实硬件 profile/HIL 记录导入与验收，再将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
 发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的
 坡面、冰面、复杂场和手动工程课程入口，不改变 robot 只能使用自身估计的边界。

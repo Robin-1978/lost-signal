@@ -12,6 +12,14 @@ offline recorded measurements, and an online wheel-scale update with a
 confirmation window, bounded step/range, and explicit checkpoint rollback.
 The solver is a profile tool; it is not called from the navigation tick.
 
+The portable CSV bridge uses one ordered acquisition stream. Every row must
+have a finite, non-negative timestamp strictly greater than the previous row;
+all wheel, reference, accelerometer and gyro fields are finite before the
+solver sees them. This rejects truncated, reordered and duplicated field-log
+rows instead of changing their effective fit weight. Residuals are likewise
+non-negative at the online update boundary. These checks are record-quality
+contracts, not scenario-specific thresholds.
+
 ## Offline calibration
 
 The input is a recorded measurement set with acquisition timestamps, sensor
