@@ -844,6 +844,21 @@ ROBOT。
 - 局限：该用例靠延时扫描覆盖窗口，不是对线程交错的确定性控制；窗口位置不同的机器上
   检出率需要验证。
 
-下一步从这里继续：先将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
+### Native HIL 确定性契约（2026-10-30）
+
+- 第 8 项 HIL 收尾已加入 `tests/test_native_hil.cpp` 和 `native_hil` CTest target。
+  测试用固定 `MonotonicNs` 事件脚本，不使用 `sleep` 推进控制结果，也不链接 SIM
+  `VirtualMcu`；fake board 只实现 `IChassisMcuTransport`，因此 native HIL 与物理
+  真值、actor identity、score 和渲染层保持隔离。
+- 重放脚本覆盖固定 20 ms release、5/10 ms acquisition delay、一次反馈丢失后在
+  liveness window 内恢复、连续丢失触发 feedback timeout、sequence replay，以及
+  board 在最后一个 setpoint expiry 后的本地 watchdog stop。相同脚本运行两次，比较
+  cycle result、typed setpoint kind/body 字段和 watchdog 结果，证明调度与通信结果
+  不依赖墙钟速度。
+- 该阶段证明的是 `NativeRuntime`/`IChassisMcuTransport` 的确定性契约，不宣称真实
+  STM32 已完成 HIL。真实板卡仍需按 profile 实测 control/feedback period、传输延迟、
+  急停、驱动负载和 expiry，再通过同一回放与现场测试门禁。
+
+下一步从这里继续：完成真实硬件 profile/HIL 记录导入与验收，再将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
 发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的
 坡面、冰面、复杂场和手动工程课程入口，不改变 robot 只能使用自身估计的边界。

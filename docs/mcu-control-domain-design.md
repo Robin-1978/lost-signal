@@ -1,6 +1,6 @@
 # MCU 控制域与真机适配设计
 
-状态：设计基线（2026-10-27）
+状态：设计基线（2026-10-30）
 
 目标是让同一套 ROBOT 决策、运动学和安全语义可在 SIM、HIL 和真机 MCU 之间迁移，同时保持确定性、真值隔离和单一闭环所有权。
 
@@ -125,11 +125,17 @@ SIM 的执行顺序固定为：完成一个物理 quantum，推进 sim time，�
  调用和 5 ms 批量 transport 调用在相同 sim time 的最终 accepted sequence/state，
  证明调度方式不改变结果。下一步再增加 joint/body ownership 的转换 adapter。
 3. Native fake transport：用 fake board 跑 bring-up、过期、乱序、断线、重连和独立停车。主机侧 `IChassisMcuTransport` seam 与 native fake board 单测已在 `test_native_runtime` 中建立。
-4. HIL：将固定周期、延迟、丢包和 MCU watchdog 对应到真实板卡。仓库提供
+4. HIL：固定周期、采集延迟、单次丢包、连续丢包、序列重放和 MCU watchdog
+ 已有可在 CI 运行的 native contract replay：`tests/test_native_hil.cpp` 使用固定
+ `MonotonicNs` 事件脚本驱动 `NativeRuntime` 和一个无 SIM 依赖的 fake board。它
+ 两次重放必须产生相同的 cycle result、typed setpoint kind/body 字段和 board
+ watchdog 结果；单次丢包可以在 liveness window 内恢复，连续丢包在下一次 ROBOT
+ tick 前 fail-closed 并同时触发 MCU 与 adapter 的机械停车。测试中的 profile 周期
+ 和 command age 是契约 fixture，不是硬件默认值。仓库同时提供
  `examples/stm32_chassis_mcu` 的 HAL-free reference：body twist 在板端转成
  差速轮速，固定 `control_period_ns` 调 PID，使用 conditional anti-windup，
  encoder 是唯一闭环反馈，expiry 触发本地机械停车；独立 CMake host test 已通过。
-5. Hardware profile：用实测 step response 填入能力参数；未测量时保持 safe hold，不能用猜测的默认数字上线。
+5. Hardware profile：用实测 step response 填入能力参数；未测量时保持 safe hold，不能用猜测的默认数字上线。native HIL 只验证 typed contract，不能替代真实板卡的 profile、急停、IO 和负载实测。
 
 仓库提供一套底盘固件核心和一套通用串口传感器适配器：
 `examples/stm32_chassis_mcu/` 负责固定周期底盘 PID、运动学、expiry、本地机械
@@ -157,3 +163,5 @@ SocketCAN（含有界分片重组）、Linux spidev 和 USB CDC 都只负责可�
 - capability/profile 不匹配时 bring-up 失败；旧 session 的迟到命令永不执行。
 - SIM、HIL、真机共用 typed setpoint、measurement header、conformance 和 safe-stop 语义。
 - ROBOT 边界扫描确认没有 SIM truth、actor identity、future script、score 或 render state。
+- native HIL replay 的时间由固定事件脚本推进；fake board 只看 setpoint/feedback、
+  sequence、expiry 和故障，不读取 MuJoCo truth、ScenarioSession、score 或渲染状态。

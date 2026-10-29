@@ -394,6 +394,12 @@ add_executable(test_native_runtime
 target_link_libraries(test_native_runtime PRIVATE lost_signal_robot_stack)
 add_test(NAME native_runtime COMMAND test_native_runtime)
 
+add_executable(test_native_hil
+ tests/test_native_hil.cpp
+)
+target_link_libraries(test_native_hil PRIVATE lost_signal_robot_stack)
+add_test(NAME native_hil COMMAND test_native_hil)
+
 add_executable(test_transport
   tests/test_transport.cpp
 )
