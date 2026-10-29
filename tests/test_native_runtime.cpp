@@ -363,6 +363,48 @@ int main() {
   send_runtime.shutdown();
  }
 
+ // Native ownership selects exactly one outer loop. The same runtime seam
+ // must carry joint-velocity setpoints when the board owns the joint loop and
+ // body-twist setpoints when it owns the body loop; host PID is not run in
+ // either case.
+ {
+  app::RobotApplication joint_application(nullptr);
+  FakeMcuAdapter joint_adapter;
+  joint_adapter.mcu.caps_.control_owner =
+      iface::ChassisControlOwner::kMcuJointLoop;
+  app::NativeRuntime joint_runtime(
+      joint_application, joint_adapter, {.decision_period_ns = 1'000'000});
+  assert(joint_runtime.start());
+  joint_application.set_operator_command(0.1, 0.0);
+  const core::MonotonicNs now = app::native_monotonic_now_ns();
+  joint_adapter.mcu.push_feedback(mcu_feedback(now));
+  joint_adapter.push(lidar(now));
+  joint_adapter.push(imu(now));
+  assert(joint_runtime.cycle(now));
+  assert(joint_adapter.mcu.last.kind == iface::ChassisSetpointKind::kJointVelocity);
+  assert(iface::valid_chassis_setpoint(joint_adapter.mcu.last,
+                                       joint_adapter.mcu.caps_, now));
+  joint_runtime.shutdown();
+
+  app::RobotApplication body_application(nullptr);
+  FakeMcuAdapter body_adapter;
+  body_adapter.mcu.caps_.control_owner =
+      iface::ChassisControlOwner::kMcuBodyLoop;
+  app::NativeRuntime body_runtime(
+      body_application, body_adapter, {.decision_period_ns = 1'000'000});
+  assert(body_runtime.start());
+  body_application.set_operator_command(0.1, 0.0);
+  const core::MonotonicNs body_now = app::native_monotonic_now_ns();
+  body_adapter.mcu.push_feedback(mcu_feedback(body_now));
+  body_adapter.push(lidar(body_now));
+  body_adapter.push(imu(body_now));
+  assert(body_runtime.cycle(body_now));
+  assert(body_adapter.mcu.last.kind == iface::ChassisSetpointKind::kBodyTwist);
+  assert(iface::valid_chassis_setpoint(body_adapter.mcu.last,
+                                       body_adapter.mcu.caps_, body_now));
+  body_runtime.shutdown();
+ }
+
  // Stop enforcement is independent of the decision thread. Once its
  // published command expires, the watchdog invokes the adapter's separate
  // mechanical path even though no further cycle() call occurs.

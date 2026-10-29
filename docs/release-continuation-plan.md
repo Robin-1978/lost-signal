@@ -138,8 +138,8 @@
   sequence、过期数据和 source/layout 不匹配都会在 ROBOT tick 前机械停车。反馈活性窗口
   由 typed `feedback_period_ns`、host decision period 和 `maximum_command_age_ns`
   推导，复用三周期 liveness 语义，不增加关卡阈值。MCU transport 与 adapter 的独立
-  mechanical stop 都会在发送失败、反馈故障和 watchdog 触发时执行。`test_native_runtime`
-  新增合法闭环、超时、重放、布局、source、过期和发送失败覆盖；`native_runtime`、
+ mechanical stop 都会在发送失败、反馈故障和 watchdog 触发时执行。`test_native_runtime`
+ 新增 host/joint/body 三种 ownership 的合法闭环，以及超时、重放、布局、source、过期和发送失败覆盖；`native_runtime`、
   `virtual_mcu`、`motion_contract`、`conformance` 定向回归通过。
 
  - Sandbox 手动控制已接入同一 RobotApplication/ScenarioSession seam：Viewer 的
