@@ -330,6 +330,7 @@ target_link_libraries(lost_signal_sim PRIVATE lost_signal_sim_scenario)
 # this plus raylib; only the frontend opens a window.
 add_library(lost_signal_sim_viewer STATIC
   src/sim/viewer/asset_manifest.cpp
+ src/sim/viewer/assembly_registry.cpp
  src/sim/viewer/actor_render_policy.cpp
  src/sim/viewer/collision_geom_wireframe.cpp
  src/sim/viewer/experience_flow.cpp

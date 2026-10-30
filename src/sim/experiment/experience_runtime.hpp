@@ -26,6 +26,8 @@ struct ExperienceRuntimeConfig {
  std::string scene_path;
  std::string asset_manifest_path;
  std::vector<std::string> objectives;
+ viewer::AssemblySelection assembly;
+ bool has_assembly = false;
  viewer::ExperienceStartupMode startup_mode =
  viewer::ExperienceStartupMode::kAutomatic;
  // Optional controlled experiment input. It is applied before the fresh

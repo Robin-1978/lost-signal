@@ -198,11 +198,11 @@
 
 ### E. 新玩法
 
-#### E1 装配玩法：把 ro1 的 6 件配件变成玩家可选零件 [P2]
+#### E1 装配玩法：把 ro1 的 6 件配件变成玩家可选零件 [P2]（基础切片已完成，2026-10-30）
 
 - **依据**：`assets/models/manifest.json` 含 `robots.ro1` 的 `wheel_eco`、`wheel_grip`、`lidar_fast`、`lidar_long`、`compute_light`、`compute_performance`；这 6 个 ID 在 `src/`、`configs/`、`tests/` 中零引用（`standard` 版由 `src/sim/viewer/asset_manifest.cpp` 与 `viewer_main.cpp` 引用）；设计文档中没有装配或商店玩法（`商店`、`loadout` 无命中），属于新增玩法。
 - **方案**：零件映射到可验证的配置变量：LiDAR 型号对应扫描周期与量程，轮对应摩擦与滚阻（SIM 物理参数），算力对应 ROBOT 决策周期或延迟（ROBOT 配置）；选择只写 ROBOT 与 SIM 配置并经 typed registry；渲染按所选零件加载对应 GLB。
-- **验收**：（1）选择前后 `ExperimentSpec` 记录变量值与 digest，`EpisodePair` 仍通过；（2）`tests/check_boundary.py` 通过；（3）每个零件的配置或物理效果有回归测试；（4）与首章现有三选一预测共存，首章流程不变。
+- **验收**：（1）`assembly_registry` 的三槽位选择写入 runtime invariant digest；（2）轮胎、LiDAR、算力选择在首次 observation 前分别修改 typed Robot/SIM config；（3）未知零件、manifest 负例和 13 个章节首 tick 有回归测试；（4）新增 `assembly_lab`，现有首章流程不变。后续仍需把装配卡片和星级进度接入存档 UI。
 - **范围与依赖**：依赖 F1；评审事项：玩法是否进入战役（设计文档受众表 `:15` 未列此项）。
 
 #### E2 进度层：本地 profile、星级、知识卡、回放导出 [P2]

@@ -88,6 +88,13 @@ bool compute_invariant_digest(const ExperienceRuntimeConfig& config,
  }
  hash_string(digest, "startup_mode");
  hash_string(digest, experience_startup_mode_id(config.startup_mode));
+ hash_string(digest, "assembly");
+ hash_string(digest, config.has_assembly ? "selected" : "none");
+ if (config.has_assembly) {
+   hash_string(digest, config.assembly.wheel);
+   hash_string(digest, config.assembly.lidar);
+   hash_string(digest, config.assembly.compute);
+ }
  return digest != 0;
 }
 
@@ -103,6 +110,8 @@ ExperienceRuntimeConfig experience_runtime_config(
  config.scene_path = experience.scene_path;
  config.asset_manifest_path = asset_manifest_path;
  config.objectives = experience.objectives;
+ config.assembly = experience.assembly;
+ config.has_assembly = experience.has_assembly;
  config.startup_mode = experience.startup_mode;
  return config;
 }
@@ -146,6 +155,30 @@ double experience_variable_value(viewer::ExperienceVariable variable,
  return 0.0;
 }
 
+bool apply_assembly(const viewer::AssemblySelection& selection,
+                    robot::platform::RobotConfig& robot_config,
+                    eval::SimConfig& sim_config, std::string& error) {
+  if (!viewer::validate_assembly_selection(selection, &error)) return false;
+  const auto* wheel = viewer::find_assembly("wheel", selection.wheel);
+  const auto* lidar = viewer::find_assembly("lidar", selection.lidar);
+  const auto* compute = viewer::find_assembly("compute", selection.compute);
+  if (wheel == nullptr || lidar == nullptr || compute == nullptr) {
+    error = "assembly registry is incomplete";
+    return false;
+  }
+  // These are typed profile consequences, not scene truth.  The same wheel
+  // friction and rolling-resistance values feed native description and SIM
+  // motor construction before the first observation is published.
+  robot_config.profile.tire_friction_mu = wheel->tire_friction_mu;
+  robot_config.profile.rolling_resist = wheel->rolling_resist;
+  sim_config.lidar_max_range_m = static_cast<float>(lidar->lidar_max_range_m);
+  sim_config.lidar_beams = lidar->lidar_beams;
+  sim_config.scan_period_s = lidar->scan_period_s;
+  sim_config.decision_period_s = compute->decision_period_s;
+  sim_config.planning_period_s = compute->decision_period_s;
+  return true;
+}
+
 bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  ExperienceRuntime& runtime, std::string* error) {
  std::string local_error;
@@ -161,19 +194,26 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  out_error = "robot config: " + config_error;
  return false;
  }
+ built.sim_config = eval::load_default_sim_config(
+ config.sim_path, &built.used_sim_path, &config_error);
+ if (!config.sim_path.empty() && !built.sim_config.has_value()) {
+ out_error = "sim config: " + config_error;
+ return false;
+ }
+ if (config.has_assembly && built.robot_config.has_value() &&
+     built.sim_config.has_value()) {
+   if (!apply_assembly(config.assembly, *built.robot_config,
+                       *built.sim_config, config_error)) {
+     out_error = "assembly: " + config_error;
+     return false;
+   }
+ }
  if (built.robot_config.has_value()) {
  built.session = std::make_unique<scenario::ScenarioSession>(
  robot::platform::description_from_config(*built.robot_config),
  eval::motor_from_config(*built.robot_config));
  } else {
  built.session = std::make_unique<scenario::ScenarioSession>();
- }
-
- built.sim_config = eval::load_default_sim_config(
- config.sim_path, &built.used_sim_path, &config_error);
- if (!config.sim_path.empty() && !built.sim_config.has_value()) {
- out_error = "sim config: " + config_error;
- return false;
  }
  if (built.sim_config.has_value()) {
  if (config.variable_override.has_value()) {

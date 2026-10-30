@@ -30,6 +30,7 @@ int main() {
  assert(manifest_config.robot_path == experience.robot_path);
  assert(manifest_config.objectives == experience.objectives);
  assert(manifest_config.startup_mode == experience.startup_mode);
+ assert(!manifest_config.has_assembly);
  sim::viewer::ExperienceManifest slam_experience;
  assert(sim::viewer::load_experience_manifest(
  std::string(TEST_SOURCE_DIR) + "/configs/experiences/slam_loop.json",
@@ -53,6 +54,27 @@ int main() {
  assert(first.invariant_digest == retry.invariant_digest);
  assert(!first.code_revision.empty());
  assert(first.code_revision == retry.code_revision);
+
+ // A chapter assembly is applied before the first model build.  It changes
+ // typed wheel/SIM device parameters and the invariant digest together; it
+ // never reads or publishes simulator truth.
+ auto assembly_config = config;
+ assembly_config.has_assembly = true;
+ assembly_config.assembly.wheel = "robots.ro1.wheel_grip";
+ assembly_config.assembly.lidar = "robots.ro1.lidar_fast";
+ assembly_config.assembly.compute = "robots.ro1.compute_performance";
+ sim::experiment::ExperienceRuntime assembly_runtime;
+ assert(sim::experiment::build_experience_runtime(
+     assembly_config, assembly_runtime, &error));
+ assert(assembly_runtime.robot_config.has_value());
+ assert(assembly_runtime.sim_config.has_value());
+ assert(assembly_runtime.robot_config->profile.tire_friction_mu == 1.2);
+ assert(assembly_runtime.robot_config->profile.rolling_resist == 0.014);
+ assert(assembly_runtime.sim_config->lidar_max_range_m == 5.0f);
+ assert(assembly_runtime.sim_config->lidar_beams == 48);
+ assert(assembly_runtime.sim_config->scan_period_s == 0.05);
+ assert(assembly_runtime.sim_config->decision_period_s == 0.10);
+ assert(assembly_runtime.invariant_digest != first.invariant_digest);
 
  auto changed_startup_config = config;
  changed_startup_config.startup_mode =

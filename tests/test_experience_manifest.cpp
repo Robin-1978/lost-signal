@@ -86,6 +86,22 @@ int main() {
  assert(std::filesystem::is_regular_file(experience.robot_path));
  assert(experience.startup_mode ==
  lost_signal::sim::viewer::ExperienceStartupMode::kAutomatic);
+ assert(!experience.has_assembly);
+ lost_signal::sim::viewer::AssemblySelection grip_selection;
+ grip_selection.wheel = "robots.ro1.wheel_grip";
+ grip_selection.lidar = "robots.ro1.lidar_fast";
+ grip_selection.compute = "robots.ro1.compute_performance";
+ assert(lost_signal::sim::viewer::validate_assembly_selection(
+     grip_selection, &error));
+ assert(lost_signal::sim::viewer::find_assembly(
+     "wheel", grip_selection.wheel)->tire_friction_mu == 1.2);
+ assert(lost_signal::sim::viewer::assembly_digest(grip_selection) !=
+        lost_signal::sim::viewer::assembly_digest(
+            lost_signal::sim::viewer::AssemblySelection{}));
+ grip_selection.compute = "robots.ro1.not_a_compute_module";
+ assert(!lost_signal::sim::viewer::validate_assembly_selection(
+     grip_selection, &error));
+ assert(error.find("compute") != std::string::npos);
 
  assert(lost_signal::sim::viewer::load_experience_manifest(
  (root / "configs/experiences/zh-CN/first_contact.json").string(),

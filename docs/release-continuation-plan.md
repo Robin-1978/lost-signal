@@ -29,7 +29,7 @@
 1. **F4 传感器 realism profile**：已完成，见下方阶段记录。
 2. **F3 物理/渲染自动验收**：已完成轮心接地、joint axis、COM/contact、collision geometry 和固定子步 timestep-sensitivity gate；资产 grounding point 现在必须落在声明 bounds 内。
 3. **D2–D4 视觉发布债务**：D2 地面材质、D3 音频清理/登记与 D4 模型来源审计已完成；继续进入 E1/E2 教学内容。
-4. **E1/E2/C4 教学内容**：把轮胎、LiDAR、算力等装配选择映射为 typed 配置；加入本地 profile、星级、知识卡、章节进度、成对 replay/report 导出和四底盘/算法差异课程。扩展 typed experiment registry 时不得把 SIM truth 暴露给 ROBOT。
+4. **E1/E2/C4 教学内容**：E1 的轮胎、LiDAR、算力装配 registry 已完成并接入 assembly_lab；继续加入本地 profile、星级、知识卡、章节进度和四底盘/算法差异课程。成对 replay/report 导出基础已存在，后续补教学存档界面；扩展 typed experiment registry 时不得把 SIM truth 暴露给 ROBOT。
 5. **动态 actor/机械臂课程扩展**：继续使用 MuJoCo body/joint/contact 驱动，新增工程视图所需的关节轴、碰撞体、COM 和真实接触效果。
 
 ### 实机外部验收队列
@@ -278,6 +278,12 @@
 - `assets/models/PROVENANCE.md` 记录审计范围、提交作者、保留的 legacy source artifact 和替换规则；`assets/models/LICENSES.md` 说明 Apache-2.0、CC0-1.0 与项目生成资产的适用关系。
 - 根 `LICENSE`、`NOTICE` 和 `THIRD_PARTY_NOTICES.md` 恢复到当前分支，模型 manifest 的 39 个历史 `NOASSERTION` 已依据仓库来源证据登记为 `Apache-2.0`，没有把任何未知第三方 URL 或许可证凭空填入。
 - `test_asset_manifest` 现在 fail closed 地拒绝 `NOASSERTION`，并继续验证 manifest 与 GLB/GLTF 库存一致；D2、D3、D4 形成独立视觉发布提交链。
+
+### E1 装配 registry 完成检查点（2026-10-30）
+
+- 新增 `sim/viewer/assembly_registry.*`，把 RO-1 的标准/防滑/节能轮、快/标准/远距 LiDAR 和轻量/性能计算单元固定为 typed registry。每个选择同时声明资产 ID、轮胎摩擦/滚阻、LiDAR 量程/束数/周期和计算决策周期；未知 ID fail closed。
+- Experience manifest 可选声明 `assembly`，`assembly_lab` 已用防滑轮、快扫 LiDAR 和性能计算单元接入。Runtime 在首次 observation 前应用选择到 RobotConfig/SIM config，Episode invariant digest 包含三槽位 ID；Viewer 仅据同一选择加载 GLB，不把 SIM truth 或 actor identity 传给 ROBOT。
+- `test_experience_manifest`、`test_experience_runtime` 和 `test_experience_catalog` 覆盖 registry 负例、typed 参数、digest 变化与 13 个章节首 tick；现有章节没有 assembly 时保留原始硬件配置。
 - 同场景 headless 1200 步为 6.40×/320.2 steps/s，ROBOT tick p99/max 9.249/18.929 ms。发布配置 `signal_town` 在 5901 步完成 5/5、0 碰撞，RTF 6.34×，ROBOT tick p99/max 6.432/14.146 ms。
 - 详细方法、环境与复现命令见 `docs/release-performance-2026-10-27.md`。
 - 阶段 4 已提交为 `fba2d87 test: verify accelerated simulation consistency`；当前 HEAD 为 `fba2d87`，分支相对远端领先 5 个提交。

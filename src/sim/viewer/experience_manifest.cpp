@@ -174,6 +174,19 @@ bool take_optional_bool(const Json& object, const char* key, bool& value,
  return true;
 }
 
+bool take_optional_string(const Json& object, const char* key,
+                          std::string& value, std::string& error) {
+ const Json* node = object.find(key);
+ if (node == nullptr) return true;
+ if (!node->is_str() || node->as_str().empty()) {
+  error = std::string("experience '") + key +
+          "' must be a non-empty string";
+  return false;
+ }
+ value = node->as_str();
+ return true;
+}
+
 } // namespace
 
 bool load_experience_manifest(const std::string& path,
@@ -239,6 +252,21 @@ bool load_experience_manifest(const std::string& path,
  std::floor(time_limit->as_num()) != time_limit->as_num()) {
  out_error = "experience 'time_limit_steps' must be a positive integer";
  return false;
+ }
+ const Json* assembly = root->find("assembly");
+ if (assembly != nullptr) {
+  parsed.has_assembly = true;
+  if (!assembly->is_object() ||
+      !take_optional_string(*assembly, "wheel", parsed.assembly.wheel,
+                            out_error) ||
+      !take_optional_string(*assembly, "lidar", parsed.assembly.lidar,
+                            out_error) ||
+      !take_optional_string(*assembly, "compute", parsed.assembly.compute,
+                            out_error) ||
+      !validate_assembly_selection(parsed.assembly, &out_error)) {
+   if (out_error.empty()) out_error = "experience assembly is invalid";
+   return false;
+  }
  }
  parsed.time_limit_steps =
  static_cast<std::uint64_t>(time_limit->as_num());

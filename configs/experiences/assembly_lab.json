@@ -1,0 +1,65 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "assembly_lab",
+  "title": "ASSEMBLY LAB: SENSOR AND TRACTION",
+ "subtitle": "Choose a typed wheel, LiDAR, and compute assembly, then verify the same robot contract at the gate.",
+ "files": {
+ "map": "../worlds/research_base.json",
+ "scene": "../worlds/research_base.scene.json",
+ "robot": "../robot/differential.json",
+ "sim": "../sim/default.json"
+ },
+ "objectives": ["glass_door"],
+ "assembly": {"wheel":"robots.ro1.wheel_grip", "lidar":"robots.ro1.lidar_fast", "compute":"robots.ro1.compute_performance"},
+ "time_limit_steps": 1200,
+ "briefing": [
+ "MISSION: stop stably at the glass calibration gate with zero collisions.",
+ "INSPECT: click the real 3D drive wheel and LiDAR. The wheel rolls without steering; LiDAR measures timed surface ranges.",
+ "PROVE: ROBOT declares arrival from its estimate; SIM independently verifies the physical stop."
+ ],
+ "intro": {
+ "shots": [
+ {"component_id":"drive_wheel","title":"TRACTION STARTS AT THE CONTACT PATCH","caption":"A powered wheel rolls about one horizontal joint. Differential steering comes from left-right speed, never a hidden steering axis.","duration_s":1.6},
+ {"component_id":"caster","title":"PASSIVE SUPPORT STILL HAS PHYSICS","caption":"The caster swivels and rolls under measured load. Its pose comes from MuJoCo joints, not a draw-time animation.","duration_s":1.3},
+ {"component_id":"lidar","title":"THE ROBOT MEASURES SURFACES","caption":"LiDAR begins at this configured optical frame. Ranges and acquisition timestamps become ROBOT observations only after RUN.","duration_s":1.4},
+ {"component_id":"mission","title":"YOUR PROOF: STOP AT THE GLASS GATE","caption":"ROBOT must decide from its own estimate. SIM truth remains outside the robot and independently judges the physical stop.","duration_s":1.7}
+ ]
+ },
+ "walkaround": [
+ {"component_id":"drive_wheel","title":"DRIVE WHEELS / TRACTION","lesson":"Each drive wheel has one rolling joint. Differential steering comes from left-right wheel speed, so these wheels never swivel like steering wheels.","required":false},
+ {"component_id":"caster","title":"PASSIVE CASTER / SUPPORT","lesson":"The caster carries load through two passive joints: a vertical swivel and a horizontal wheel roll. Neither joint is a drive command.","required":false},
+ {"component_id":"lidar","title":"LIDAR / TIMED RANGES","lesson":"The blue scanner reports ranges from this configured sensor frame. It measures surfaces; it does not reveal actor identities, scripts, or world truth.","required":false},
+ {"component_id":"chassis","title":"COMPUTE, CONTROL, AND CHASSIS","lesson":"The onboard robot turns timestamped measurements into estimates and commands. It reports arrival from its own estimate; the simulator judges the physical result separately.","required":false}
+ ],
+ "experiments": [
+ {
+ "experiment_id": "scan_cadence",
+ "title": "WHAT CHANGES WHEN LIDAR UPDATES FIVE TIMES SLOWER?",
+ "controlled_variable": "lidar.scan_period_s",
+ "variant_value": 0.10,
+ "step_budget": 1200,
+ "minimum_elapsed_increase_s": 1.0,
+ "minimum_clearance_loss_m": 0.05,
+ "equivalent_elapsed_tolerance_s": 0.5,
+ "equivalent_clearance_tolerance_m": 0.02
+ }
+ ],
+ "prediction": {
+ "question": "What will change when LiDAR updates every 100 ms instead of every 20 ms?",
+ "choices": [
+ {"choice_id":"safe_tradeoff","label":"Both runs stay safe, but slower scans take longer and leave less clearance","explanation":"The two visible runs hold the world, robot, initial state, and random seeds fixed. Their recorded time and physical clearance decide whether this tradeoff occurred.","evidence_rule":"comparison_tradeoff"},
+ {"choice_id":"equivalent","label":"The two runs finish with effectively the same time and clearance","explanation":"Equivalent means both measured differences remain inside the experiment's declared tolerances.","evidence_rule":"comparison_equivalent"},
+ {"choice_id":"unsafe_variant","label":"The slower scan run collides or fails the safety gate","explanation":"Collision, timeout, incomplete objectives, or rejected physical arrival makes the slower run unsafe.","evidence_rule":"comparison_unsafe"}
+ ]
+ },
+ "running_prompt": "Watch measurement, estimate, and decision as separate ROBOT evidence. Press L for estimated LiDAR projection, E for estimate, and T for deterministic Turbo.",
+ "debrief": {
+ "success_title": "SAFE ARRIVAL CONFIRMED",
+ "failure_title": "SAFETY GATE FAILED",
+ "lessons": [
+ "Sensors provide measurements; perception and localization build estimates from them.",
+ "ROBOT completion and SIM truth arrival are checked separately.",
+ "Collision is a hard failure. Speed, smoothness, or energy cannot compensate for it."
+ ]
+ }
+}

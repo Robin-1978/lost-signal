@@ -61,6 +61,7 @@ using lost_signal::sim::viewer::FrameWheel;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
+using lost_signal::sim::viewer::AssemblySelection;
 using lost_signal::sim::viewer::ActorRenderPath;
 using lost_signal::sim::viewer::choose_actor_render_path;
 using lost_signal::sim::viewer::ExperienceFlow;
@@ -616,7 +617,8 @@ const VisualAssets::EnvironmentModel* find_environment_model(
 }
 
 void load_visual_assets(VisualAssets& assets, const std::string& root,
- const std::string& robot_id, const std::string& chassis_kind) {
+ const std::string& robot_id, const std::string& chassis_kind,
+ const AssemblySelection* assembly = nullptr) {
  if (root.empty()) return;
  const std::filesystem::path base(root);
  const std::filesystem::path models_root = base / "models";
@@ -628,8 +630,16 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  manifest_error.c_str());
  return;
  }
- const auto selection = lost_signal::sim::viewer::asset_selection_for_robot(
+ auto selection = lost_signal::sim::viewer::asset_selection_for_robot(
  robot_id, chassis_kind);
+ if (assembly != nullptr && chassis_kind == "differential") {
+   // The registry has already validated these IDs before runtime creation;
+   // this only selects presentation assets and never changes ROBOT inputs.
+   if (!assembly->wheel.empty()) {
+     selection.wheel = assembly->wheel;
+     selection.wheel_right = assembly->wheel;
+   }
+ }
  assets.chassis = load_manifest_model(models_root, assets.manifest,
  selection.chassis, assets.chassis_definition);
  assets.wheel = load_manifest_model(models_root, assets.manifest,
@@ -652,8 +662,11 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  assets.arm_tool = load_manifest_model(models_root, assets.manifest,
  selection.arm_tool, assets.arm_tool_definition);
  }
- assets.lidar = load_manifest_model(models_root, assets.manifest,
- "robots.ro1.lidar_standard", assets.lidar_definition);
+ assets.lidar = load_manifest_model(
+     models_root, assets.manifest,
+     assembly != nullptr && !assembly->lidar.empty()
+         ? assembly->lidar : "robots.ro1.lidar_standard",
+     assets.lidar_definition);
  assets.caster_fork = load_manifest_model(models_root, assets.manifest,
  "robots.ro1.caster_fork", assets.caster_fork_definition);
  assets.caster_wheel = load_manifest_model(models_root, assets.manifest,
@@ -4825,7 +4838,9 @@ std::string robot_path, sim_path, map_path, assets_path, scene_path,
  load_visual_assets(visual_assets, assets_path,
  robot_config.has_value() ? robot_config->robot_id : "ro1",
  robot_config.has_value() ? robot_config->profile.chassis_kind
- : "differential");
+ : "differential",
+  experience_loaded && experience.has_assembly ? &experience.assembly
+                                               : nullptr);
  SceneManifest visual_scene;
  bool scene_loaded = false;
  if (scene_path.empty() && !map_path.empty()) {
@@ -5189,7 +5204,8 @@ bool show_estimate = initial_show_robot_evidence;
  load_visual_assets(visual_assets, assets_path,
  robot_config.has_value() ? robot_config->robot_id : "ro1",
  robot_config.has_value() ? robot_config->profile.chassis_kind
- : "differential");
+ : "differential",
+  experience.has_assembly ? &experience.assembly : nullptr);
  load_ui_font(&experience);
  experience_action_error.clear();
  reset_experience_presentation();

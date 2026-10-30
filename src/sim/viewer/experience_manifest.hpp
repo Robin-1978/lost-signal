@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "sim/viewer/assembly_registry.hpp"
+
 namespace lost_signal::sim::viewer {
 
 enum class ExperienceEvidenceRule {
@@ -117,6 +119,11 @@ struct ExperienceManifest {
  std::string sim_path;
  ExperienceStartupMode startup_mode = ExperienceStartupMode::kAutomatic;
  std::vector<std::string> objectives;
+ // Optional typed assembly for teaching chapters.  Absent means the robot
+ // config's ordinary hardware profile; if present all three slots are
+ // validated against assembly_registry before a runtime is built.
+ AssemblySelection assembly;
+ bool has_assembly = false;
  // Presentation run budget. Reaching it pauses the field lab and opens a
  // failed debrief; it never changes ROBOT limits or scenario acceptance.
  std::uint64_t time_limit_steps = 0;
