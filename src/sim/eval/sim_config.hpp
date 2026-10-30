@@ -2,7 +2,7 @@
 
 // SIM-only configuration (never ROBOT input, never native-deployable):
 // engine/orchestration knobs with no hardware meaning — multi-rate
-// cadence, judge radius, delivery shaping + IMU realism seeds, lidar
+// cadence, judge radius, versioned sensor realism profiles and lidar
 // geometry. The hardware contract (plant numbers, mounts, limits) lives
 // in the robot config; this file only tunes how the simulation runs.
 // All sections optional; absent sections keep current code defaults.
@@ -16,6 +16,16 @@
 namespace lost_signal::sim::eval {
 
 inline constexpr char kSimConfigFormat[] = "lost-signal-sim/1";
+
+// Versioned SIM-only device realism selection.  The profile is resolved
+// before a ScenarioSession starts; ROBOT receives only the resulting,
+// timestamped observation stream.  Keeping the selection separate from the
+// individual device structs prevents a partially applied set of knobs.
+struct SensorRealismProfileConfig {
+  int version = 1;
+  std::string name = "ideal";
+  std::uint64_t seed = 0;
+};
 
 struct ObjectiveAcceptanceConfig {
  int version = 2;
@@ -45,8 +55,10 @@ struct SimConfig {
   double record_period_s = 0.02;
   double judge_radius_m = 0.4;
  ObjectiveAcceptanceConfig objective_acceptance;
+  SensorRealismProfileConfig sensor_realism;
   providers::DeliveryConfig delivery;      // all zeros = passthrough
   providers::ImuRealismConfig imu_realism;  // all zeros = exact truth
+  providers::LidarDeviceModel lidar_realism; // all zeros = exact returns
   int lidar_beams = 72;
   float lidar_max_range_m = 10.0f;
   int lidar_rings = 16;  // 3D producer ring count; azimuths reuse beams
@@ -56,6 +68,16 @@ struct SimConfig {
 // Fail-closed load: untouched output on any mismatch.
 bool load_sim_config(const std::string& path, SimConfig& config,
                      std::string* error);
+
+// Resolve a named, versioned profile into SIM device models.  Unknown names,
+// unsupported versions and invalid outputs fail closed without modifying the
+// output arguments.
+bool resolve_sensor_realism_profile(
+    const SensorRealismProfileConfig& profile,
+    providers::DeliveryConfig& delivery,
+    providers::ImuRealismConfig& imu,
+    providers::LidarDeviceModel& lidar,
+    std::string* error);
 // Tool default chain, symmetric to the robot config: explicit path wins;
 // otherwise ./configs/sim/default.json when it exists; otherwise nullopt
 // and the caller keeps code defaults. Never fails hard.

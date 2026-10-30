@@ -57,6 +57,65 @@ bool on_physics_grid(double seconds) {
 
 }  // namespace
 
+bool resolve_sensor_realism_profile(
+    const SensorRealismProfileConfig& profile,
+    providers::DeliveryConfig& delivery,
+    providers::ImuRealismConfig& imu,
+    providers::LidarDeviceModel& lidar,
+    std::string* error) {
+  std::string local_error;
+  std::string& err = error != nullptr ? *error : local_error;
+  if (profile.version != 1) {
+    err = "sensor_realism.version must be 1";
+    return false;
+  }
+  if (profile.name != "ideal" && profile.name != "nominal" &&
+      profile.name != "adverse") {
+    err = "sensor_realism.profile must be one of ideal, nominal, adverse";
+    return false;
+  }
+  // Zero is a valid deterministic seed; profile names select behavior and no
+  // hidden random seed is introduced.
+  providers::DeliveryConfig next_delivery;
+  providers::ImuRealismConfig next_imu;
+  providers::LidarDeviceModel next_lidar;
+  next_delivery.seed = profile.seed;
+  next_imu.seed = profile.seed;
+  if (profile.name == "nominal") {
+    // Conservative device-level imperfections suitable for the published
+    // default.  They are centralized profile data, not scene thresholds.
+    next_imu.gyro_noise_radps = 0.0015;
+    next_imu.gyro_bias_stddev_radps = 0.004;
+    next_imu.gyro_bias_walk_radps_sqrt_s = 0.0001;
+    next_imu.accel_noise_mps2 = 0.02;
+    next_lidar.range_stddev_m = 0.003;
+    next_lidar.range_resolution_m = 0.002;
+    next_lidar.dropout_probability = 0.002;
+    next_lidar.min_range_m = 0.05;
+  } else if (profile.name == "adverse") {
+    next_delivery.latency_steps = 2;
+    next_delivery.drop_probability = 0.08;
+    next_imu.gyro_noise_radps = 0.01;
+    next_imu.gyro_bias_stddev_radps = 0.03;
+    next_imu.gyro_bias_walk_radps_sqrt_s = 0.001;
+    next_imu.accel_noise_mps2 = 0.12;
+    next_lidar.range_stddev_m = 0.02;
+    next_lidar.range_bias_m = 0.01;
+    next_lidar.range_resolution_m = 0.01;
+    next_lidar.dropout_probability = 0.12;
+    next_lidar.min_range_m = 0.08;
+  }
+  if (!providers::valid_device_model(next_lidar)) {
+    err = "sensor_realism profile resolved an invalid lidar model";
+    return false;
+  }
+  delivery = next_delivery;
+  imu = next_imu;
+  lidar = next_lidar;
+  err.clear();
+  return true;
+}
+
 bool load_sim_config(const std::string& path, SimConfig& config,
                      std::string* error) {
   std::string err_local;
@@ -71,6 +130,40 @@ bool load_sim_config(const std::string& path, SimConfig& config,
   }
   const Json& obj = *root;
   SimConfig out;
+  bool profile_present = false;
+  const Json* profile = obj.find("sensor_realism");
+  if (profile != nullptr) {
+    profile_present = true;
+    if (!profile->is_object()) {
+      err = "'sensor_realism' must be an object";
+      return false;
+    }
+    const Json* version = profile->find("version");
+    const Json* name = profile->find("profile");
+    if (version == nullptr || !version->is_num() ||
+        version->as_num() != 1.0 || name == nullptr || !name->is_str()) {
+      err = "sensor_realism requires version 1 and a profile name";
+      return false;
+    }
+    out.sensor_realism.version = 1;
+    out.sensor_realism.name = name->as_str();
+    const Json* seed = profile->find("seed");
+    if (seed != nullptr) {
+      if (!seed->is_num() || seed->as_num() < 0.0 ||
+          seed->as_num() != std::floor(seed->as_num()) ||
+          seed->as_num() > static_cast<double>(
+              std::numeric_limits<std::uint64_t>::max())) {
+        err = "sensor_realism.'seed' must be a non-negative integer";
+        return false;
+      }
+      out.sensor_realism.seed = static_cast<std::uint64_t>(seed->as_num());
+    }
+    if (!resolve_sensor_realism_profile(out.sensor_realism, out.delivery,
+                                        out.imu_realism, out.lidar_realism,
+                                        &err)) {
+      return false;
+    }
+  }
   // Cadence (0 disables a tap, matching set_cadence fail-closed rules).
   const Json* cad = obj.find("cadence");
   if (cad != nullptr) {
@@ -163,6 +256,10 @@ bool load_sim_config(const std::string& path, SimConfig& config,
   // Delivery shaping.
   const Json* del = obj.find("delivery");
   if (del != nullptr) {
+    if (profile_present) {
+      err = "sensor_realism cannot be combined with legacy 'delivery'";
+      return false;
+    }
     if (!del->is_object()) {
       err = "'delivery' must be an object";
       return false;
@@ -198,6 +295,10 @@ bool load_sim_config(const std::string& path, SimConfig& config,
   // IMU realism.
   const Json* imu = obj.find("imu_realism");
   if (imu != nullptr) {
+    if (profile_present) {
+      err = "sensor_realism cannot be combined with legacy 'imu_realism'";
+      return false;
+    }
     if (!imu->is_object()) {
       err = "'imu_realism' must be an object";
       return false;

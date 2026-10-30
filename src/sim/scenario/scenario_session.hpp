@@ -159,6 +159,26 @@ class ScenarioSession {
   // realism, lidar geometry). Pre-run only: lidar geometry must precede
   // the first step.
   void apply_sim_config(const eval::SimConfig& sim) {
+    providers::DeliveryConfig delivery = sim.delivery;
+    providers::ImuRealismConfig imu = sim.imu_realism;
+    providers::LidarDeviceModel lidar_realism = sim.lidar_realism;
+    // A programmatic config may select a profile without going through the
+    // JSON loader. Resolve it here so applying a profile is all-or-nothing.
+    if (sim.sensor_realism.version != 1) {
+      throw std::invalid_argument("unsupported SIM sensor realism version");
+    }
+    if (sim.sensor_realism.name != "ideal" || sim.sensor_realism.seed != 0) {
+      std::string profile_error;
+      if (!eval::resolve_sensor_realism_profile(
+              sim.sensor_realism, delivery, imu, lidar_realism,
+              &profile_error)) {
+        throw std::invalid_argument("invalid SIM sensor realism profile: " +
+                                    profile_error);
+      }
+    }
+    if (!providers::valid_device_model(lidar_realism)) {
+      throw std::invalid_argument("invalid SIM lidar realism model");
+    }
  set_sensor_cadence(sim.scan_period_s, sim.motion_period_s,
  sim.imu_period_s, sim.decision_period_s, sim.record_period_s);
  if (sim.planning_period_s > 0.0) {
@@ -169,7 +189,8 @@ class ScenarioSession {
  if (!driver_.set_acceptance(sim.objective_acceptance)) {
  throw std::invalid_argument("invalid SIM objective acceptance contract");
  }
-    set_sensor_realism(sim.delivery, sim.imu_realism);
+    set_sensor_realism(delivery, imu);
+    suite_.set_lidar_realism(lidar_realism, sim.sensor_realism.seed);
     suite_.lidar().set_beams(sim.lidar_beams);
     suite_.lidar().set_max_range(sim.lidar_max_range_m);
     suite_.lidar3d().set_rings(sim.lidar_rings);

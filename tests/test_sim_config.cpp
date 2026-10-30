@@ -32,9 +32,13 @@ int main() {
     assert(cfg.lidar_beams == 72 && cfg.lidar_max_range_m == 10.0f);
     assert(cfg.lidar_rings == 16);
     assert(!cfg.lidar_composite);  // opt-in front end, default off
+    assert(cfg.sensor_realism.version == 1);
+    assert(cfg.sensor_realism.name == "nominal");
+    assert(cfg.sensor_realism.seed == 20261030);
     assert(cfg.delivery.latency_steps == 0);
     assert(cfg.delivery.drop_probability == 0.0);
-    assert(cfg.imu_realism.gyro_trim_radps[2] == 0.0);
+    assert(cfg.imu_realism.gyro_noise_radps == 0.0015);
+    assert(cfg.lidar_realism.range_stddev_m == 0.003);
   }
   // Overrides + session apply: record disabled empties the episode,
   // lidar geometry reaches the provider.
@@ -119,6 +123,31 @@ int main() {
     assert(cfg.lidar_composite);
     write(R"({"imu_realism": {"gyro_noise_radps": -0.1}})");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"sensor_realism": {"version": 1, "profile": "unknown"}})");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"sensor_realism": {"version": 2, "profile": "ideal"}})");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"sensor_realism": {"version": 1, "profile": "adverse"}, "delivery": {}})");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"sensor_realism": {"version": 1, "profile": "adverse", "seed": 9}})");
+    assert(sim::eval::load_sim_config(tmp, cfg, &err));
+    assert(cfg.sensor_realism.name == "adverse" && cfg.sensor_realism.seed == 9);
+    assert(cfg.delivery.latency_steps == 2 && cfg.delivery.drop_probability == 0.08);
+    assert(cfg.lidar_realism.dropout_probability == 0.12);
+    sim::providers::DeliveryConfig d1, d2;
+    sim::providers::ImuRealismConfig i1, i2;
+    sim::providers::LidarDeviceModel l1, l2;
+    sim::eval::SensorRealismProfileConfig p;
+    p.name = "nominal";
+    p.seed = 77;
+    assert(sim::eval::resolve_sensor_realism_profile(p, d1, i1, l1, &err));
+    assert(sim::eval::resolve_sensor_realism_profile(p, d2, i2, l2, &err));
+    assert(d1.seed == d2.seed && i1.gyro_noise_radps == i2.gyro_noise_radps &&
+           l1.range_stddev_m == l2.range_stddev_m);
+    const auto old = d1;
+    p.name = "bad";
+    assert(!sim::eval::resolve_sensor_realism_profile(p, d1, i1, l1, &err));
+    assert(d1.seed == old.seed);
     write(R"({bad json)");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({})");  // empty = all defaults
@@ -126,6 +155,7 @@ int main() {
     assert(cfg.lidar_beams == 72 && cfg.judge_radius_m == 0.4);
     assert(cfg.lidar_rings == 16);
     assert(!cfg.lidar_composite);
+    assert(cfg.sensor_realism.name == "ideal");
     std::filesystem::remove(tmp);
   }
 

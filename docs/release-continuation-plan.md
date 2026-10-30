@@ -12,6 +12,34 @@
 - 安全优先，其次是连续和平滑。模块测试负责算法能力，场景测试负责系统验收。
 - 每个完整阶段独立提交；提交前运行该阶段相关测试，最终再跑全量测试。
 
+## 当前执行队列（2026-10-30）
+
+本节是恢复时唯一有效的执行顺序；下面的阶段记录保留历史证据，不再作为待办清单。
+
+### 已完成基线
+
+- 1–4：无图 SLAM 回环与 2.5 m 教学路线、定位/算法/场景回归、Release 性能与确定性。
+- 5 的基础：EpisodePair、独立 ROBOT/SIM safety/Mission/Experiment verdict、三层视图、首屏预测、章节目录和手动 sandbox。
+- 6 的基础：时序 LiDAR、ROBOT costmap 与 safety swept envelope、定位 ghost，以及由 contact/slip/load/brake/impact 证据驱动的粒子和声音。
+- 7 的基础：GLB/Blender/MuJoCo body-joint/contact/COM 渲染、轮/叉车/行人姿态和连续地形入口。
+- 8–9 的软件契约：VirtualMcu、native transport/HIL seam、watchdog、校准 artifact、CSV 导入、online rollback 和 nominal commissioning gate。
+
+### 当前软件收尾顺序
+
+1. **F4 传感器 realism profile**：完成版本化 `ideal`/`nominal`/`adverse` profile，统一 IMU、LiDAR、delivery 的配置入口；未知 profile、非法范围或部分应用必须 fail closed；同 seed/profile 重放必须确定性。ROBOT 只接收带时间戳的噪声、延迟和丢包后 observation。
+2. **F3 物理/渲染自动验收**：补 mesh-to-collision、轮心接地、joint axis、COM/contact 和 timestep-sensitivity gate，避免渲染层重新推导物理姿态。
+3. **D2–D4 视觉发布债务**：绑定 paved/gravel/mud/sand/water 地面材质，清理环境底噪并记录音频来源，清理 asset manifest 中的 `NOASSERTION` 来源项。
+4. **E1/E2/C4 教学内容**：把轮胎、LiDAR、算力等装配选择映射为 typed 配置；加入本地 profile、星级、知识卡、章节进度、成对 replay/report 导出和四底盘/算法差异课程。扩展 typed experiment registry 时不得把 SIM truth 暴露给 ROBOT。
+5. **动态 actor/机械臂课程扩展**：继续使用 MuJoCo body/joint/contact 驱动，新增工程视图所需的关节轴、碰撞体、COM 和真实接触效果。
+
+### 实机外部验收队列
+
+板卡、急停、驱动负载、通信时延、真实 calibration artifact 和温度/载荷范围必须使用同一 native/HIL 契约现场测量；没有实板数据时不以模拟数字宣称完成。完成后再将 profile、HIL 记录和现场报告纳入 Release gate。
+
+### 每阶段完成条件
+
+每一项都要：实现代码和单元测试 → 运行对应 Debug/Release 定向回归 → 更新本文件的阶段记录 → 单独提交。最终再运行 Debug 全量 CTest、Release smoke、truth-isolation/boundary、`signal_town`、20 万平方米、四底盘和 Viewer/headless 性能门禁。
+
 ## 执行阶段
 
 1. **无图 SLAM 回环可信度**
@@ -83,7 +111,7 @@
 
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
 - `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
-- 当前阶段：第 9 项自动标定与硬件 profile；第 1–8 项的主要交付已独立提交，不得重新实现或回退已经验收的边界。
+- 当前阶段：F4 传感器 realism profile 已完成，下一阶段为 F3 物理/渲染自动验收；第 1–9 项的主要软件交付已独立提交，不得重新实现或回退已经验收的边界。
   `signal_town_big` 的地图目标安全契约已修复并在完整五目标回归中验收：
   `bb87c91`，5286 步、5/5、0 碰撞。直接使用 `sim_viewer --map` 会运行该地图
   的全部 named places，不再只验证首个目标。
@@ -894,6 +922,23 @@ ROBOT。
   现在要求彼此一致，不能把 measured artifact 重新标成 commissioning。首次使用路径已
   收敛为：板卡握手 → 自动生成 nominal bench profile → 采集 CSV 并生成 measured artifact。
 
-下一步从这里继续：完成真实硬件 profile/HIL 记录导入与验收，再将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
-发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的
-坡面、冰面、复杂场和手动工程课程入口，不改变 robot 只能使用自身估计的边界。
+### Sensor realism profiles（2026-10-30）
+
+- F4 已完成：`configs/sim/default.json` 现在显式选择版本化 `sensor_realism` 的
+  `nominal` profile；`ideal`、`nominal`、`adverse` 三个 profile 由
+  `resolve_sensor_realism_profile()` 统一解析，集中定义 IMU 噪声/偏置随机游走、LiDAR
+  测距误差/量化/近场盲区/丢包和 envelope 延迟/丢包。profile seed 是唯一随机源输入，
+  同 profile/seed 的 provider 输出可重复。
+- JSON loader 和 programmatic `ScenarioSession::apply_sim_config()` 都 fail closed：
+  未知 profile、版本不支持、非法模型或同时混用 profile 与旧的 delivery/IMU 覆盖都会被
+  拒绝，不能留下半应用配置。旧的直接 `delivery`/`imu_realism` 入口保留给实验和单测，
+  没有 profile 时保持 `ideal` 兼容行为。
+- 2D 与 3D LiDAR 使用同一个 resolved device model 和 seed；IMU 与 envelope delivery
+  仍在 SIM provider 内生成。ROBOT 接收到的只有经过时间戳、噪声、延迟和丢包后的 typed
+  observation，不会获得 truth、actor identity、score 或 profile 的内部参数。
+- 验收：`test_sim_config` 覆盖 profile 解析、未知版本/名称、混用拒绝、确定性和 adverse
+  参数；`test_realism`、`test_experience_mission`、`test_terrain_mission` 通过；Debug
+  全量 CTest 为 **90/90**，包含 industrial 200k、signal_town、四底盘、truth-isolation
+  和 robot-boundary。F4 阶段在本次变更中独立提交。
+
+下一步从这里继续：先完成 F4 版本化传感器 realism profile 并单独提交；随后按“F3 → D2–D4 → E1/E2/C4 → 动态 actor/机械臂内容”的顺序推进。真实硬件 profile、急停、负载、传输延迟和 calibration artifact 仍按上面的外部验收队列执行，不用模拟数据冒充现场完成。

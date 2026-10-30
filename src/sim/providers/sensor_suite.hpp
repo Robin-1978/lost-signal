@@ -52,6 +52,15 @@ class SimSensorSuite {
   // settings kept, never half-applied). Default off = exact truth.
   void set_delivery(DeliveryConfig config);
   void set_imu_realism(ImuRealismConfig config);
+  // Apply one resolved SIM profile atomically to both lidar producers.  The
+  // provider models remain SIM-only; ROBOT sees only their resulting frames.
+  void set_lidar_realism(LidarDeviceModel config, std::uint64_t seed) {
+    if (!valid_device_model(config)) return;
+    lidar_.set_device_model(config);
+    lidar3d_.set_device_model(config);
+    lidar_.set_noise_seed(seed);
+    lidar3d_.set_noise_seed(seed);
+  }
   // Sensor mount extrinsics in the base frame (xyz meters, RPY rad).
   // Rejected (non-finite) input keeps the previous mount. Default zeros.
   void set_lidar_mount(const double xyz_m[3], const double rpy_rad[3]) {
