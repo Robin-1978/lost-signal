@@ -16,8 +16,13 @@ namespace lost_signal::robot::platform {
 namespace {
 
 constexpr double kScaleFloor = 1e-9;
+constexpr char kNominalDigestPrefix[] = "nominal:";
 
 bool finite(double value) { return std::isfinite(value); }
+
+bool nominal_digest(const std::string& value) {
+ return value.rfind(kNominalDigestPrefix, 0) == 0;
+}
 
 void fail(std::string* error, const char* message) {
  if (error != nullptr) *error = message;
@@ -136,7 +141,8 @@ bool CalibrationArtifact::valid(std::string* error) const {
  track_width_scale < 0.80 || track_width_scale > 1.20 ||
  !finite_array(imu_accel_bias_mps2) || !finite_array(imu_gyro_bias_radps) ||
  !finite(lidar_time_offset_s) || !finite(residual_rms) || residual_rms < 0.0 ||
- sample_count == 0 || !finite(valid_temperature_min_c) ||
+ (sample_count == 0 && !nominal_digest(input_digest)) ||
+ !finite(valid_temperature_min_c) ||
  !finite(valid_temperature_max_c) ||
  valid_temperature_min_c >= valid_temperature_max_c ||
  !finite(valid_load_min_kg) || !finite(valid_load_max_kg) ||
@@ -388,6 +394,10 @@ bool validate_calibration_profile(const CalibrationArtifact& artifact,
   fail(error, "calibration artifact identity does not match the robot profile");
   return false;
  }
+ if (nominal_digest(artifact.input_digest) && !req.allow_nominal) {
+  fail(error, "nominal calibration requires explicit commissioning mode");
+  return false;
+ }
  if (req.temperature_c.has_value()) {
   const double temperature = *req.temperature_c;
   if (!finite(temperature) ||
@@ -457,8 +467,64 @@ bool validate_native_hardware_profile(
   fail(error, "native hardware steer layout does not match the profile");
   return false;
  }
- return validate_calibration_profile(profile.calibration, req.calibration,
-                                     error);
+ if (profile.source == NativeHardwareProfileSource::kNominalCommissioning &&
+     !req.allow_nominal_commissioning) {
+  fail(error, "nominal hardware profile requires explicit commissioning mode");
+  return false;
+ }
+ if (profile.source == NativeHardwareProfileSource::kMeasured &&
+     nominal_digest(profile.calibration.input_digest)) {
+  fail(error, "nominal calibration cannot be presented as measured hardware");
+  return false;
+ }
+ CalibrationProfileRequirements calibration_requirements = req.calibration;
+ calibration_requirements.allow_nominal = req.allow_nominal_commissioning;
+ return validate_calibration_profile(profile.calibration,
+                                     calibration_requirements, error);
+}
+
+bool make_nominal_native_hardware_profile(
+    const RobotDescription& description,
+    const iface::ChassisCapabilities& chassis,
+    NativeHardwareProfile& out,
+    std::string* error) {
+ if (!valid_robot_description(description)) {
+  fail(error, "cannot build nominal profile from invalid robot description");
+  return false;
+ }
+ if (!iface::valid_chassis_capabilities(chassis)) {
+  fail(error, "cannot build nominal profile from invalid chassis capability");
+  return false;
+ }
+ if (chassis.profile_id.empty() || chassis.profile_revision == 0) {
+  fail(error, "nominal profile requires a board profile id and revision");
+  return false;
+ }
+ CalibrationArtifact artifact;
+ artifact.robot_id = description.robot_id;
+ artifact.robot_description_hash = hash_robot_description(description);
+ artifact.profile_revision = chassis.profile_revision;
+ artifact.input_digest =
+     std::string(kNominalDigestPrefix) +
+     std::to_string(artifact.robot_description_hash) + ":" +
+     chassis.profile_id + ":" + std::to_string(chassis.profile_revision);
+ // The declared robot geometry is the only available prior. It is explicit
+ // and deterministic; no receive time, SIM state or hidden sensor estimate
+ // manufactures a calibration result.
+ artifact.wheel_radius_scale = 1.0;
+ artifact.track_width_scale = 1.0;
+ artifact.sample_count = 0;
+ artifact.valid_temperature_min_c = -40.0;
+ artifact.valid_temperature_max_c = 85.0;
+ artifact.valid_load_min_kg = 0.0;
+ artifact.valid_load_max_kg = 0.0;
+ artifact.created_unix_s = 0.0;
+ if (!artifact.valid(error)) return false;
+ out = {};
+ out.chassis = chassis;
+ out.calibration = std::move(artifact);
+ out.source = NativeHardwareProfileSource::kNominalCommissioning;
+ return true;
 }
 
 bool save_calibration_artifact_atomic(const std::string& path,

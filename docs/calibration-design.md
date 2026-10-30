@@ -66,3 +66,11 @@ revision, ownership, joint layout, temperature, load and expiry. The MCU
 receives only the accepted actuator profile and typed setpoints; it does not
 receive SIM state, map truth or calibration solver internals. A missing,
 stale, out-of-range or incompatible artifact enters safe hold.
+
+For a first bench bring-up, `make_nominal_native_hardware_profile()` derives a
+deterministic commissioning artifact from the robot description and the board
+capability handshake. Its wheel and track scales are the declared values
+(1.0), and its digest is explicitly prefixed `nominal:`. The validator rejects
+that artifact unless the adapter sets `allow_nominal_commissioning`; this
+keeps a typical starting profile convenient without allowing it to masquerade
+as measured calibration in production.

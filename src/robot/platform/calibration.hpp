@@ -9,6 +9,7 @@
 
 #include "robot/core/json.hpp"
 #include "robot/iface/motion.hpp"
+#include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::platform {
 
@@ -127,6 +128,9 @@ struct CalibrationProfileRequirements {
  std::optional<double> load_kg;
  std::optional<double> now_unix_s;
  std::optional<double> maximum_age_s;
+ // Commissioning-only escape hatch for the generated nominal artifact.
+ // Production adapters leave this false and require measured evidence.
+ bool allow_nominal = false;
 };
 
 bool validate_calibration_profile(const CalibrationArtifact& artifact,
@@ -136,9 +140,15 @@ bool validate_calibration_profile(const CalibrationArtifact& artifact,
 // Host-side deployment profile assembled from the board handshake and the
 // calibration artifact. This is a validation seam for native adapters; it is
 // not a new ROBOT data source and contains no simulator state.
+enum class NativeHardwareProfileSource {
+ kMeasured = 0,
+ kNominalCommissioning = 1,
+};
+
 struct NativeHardwareProfile {
  iface::ChassisCapabilities chassis;
  CalibrationArtifact calibration;
+ NativeHardwareProfileSource source = NativeHardwareProfileSource::kMeasured;
 };
 
 struct NativeHardwareProfileRequirements {
@@ -148,11 +158,22 @@ struct NativeHardwareProfileRequirements {
  std::optional<iface::ActuatorMode> chassis_mode;
  std::optional<std::uint8_t> drive_count;
  std::optional<std::uint8_t> steer_count;
+ bool allow_nominal_commissioning = false;
 };
 
 bool validate_native_hardware_profile(
     const NativeHardwareProfile& profile,
     const NativeHardwareProfileRequirements& req,
+    std::string* error = nullptr);
+
+// Builds a deterministic commissioning profile from the deployable robot
+// description and the board's typed capability handshake. Scale values are
+// exactly the declared geometry (1.0), never a hidden measurement. A caller
+// must explicitly opt into commissioning when validating the result.
+bool make_nominal_native_hardware_profile(
+    const RobotDescription& description,
+    const iface::ChassisCapabilities& chassis,
+    NativeHardwareProfile& out,
     std::string* error = nullptr);
 
 // Writes a complete artifact to a same-directory temporary file and replaces

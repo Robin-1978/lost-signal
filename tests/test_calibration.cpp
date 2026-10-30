@@ -111,6 +111,31 @@ int main() {
                                           &error));
  native_profile.chassis.profile_revision = config.profile_revision;
 
+ // A first-run adapter can derive a deterministic commissioning profile from
+ // the robot description and board handshake. It is rejected by the measured
+ // gate until the adapter explicitly opts into commissioning mode.
+ NativeHardwareProfile nominal;
+ iface::ChassisCapabilities nominal_chassis = chassis;
+ nominal_chassis.profile_id = "ro1.nominal";
+ assert(make_nominal_native_hardware_profile(description, nominal_chassis,
+                                             nominal, &error));
+ NativeHardwareProfileRequirements nominal_requirements;
+ nominal_requirements.calibration.robot_id = description.robot_id;
+ nominal_requirements.calibration.robot_description_hash =
+     hash_robot_description(description);
+ nominal_requirements.calibration.profile_revision =
+     nominal_chassis.profile_revision;
+ nominal_requirements.profile_id = nominal_chassis.profile_id;
+ nominal_requirements.control_owner = nominal_chassis.control_owner;
+ nominal_requirements.chassis_mode = nominal_chassis.chassis_mode;
+ nominal_requirements.drive_count = nominal_chassis.drive_count;
+ nominal_requirements.steer_count = nominal_chassis.steer_count;
+ assert(!validate_native_hardware_profile(nominal, nominal_requirements,
+                                          &error));
+ nominal_requirements.allow_nominal_commissioning = true;
+ assert(validate_native_hardware_profile(nominal, nominal_requirements,
+                                         &error));
+
  CalibrationArtifact accepted_profile;
  assert(load_calibration_profile(artifact_path.string(), requirements,
                                  accepted_profile, &error));
