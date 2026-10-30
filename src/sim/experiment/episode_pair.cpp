@@ -66,6 +66,8 @@ robot::core::Json experiment_spec_json(const ExperimentSpec& spec) {
  object.emplace_back("unit", Json::Str(variable.unit));
  object.emplace_back("baseline_value", Json::Num(spec.baseline_value));
  object.emplace_back("variant_value", Json::Num(spec.variant_value));
+ object.emplace_back("baseline_value_label", Json::Str(spec.baseline_value_label));
+ object.emplace_back("variant_value_label", Json::Str(spec.variant_value_label));
  object.emplace_back("baseline_step_budget", Json::Num(
  static_cast<double>(spec.baseline_step_budget)));
  object.emplace_back("variant_step_budget", Json::Num(
@@ -131,6 +133,8 @@ robot::core::Json artifact_json(const EpisodeArtifact& artifact,
  Json::Str(artifact.controlled_variable));
  object.emplace_back("controlled_value",
  Json::Num(artifact.controlled_value));
+ object.emplace_back("controlled_value_label",
+ Json::Str(artifact.controlled_value_label));
  object.emplace_back("invariant_digest",
  Json::Str(std::to_string(artifact.invariant_digest)));
  object.emplace_back("input_digest",
@@ -167,13 +171,18 @@ bool ExperimentSpec::valid() const {
  const auto finite_non_negative = [](double value) {
  return std::isfinite(value) && value >= 0.0;
  };
+ const bool categorical = viewer::experience_variable_kind(
+     controlled_variable) == viewer::ExperienceVariableKind::kCategorical;
+ const bool values_valid = categorical
+     ? std::isfinite(baseline_value) && std::isfinite(variant_value)
+     : std::isfinite(baseline_value) && std::isfinite(variant_value) &&
+       baseline_value >= variable.minimum && baseline_value <= variable.maximum &&
+       variant_value >= variable.minimum && variant_value <= variable.maximum &&
+       baseline_value != variant_value;
  return !experience_id.empty() && !experiment_id.empty() &&
  !code_revision.empty() && input_digest != 0 &&
  baseline_step_budget > 0 && variant_step_budget > 0 &&
- std::isfinite(baseline_value) && std::isfinite(variant_value) &&
- baseline_value >= variable.minimum && baseline_value <= variable.maximum &&
- variant_value >= variable.minimum && variant_value <= variable.maximum &&
- baseline_value != variant_value &&
+ values_valid &&
  finite_non_negative(minimum_elapsed_increase_s) &&
  finite_non_negative(minimum_clearance_loss_m) &&
  finite_non_negative(equivalent_elapsed_tolerance_s) &&
@@ -234,7 +243,8 @@ EpisodeArtifact capture_episode_artifact(
  const std::string& code_revision,
  viewer::KeyframeReviewConfig review_config, std::uint64_t step_budget,
  bool timed_out,
- const scenario::ScenarioSession& session) {
+ const scenario::ScenarioSession& session,
+ const std::string& controlled_value_label) {
  EpisodeArtifact artifact;
  artifact.condition_id = condition_id;
  artifact.controlled_variable = variable != nullptr ? variable->id : "";
@@ -243,6 +253,7 @@ EpisodeArtifact capture_episode_artifact(
  artifact.map_id = active_map.map_id;
  artifact.map_revision = active_map.revision;
  artifact.controlled_value = controlled_value;
+ artifact.controlled_value_label = controlled_value_label;
  artifact.invariant_digest = invariant_digest;
  artifact.step_budget = step_budget;
  artifact.review_config = review_config;
@@ -278,17 +289,23 @@ bool EpisodePair::experiment_valid() const {
  if (!complete() || !spec.has_value() || !spec->valid()) return false;
  const auto& variable = viewer::experience_variable_spec(
  spec->controlled_variable);
+ const bool categorical = viewer::experience_variable_kind(
+     spec->controlled_variable) == viewer::ExperienceVariableKind::kCategorical;
  const auto matches = [&](const EpisodeArtifact& artifact,
  const char* condition_id, double value, std::uint64_t step_budget) {
  return artifact.condition_id == condition_id &&
  artifact.controlled_variable == variable.id &&
- artifact.controlled_value == value &&
+ (categorical ? !artifact.controlled_value_label.empty()
+              : artifact.controlled_value == value) &&
  artifact.invariant_digest == spec->input_digest &&
  artifact.code_revision == spec->code_revision &&
  artifact.step_budget == step_budget &&
  artifact.score.steps <= step_budget;
  };
- return matches(*baseline, "baseline", spec->baseline_value,
+ const bool values_differ = categorical
+     ? baseline->controlled_value_label != variant->controlled_value_label
+     : baseline->controlled_value != variant->controlled_value;
+ return values_differ && matches(*baseline, "baseline", spec->baseline_value,
  spec->baseline_step_budget) &&
  matches(*variant, "variant", spec->variant_value,
  spec->variant_step_budget) &&

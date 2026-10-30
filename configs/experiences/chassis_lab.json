@@ -1,0 +1,51 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "chassis_lab",
+ "title": "CHASSIS LAB: SAME ROUTE, DIFFERENT KINEMATICS",
+ "subtitle": "Compare a differential base with Ackermann steering under the same route and sensor contract.",
+ "files": {
+  "map": "../worlds/research_base.json",
+  "scene": "../worlds/research_base.scene.json",
+  "robot": "../robot/differential.json",
+  "sim": "../sim/default.json"
+ },
+ "objectives": ["glass_door"],
+ "time_limit_steps": 1200,
+ "briefing": [
+  "The route, world, seed, sensors, and acceptance gates stay fixed between runs.",
+  "Only the typed chassis profile changes: differential drive versus Ackermann steering.",
+  "A controller must respect the capabilities of its chassis; the simulator never supplies a truth pose to ROBOT."
+ ],
+ "experiments": [
+  {
+   "experiment_id": "chassis_kinematics",
+   "title": "DOES THE CHASSIS CHANGE THE SAFE ROUTE?",
+   "controlled_variable": "chassis.kind",
+   "variant_category": "ackermann",
+   "variant_robot": "../robot/ackermann.json",
+   "step_budget": 1200,
+   "minimum_elapsed_increase_s": 0.1,
+   "minimum_clearance_loss_m": 0.02,
+   "equivalent_elapsed_tolerance_s": 0.05,
+   "equivalent_clearance_tolerance_m": 0.01
+  }
+ ],
+ "prediction": {
+  "question": "What should change when the same route is driven by an Ackermann chassis?",
+  "choices": [
+   {"choice_id":"capability_tradeoff", "label":"Both runs remain safe, but the steering geometry changes time or clearance", "explanation":"The recorded pair decides this from the same world and task. The robot receives only its own configured sensor and chassis contract.", "evidence_rule":"comparison_tradeoff"},
+   {"choice_id":"equivalent", "label":"The two typed chassis finish with equivalent time and clearance", "explanation":"Equivalent is accepted only when both declared comparison tolerances contain the measured differences.", "evidence_rule":"comparison_equivalent"},
+   {"choice_id":"truth_shortcut", "label":"The robot can use simulator pose to compensate for the chassis", "explanation":"Simulator pose, contact truth, actor identity, and score never cross the ROBOT boundary.", "evidence_rule":"comparison_unsafe"}
+  ]
+ },
+ "running_prompt": "Watch the chassis capability, estimate, plan, and validator as separate ROBOT evidence.",
+ "debrief": {
+  "success_title": "CHASSIS COMPARISON RECORDED",
+  "failure_title": "CHASSIS COMPARISON INCOMPLETE",
+  "lessons": [
+   "A chassis profile is a typed contract: its joints and command space constrain the controller.",
+   "The same route can produce different safe trajectories without changing the task goal.",
+   "ROBOT reports completion from its estimate; SIM independently checks physical safety and arrival."
+  ]
+ }
+}

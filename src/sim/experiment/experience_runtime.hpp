@@ -17,6 +17,10 @@ struct ExperienceVariableOverride {
  viewer::ExperienceVariable variable =
  viewer::ExperienceVariable::kLidarScanPeriodS;
  double value = 0.0;
+ // Categorical overrides carry their declared domain value and the resolved
+ // deployable profile. The runtime never guesses a profile from a number.
+ std::string category;
+ std::string robot_path;
 };
 
 struct ExperienceRuntimeConfig {

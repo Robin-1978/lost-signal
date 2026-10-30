@@ -70,7 +70,11 @@ bool compute_invariant_digest(const ExperienceRuntimeConfig& config,
  std::string& error) {
  digest = kFnvOffset;
  hash_string(digest, "lost-signal-experiment-invariant/2");
- if (!hash_file(digest, "robot", runtime.used_robot_path, false, error) ||
+ // The robot profile is the controlled input for a categorical chassis
+ // experiment. Hash the authored baseline path in the invariant digest so
+ // baseline and variant remain comparable; the selected variant profile is
+ // recorded separately in the EpisodeArtifact.
+ if (!hash_file(digest, "robot", config.robot_path, false, error) ||
  !hash_file(digest, "sim", runtime.used_sim_path, false, error) ||
  !hash_file(digest, "world", config.map_path, false, error) ||
  !hash_file(digest, "actors", actor_sidecar_path(config.map_path), true,
@@ -151,6 +155,8 @@ double experience_variable_value(viewer::ExperienceVariable variable,
  switch (variable) {
  case viewer::ExperienceVariable::kLidarScanPeriodS:
  return config.scan_period_s;
+ case viewer::ExperienceVariable::kChassisKind:
+  return 0.0;
  }
  return 0.0;
 }
@@ -188,9 +194,22 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  ExperienceRuntime built;
  built.code_revision = LOST_SIGNAL_BUILD_REVISION;
  std::string config_error;
+ std::string robot_path = config.robot_path;
+ if (config.variable_override.has_value() &&
+     config.variable_override->variable ==
+         viewer::ExperienceVariable::kChassisKind) {
+   const auto& override = *config.variable_override;
+   if (!viewer::experience_variable_category_valid(
+           override.variable, override.category) ||
+       override.robot_path.empty()) {
+     out_error = "categorical chassis override is incomplete or unsupported";
+     return false;
+   }
+   robot_path = override.robot_path;
+ }
  built.robot_config = robot::platform::load_default_robot_config(
- config.robot_path, &built.used_robot_path, &config_error);
- if (!config.robot_path.empty() && !built.robot_config.has_value()) {
+ robot_path, &built.used_robot_path, &config_error);
+ if (!robot_path.empty() && !built.robot_config.has_value()) {
  out_error = "robot config: " + config_error;
  return false;
  }
@@ -229,6 +248,10 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  case viewer::ExperienceVariable::kLidarScanPeriodS:
  built.sim_config->scan_period_s = override.value;
  break;
+ case viewer::ExperienceVariable::kChassisKind:
+  // The typed chassis profile was selected before ROBOT construction. It has
+  // no SIM scalar patch; the resulting plant is derived from robot_config.
+  break;
  }
  }
  built.session->apply_sim_config(*built.sim_config);

@@ -24,6 +24,12 @@ enum class ExperienceEvidenceRule {
 // rather than a stringly-typed branch in the raylib frontend.
 enum class ExperienceVariable {
  kLidarScanPeriodS,
+ kChassisKind,
+};
+
+enum class ExperienceVariableKind {
+ kContinuous,
+ kCategorical,
 };
 
 // Declares who establishes the map frame before an experience starts. This
@@ -44,12 +50,16 @@ struct ExperienceVariableSpec {
  double minimum = 0.001;
  double maximum = 10.0;
  bool physics_grid = true;
+ ExperienceVariableKind kind = ExperienceVariableKind::kContinuous;
 };
 
 const ExperienceVariableSpec& experience_variable_spec(
  ExperienceVariable variable);
 bool parse_experience_variable(const std::string& id,
  ExperienceVariable& variable);
+ExperienceVariableKind experience_variable_kind(ExperienceVariable variable);
+bool experience_variable_category_valid(ExperienceVariable variable,
+                                        const std::string& category);
 
 struct ExperienceChoice {
  std::string choice_id;
@@ -86,6 +96,10 @@ struct ExperienceExperiment {
  ExperienceVariable controlled_variable =
  ExperienceVariable::kLidarScanPeriodS;
  double variant_value = 0.0;
+ // Categorical experiments use an explicit domain value and a resolved robot
+ // profile. They never encode a category as a numeric index.
+ std::string variant_category;
+ std::string variant_robot_path;
  long step_budget = 0;
  // Presentation-only evidence classifier. These authored tolerances decide
  // whether two completed runs demonstrate a meaningful educational effect;

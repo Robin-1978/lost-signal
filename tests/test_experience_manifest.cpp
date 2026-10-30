@@ -149,6 +149,20 @@ int main() {
  assert(experience.startup_mode ==
  lost_signal::sim::viewer::ExperienceStartupMode::kSlamOnly);
 
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+     (root / "configs/experiences/chassis_lab.json").string(), experience,
+     &error));
+ assert(experience.experiments.size() == 1);
+ assert(experience.experiments.front().controlled_variable ==
+        lost_signal::sim::viewer::ExperienceVariable::kChassisKind);
+ assert(experience.experiments.front().variant_category == "ackermann");
+ assert(std::filesystem::path(
+            experience.experiments.front().variant_robot_path).filename() ==
+        "ackermann.json");
+ assert(lost_signal::sim::viewer::experience_variable_kind(
+            lost_signal::sim::viewer::ExperienceVariable::kChassisKind) ==
+        lost_signal::sim::viewer::ExperienceVariableKind::kCategorical);
+
  const auto bad = root / "configs/experiences/bad_test_experience.json";
  write_text(bad,
  R"({"format":"lost-signal-experience/1","experience_id":"bad","title":"bad","subtitle":"bad","files":{"map":"../worlds/research_base.json","scene":"../worlds/research_base.scene.json","robot":"../robot/differential.json","sim":"../sim/default.json"},"objectives":["glass_door"],"briefing":["brief"],"prediction":{"question":"q","choices":[{"choice_id":"a","label":"a","explanation":"a","correct":true},{"choice_id":"b","label":"b","explanation":"b","correct":true}]},"running_prompt":"run","debrief":{"success_title":"ok","failure_title":"no","lessons":["lesson"]}})");

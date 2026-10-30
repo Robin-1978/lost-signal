@@ -24,6 +24,8 @@ struct ExperimentSpec {
  viewer::ExperienceVariable::kLidarScanPeriodS;
  double baseline_value = 0.0;
  double variant_value = 0.0;
+ std::string baseline_value_label;
+ std::string variant_value_label;
  std::uint64_t baseline_step_budget = 0;
  std::uint64_t variant_step_budget = 0;
  std::uint64_t input_digest = 0;
@@ -51,6 +53,7 @@ struct EpisodeArtifact {
  std::string map_id;
  std::uint64_t map_revision = 0;
  double controlled_value = 0.0;
+ std::string controlled_value_label;
  std::uint64_t invariant_digest = 0;
  std::uint64_t step_budget = 0;
  viewer::KeyframeReviewConfig review_config;
@@ -74,7 +77,8 @@ EpisodeArtifact capture_episode_artifact(
  const std::string& code_revision,
  viewer::KeyframeReviewConfig review_config, std::uint64_t step_budget,
  bool timed_out,
- const scenario::ScenarioSession& session);
+ const scenario::ScenarioSession& session,
+ const std::string& controlled_value_label = {});
 
 struct EpisodePair {
  std::optional<ExperimentSpec> spec;

@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <fstream>
 #include <string>
+#include <utility>
 
 #include "sim/experiment/experience_runtime.hpp"
 #include "sim/experiment/episode_pair.hpp"
@@ -207,6 +208,56 @@ int main() {
  assert(!sim::experiment::build_experience_runtime(
  variant_config, variant, &error));
  assert(error == "experiment override is outside its typed contract");
+
+ // Categorical chassis experiments use an explicit profile name and path.
+ // The variant plant changes, while the invariant digest remains identical
+ // because the chassis is the declared controlled variable.
+ sim::viewer::ExperienceManifest chassis_experience;
+ assert(sim::viewer::load_experience_manifest(
+     std::string(TEST_SOURCE_DIR) + "/configs/experiences/chassis_lab.json",
+     chassis_experience, &error));
+ auto chassis_config = sim::experiment::experience_runtime_config(
+     chassis_experience, config.asset_manifest_path);
+ sim::experiment::ExperienceRuntime chassis_baseline;
+ assert(sim::experiment::build_experience_runtime(
+     chassis_config, chassis_baseline, &error));
+ auto chassis_variant_config = chassis_config;
+ const auto& chassis_definition = chassis_experience.experiments.front();
+ chassis_variant_config.variable_override =
+     sim::experiment::ExperienceVariableOverride{
+         chassis_definition.controlled_variable, 0.0,
+         chassis_definition.variant_category,
+         chassis_definition.variant_robot_path};
+ sim::experiment::ExperienceRuntime chassis_variant;
+ assert(sim::experiment::build_experience_runtime(
+     chassis_variant_config, chassis_variant, &error));
+ assert(chassis_baseline.robot_config->profile.chassis_kind ==
+        "differential");
+ assert(chassis_variant.robot_config->profile.chassis_kind == "ackermann");
+ assert(chassis_baseline.invariant_digest == chassis_variant.invariant_digest);
+ assert(chassis_variant.session->setup_world().truth().step == 0);
+ sim::viewer::KeyframeReviewConfig chassis_review;
+ auto chassis_baseline_artifact = sim::experiment::capture_episode_artifact(
+     "baseline", &sim::viewer::experience_variable_spec(
+         sim::viewer::ExperienceVariable::kChassisKind), 0.0,
+     chassis_baseline.invariant_digest, chassis_baseline.code_revision,
+     chassis_review, chassis_experience.time_limit_steps, false,
+     *chassis_baseline.session, "differential");
+ auto chassis_variant_artifact = sim::experiment::capture_episode_artifact(
+     "variant", &sim::viewer::experience_variable_spec(
+         sim::viewer::ExperienceVariable::kChassisKind), 0.0,
+     chassis_variant.invariant_digest, chassis_variant.code_revision,
+     chassis_review,
+     static_cast<std::uint64_t>(chassis_definition.step_budget), false,
+     *chassis_variant.session, "ackermann");
+ sim::experiment::EpisodePair chassis_pair;
+ chassis_pair.spec = sim::experiment::make_experiment_spec(
+     chassis_experience, 0.0, chassis_baseline.invariant_digest,
+     chassis_baseline.code_revision, &error);
+ assert(chassis_pair.spec.has_value());
+ chassis_pair.baseline = std::move(chassis_baseline_artifact);
+ chassis_pair.variant = std::move(chassis_variant_artifact);
+ assert(chassis_pair.experiment_valid());
 
  // A completed run is copied into an immutable review artifact before a
  // second runtime replaces the live session. The four progression verdicts

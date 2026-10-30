@@ -1145,8 +1145,9 @@ bool show_estimate = initial_show_robot_evidence;
  const auto& definition = experience.experiments.front();
  auto variant_config = runtime_config;
  variant_config.variable_override =
- sim::experiment::ExperienceVariableOverride{
- definition.controlled_variable, definition.variant_value};
+     sim::experiment::ExperienceVariableOverride{
+         definition.controlled_variable, definition.variant_value,
+         definition.variant_category, definition.variant_robot_path};
  sim::experiment::ExperienceRuntime rebuilt;
  std::string runtime_error;
  if (!sim::experiment::build_experience_runtime(
@@ -1643,11 +1644,18 @@ bool show_estimate = initial_show_robot_evidence;
  run_summary.score = terminal_score;
  const lost_signal::sim::viewer::ExperienceVariableSpec* variable = nullptr;
  double controlled_value = 0.0;
+ std::string controlled_value_label;
  if (!experience.experiments.empty() && sim_config.has_value()) {
  variable = &lost_signal::sim::viewer::experience_variable_spec(
  experience.experiments.front().controlled_variable);
  controlled_value = sim::experiment::experience_variable_value(
  experience.experiments.front().controlled_variable, *sim_config);
+ if (lost_signal::sim::viewer::experience_variable_kind(
+         experience.experiments.front().controlled_variable) ==
+     lost_signal::sim::viewer::ExperienceVariableKind::kCategorical &&
+     robot_config.has_value()) {
+   controlled_value_label = robot_config->profile.chassis_kind;
+ }
  }
  auto artifact = sim::experiment::capture_episode_artifact(
  experience_flow->run_kind() == ExperienceRunKind::kBaseline
@@ -1660,7 +1668,7 @@ bool show_estimate = initial_show_robot_evidence;
  experience.experiments.front().step_budget)
  : experience.time_limit_steps,
  experience_flow->timed_out(),
- *session);
+ *session, controlled_value_label);
  if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
  experiment_ui.baseline = run_summary;
  experiment_ui.baseline_keyframes = review_keyframes;
@@ -1671,6 +1679,14 @@ bool show_estimate = initial_show_robot_evidence;
  experiment_ui.episodes.spec = sim::experiment::make_experiment_spec(
  experience, controlled_value, runtime_invariant_digest,
  runtime_code_revision, &spec_error);
+ if (experiment_ui.episodes.spec.has_value() &&
+     lost_signal::sim::viewer::experience_variable_kind(
+         experience.experiments.front().controlled_variable) ==
+         lost_signal::sim::viewer::ExperienceVariableKind::kCategorical) {
+   experiment_ui.episodes.spec->baseline_value_label = controlled_value_label;
+   experiment_ui.episodes.spec->variant_value_label =
+       experience.experiments.front().variant_category;
+ }
  if (!experiment_ui.episodes.spec.has_value()) {
  experience_action_error = spec_error;
  }

@@ -1009,3 +1009,20 @@ ROBOT。
   包含 industrial 200K、signal_town、terrain/ice、四底盘、SLAM/loop closure、
   truth-isolation 与 robot-boundary。该阶段是 Viewer 结构提交点，后续算法/内容阶段继续
   单独提交。
+
+### C4 typed chassis comparison（2026-10-30）
+
+- 实验注册表现在同时支持连续变量和显式分类变量。`chassis.kind` 的域由代码白名单
+  校验（differential、ackermann、mecanum、swerve、tracked），分类值以字符串保存，
+  不用数字索引或 frontend 分支伪装成 typed 配置。
+- 分类 variant 必须声明一个相对 manifest 的 `variant_robot` profile。Runtime 在构建
+  ROBOT/SIM 之前解析该 profile，复用同一 world/scene/SIM 输入；invariant digest 保留
+  baseline robot profile 作为固定输入，variant 的 chassis label 记录在 EpisodeArtifact，
+  `EpisodePair::experiment_valid()` 要求两次 label 不同且 digest、地图、代码和预算一致。
+  因而 chassis 差异可被审计，同时不会把 SIM truth、actor identity 或 score 送进 ROBOT。
+- 新增 `configs/experiences/chassis_lab.json`：同一 `research_base` 路线比较 differential
+  与 Ackermann，四项 verdict 仍由 immutable Episode pair 独立计算。课程只声明能力差异，
+  不改变 GoalArrival、Safety 或 planner 的关卡逻辑。
+- `test_experience_manifest`、`test_experience_runtime` 和 `test_experience_catalog` 覆盖
+  分类域、variant profile、不同 chassis plant、digest 不变性和 pair label 校验；本阶段
+  定向回归（含 `truth_isolation`、`robot_boundary`）通过。

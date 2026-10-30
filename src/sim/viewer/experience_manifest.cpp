@@ -15,21 +15,50 @@ const ExperienceVariableSpec& experience_variable_spec(
  ExperienceVariable variable) {
  static const ExperienceVariableSpec kLidarScanPeriod{
  ExperienceVariable::kLidarScanPeriodS,
- "lidar.scan_period_s", "s", 0.001, 10.0, true};
+ "lidar.scan_period_s", "s", 0.001, 10.0, true,
+ ExperienceVariableKind::kContinuous};
+ static const ExperienceVariableSpec kChassisKind{
+ ExperienceVariable::kChassisKind, "chassis.kind", "category", 0.0, 0.0,
+ false, ExperienceVariableKind::kCategorical};
  switch (variable) {
  case ExperienceVariable::kLidarScanPeriodS:
  return kLidarScanPeriod;
+ case ExperienceVariable::kChassisKind:
+ return kChassisKind;
  }
  return kLidarScanPeriod;
 }
 
 bool parse_experience_variable(const std::string& id,
  ExperienceVariable& variable) {
- const auto& lidar = experience_variable_spec(
- ExperienceVariable::kLidarScanPeriodS);
- if (id == lidar.id) {
- variable = lidar.variable;
- return true;
+ for (const auto candidate : {ExperienceVariable::kLidarScanPeriodS,
+                              ExperienceVariable::kChassisKind}) {
+   const auto& spec = experience_variable_spec(candidate);
+   if (id == spec.id) {
+     variable = spec.variable;
+     return true;
+   }
+ }
+ return false;
+}
+
+ExperienceVariableKind experience_variable_kind(ExperienceVariable variable) {
+ return experience_variable_spec(variable).kind;
+}
+
+bool experience_variable_category_valid(ExperienceVariable variable,
+                                        const std::string& category) {
+ if (experience_variable_kind(variable) !=
+     ExperienceVariableKind::kCategorical) {
+   return false;
+ }
+ // Chassis profiles are the deployable robot contracts already validated by
+ // robot_config. Keeping this closed domain prevents a manifest from
+ // smuggling an arbitrary path or string branch into the experiment runner.
+ if (variable == ExperienceVariable::kChassisKind) {
+   return category == "differential" || category == "ackermann" ||
+          category == "mecanum" || category == "swerve" ||
+          category == "tracked";
  }
  return false;
 }
@@ -476,29 +505,45 @@ bool load_experience_manifest(const std::string& path,
  return false;
  }
  const Json* variant = node.find("variant_value");
+ const Json* variant_category = node.find("variant_category");
+ const Json* variant_robot = node.find("variant_robot");
  const Json* budget = node.find("step_budget");
  const ExperienceVariableSpec* variable_spec = nullptr;
  if (parse_experience_variable(
  controlled_variable_id, experiment.controlled_variable)) {
  variable_spec = &experience_variable_spec(experiment.controlled_variable);
  }
+ const bool categorical = variable_spec != nullptr &&
+     variable_spec->kind == ExperienceVariableKind::kCategorical;
+ const bool valid_continuous = !categorical && variable_spec != nullptr &&
+     variant != nullptr && variant->is_num() &&
+     std::isfinite(variant->as_num()) &&
+     variant->as_num() >= variable_spec->minimum &&
+     variant->as_num() <= variable_spec->maximum &&
+     (!variable_spec->physics_grid || std::abs(
+         variant->as_num() * 1000.0 -
+         std::round(variant->as_num() * 1000.0)) <= 1e-9);
+ const bool valid_categorical = categorical && variant_category != nullptr &&
+     variant_category->is_str() &&
+     experience_variable_category_valid(experiment.controlled_variable,
+                                        variant_category->as_str()) &&
+     variant_robot != nullptr && variant_robot->is_str() &&
+     !variant_robot->as_str().empty();
  if (!experiment_ids.insert(experiment.experiment_id).second ||
- variable_spec == nullptr ||
- variant == nullptr || !variant->is_num() ||
- !std::isfinite(variant->as_num()) ||
- variant->as_num() < variable_spec->minimum ||
- variant->as_num() > variable_spec->maximum ||
- (variable_spec->physics_grid && std::abs(
- variant->as_num() * 1000.0 -
- std::round(variant->as_num() * 1000.0)) > 1e-9) ||
+ variable_spec == nullptr || (!valid_continuous && !valid_categorical) ||
  budget == nullptr || !budget->is_num() ||
  !std::isfinite(budget->as_num()) || budget->as_num() < 1.0 ||
  std::floor(budget->as_num()) != budget->as_num()) {
  out_error = "experience experiment needs a unique id, supported variable, "
- "positive variant, and integer step budget";
+ "valid variant, and integer step budget";
  return false;
  }
- experiment.variant_value = variant->as_num();
+ if (valid_continuous) {
+   experiment.variant_value = variant->as_num();
+ } else {
+   experiment.variant_category = variant_category->as_str();
+   experiment.variant_robot_path = variant_robot->as_str();
+ }
  experiment.step_budget = static_cast<long>(budget->as_num());
     if (!take_non_negative_number(
             node, "minimum_elapsed_increase_s",
@@ -558,6 +603,16 @@ bool load_experience_manifest(const std::string& path,
  !resolve_file(manifest_root, authored_sim, parsed.sim_path,
  out_error)) {
  return false;
+ }
+ for (auto& experiment : parsed.experiments) {
+   if (experiment.variant_robot_path.empty()) continue;
+   std::string resolved_variant_robot;
+   if (!resolve_relative_file(manifest_root, experiment.variant_robot_path,
+                              "variant_robot", resolved_variant_robot,
+                              out_error)) {
+     return false;
+   }
+   experiment.variant_robot_path = std::move(resolved_variant_robot);
  }
  const Json* next_experience = root->find("next_experience");
  if (next_experience != nullptr) {

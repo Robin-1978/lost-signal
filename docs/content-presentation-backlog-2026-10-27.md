@@ -159,11 +159,11 @@
 - **验收**：3 名未接触过项目的观察者中，至少 2 名能在开场结束时说出驱动轮或 LiDAR 的作用之一（阈值评审时可调整）；转场附近的帧中字幕与镜头对象一致，或书面确认镜头提前量属设计。
 - **范围与依赖**：Experience manifest 与 Viewer；无依赖。
 
-#### C4 第 7 章"底盘不是同一种车"的 Experience [P2]
+#### C4 第 7 章"底盘不是同一种车"的 Experience [P2，已完成 2026-10-30]
 
 - **依据**：设计文档 `:128-139`；资产清单已含 `robots.ro2`（底盘与前转向节）、`ro3`（履带）、`ro4`（swerve 模块）、`ro5`（辊轮），缺专属场地与 Experience；`:137` 要求履带与 Mecanum 的简化模型在 UI 标明能力边界。
-- **方案**：先做 1 个任务（同一路线，差速对 Ackermann），复用 C1 的单变量对照；底盘选择是分类变量，依赖 F1 的分类变量支持。
-- **验收**：两种底盘在同一 world、同 seed 下完成；UI 标明简化模型的能力边界；四项裁决可见。
+- **方案**：已完成 1 个任务（同一路线，差速对 Ackermann），复用 immutable EpisodePair；底盘选择由 F1 注册表的显式分类变量和相对 robot profile 绑定。
+- **验收**：manifest/runtime 单测确认两种底盘在同一 world/scene/SIM 输入下构建，invariant digest 保持一致而 chassis label 不同；四项裁决沿用独立 ROBOT/SIM safety/mission/experiment gate。UI 的能力边界文案由 `chassis_lab` manifest 提供，未向 ROBOT 注入 SIM truth。
 - **范围与依赖**：Experience、场景与 UI；依赖 F1、C1。
 
 ### D. 资产与场景
