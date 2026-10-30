@@ -284,6 +284,7 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  return x >= 0 && y >= 0 && x < state.width && y < state.height;
  };
  const auto index = [&](int x, int y) { return y * state.width + x; };
+ bool start_inside_clearance_only = false;
  const auto cell_value = [&](int x, int y) -> int {
  if (!inside(x, y)) return 100;
  return planning_map.lethal.occupancy[index(x, y)];
@@ -549,6 +550,9 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  "inflated global costmap is unavailable"};
  }
  const std::size_t start_cell = index(state.start_x, state.start_y);
+ start_inside_clearance_only =
+     cached_costmap_.lethal.occupancy[start_cell] >= 50 &&
+     map.occupancy[start_cell] < 50;
  // A pose can be inside the conservative inflated envelope while still
  // outside the authored obstacle (for example after a localization
  // correction beside a wall). Keep that pose as an escape seed; the local
@@ -707,7 +711,7 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  // The first raster center is only a search representative. Preserve the
  // current ROBOT estimate as the route origin so an escape does not command
  // a correction toward the center of the inflated start cell.
- if (!route.points.empty()) {
+ if (!route.points.empty() && start_inside_clearance_only) {
    route.points.front().x_m = state.start_world_x_m;
    route.points.front().y_m = state.start_world_y_m;
  }

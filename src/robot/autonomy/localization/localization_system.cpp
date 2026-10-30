@@ -540,14 +540,7 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  std::isfinite(est.heading_sigma_rad)
  ? std::max(0.0, est.heading_sigma_rad)
  : supervisor_.config().lost_heading_sigma_rad;
- const bool geometrically_supported =
-     std::isfinite(global.geometric_support) &&
-     global.geometric_support >= 1.0;
- if (!geometrically_supported) {
-   accept_global = false;
-   global.rejection_reason =
-       "global match lacks full geometric support";
- } else if (!supervisor_.accept_global_innovation(
+ if (!supervisor_.accept_global_innovation(
  jump_m, heading_jump_rad, prior_sigma_m,
  prior_heading_sigma_rad)) {
  accept_global = false;
@@ -611,9 +604,7 @@ global.heading_sigma_rad, correction_stamp_ns);
  // from the measured residual; do not move the estimate or expose any SIM
  // state. The next bounded search then grows continuously with the actual
  // rejected evidence and can recover from an underestimated prior.
- if (!accept_global && global.accepted && supervisor_.localized() &&
-     std::isfinite(global.geometric_support) &&
-     global.geometric_support >= 1.0) {
+ if (!accept_global && global.accepted && supervisor_.localized()) {
  estimator.note_absolute_rejection(
  global.x_m - est.x_m, global.y_m - est.y_m,
  core::wrap_angle(global.yaw_rad - est.yaw_rad), correction_stamp_ns);
@@ -627,8 +618,6 @@ global.heading_sigma_rad, correction_stamp_ns);
  if (supervisor_.localized() && !global.accepted &&
      global.runner_ups.empty() && global.coarse_evaluations > 0 &&
      global.usable_returns > 0 &&
-     std::isfinite(global.geometric_support) &&
-     global.geometric_support >= 1.0 &&
      global_search_radius_m_ > 0.0 &&
      global_search_heading_radius_rad_ > 0.0) {
    // `global_search_*_radius` is an uncertainty envelope, not a one-sigma

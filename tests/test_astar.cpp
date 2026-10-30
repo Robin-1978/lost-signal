@@ -173,6 +173,18 @@ int main() {
     assert(std::abs(r.points.front().y_m) < 1e-12);
   }
 
+  // A normal free start keeps the raster route origin.  Exact-pose
+  // preservation is reserved for the clearance-only escape case above; it
+  // must not introduce a short, off-grid first segment on every route.
+  {
+    auto map = make_map(16, 16, 0.5, -4.0, -4.0);
+    std::fill(map.occupancy.begin(), map.occupancy.end(), 0);
+    const Route r = planner.plan(at(0.10, 0.10), {2.0, 0.10, 0.0}, map);
+    assert(r.valid && r.points.size() >= 2);
+    assert(std::abs(r.points.front().x_m - 0.25) < 1e-12);
+    assert(std::abs(r.points.front().y_m - 0.25) < 1e-12);
+  }
+
  // Route refresh policy is module-owned: an explicit replan calls the
  // planner even when an existing route is still valid.
  {
