@@ -339,6 +339,7 @@ add_library(lost_signal_sim_viewer STATIC
  src/sim/viewer/keyframe_review.cpp
   src/sim/viewer/map_editor.cpp
  src/sim/viewer/particle_system.cpp
+ src/sim/viewer/player_profile.cpp
  src/sim/viewer/physical_audio.cpp
  src/sim/viewer/playback_controller.cpp
  src/sim/viewer/scene_manifest.cpp
@@ -930,6 +931,12 @@ add_executable(test_physical_audio
 )
 target_link_libraries(test_physical_audio PRIVATE lost_signal_sim_viewer)
 add_test(NAME physical_audio COMMAND test_physical_audio)
+
+add_executable(test_player_profile
+ tests/test_player_profile.cpp
+)
+target_link_libraries(test_player_profile PRIVATE lost_signal_sim_viewer)
+add_test(NAME player_profile COMMAND test_player_profile)
 
 add_executable(test_audio_assets
   tests/test_audio_assets.cpp

@@ -205,11 +205,11 @@
 - **验收**：（1）`assembly_registry` 的三槽位选择写入 runtime invariant digest；（2）轮胎、LiDAR、算力选择在首次 observation 前分别修改 typed Robot/SIM config；（3）未知零件、manifest 负例和 13 个章节首 tick 有回归测试；（4）新增 `assembly_lab`，现有首章流程不变。后续仍需把装配卡片和星级进度接入存档 UI。
 - **范围与依赖**：依赖 F1；评审事项：玩法是否进入战役（设计文档受众表 `:15` 未列此项）。
 
-#### E2 进度层：本地 profile、星级、知识卡、回放导出 [P2]
+#### E2 进度层：本地 profile、星级、知识卡、回放导出 [P2]（profile 核心已完成，2026-10-30）
 
 - **依据**：设计文档 `:15`、`:200`、`:430` 承诺星级、知识卡、可分享回放；`src/sim/viewer` 与 `configs/experiences` 中 `star`、`knowledge card`、`share`、`achievement` 无命中；`ExperienceProgressionPolicy` 仅做解析（`experience_manifest.cpp:506-517`）；`next_experience` 是章节链指针；成对 replay 的 v2 bundle 已有（`sim-game-design.md:531`）。
 - **方案**：最小版为本地 profile JSON（章节完成、最佳净空与耗时、已看知识卡）；星级只映射 `:200` 规定的公开维度；分享先做成导出成对 replay 与实验报告。
-- **验收**：profile 存取有单测，文件损坏时回退为空 profile 并给出提示；星级不抵消安全失败（`:200`）；进度数据不进入 ROBOT 与 SIM 判定。
+- **验收**：`player_profile` 存取有单测，文件损坏/版本不匹配时回退为空 profile 并返回提示；星级不抵消安全失败；进度数据不进入 ROBOT 与 SIM 判定。Viewer 章节目录和知识卡可视化仍待接入。
 - **范围与依赖**：Viewer 与存档；建议排在 C1、C2 之后。
 
 ### F. ROBOT/SIM 核心依赖项
