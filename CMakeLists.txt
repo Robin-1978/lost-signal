@@ -938,6 +938,19 @@ target_link_libraries(test_experience_catalog PRIVATE
 )
 add_test(NAME experience_catalog COMMAND test_experience_catalog)
 
+add_executable(test_arm_experience
+  tests/test_arm_experience.cpp
+)
+target_compile_definitions(test_arm_experience PRIVATE
+  TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(test_arm_experience PRIVATE
+  lost_signal_sim_experiment
+  lost_signal_sim_viewer
+  lost_signal_sim_scenario
+)
+add_test(NAME arm_experience COMMAND test_arm_experience)
+
 add_executable(test_playback_controller
  tests/test_playback_controller.cpp
 )

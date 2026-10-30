@@ -79,6 +79,25 @@ int main() {
  assert(worker->animation_clips.front() == "WorkerWalk");
  assert(worker->animation_stride_m > 0.0);
 
+  // Articulated assets are link-frame meshes, not upright decorations.  The
+  // first arm link may include its bearing around the pivot, while the three
+  // downstream links must start at x=0 and extend along +X.  These checks
+  // pin the Blender/MuJoCo assembly contract that prevents a vertical legacy
+  // mesh from silently passing the generic bounds/hash audit.
+  const auto* arm_turret = manifest.find("robots.ro6.turret");
+  const auto* arm_upper = manifest.find("robots.ro6.upper_arm");
+  const auto* arm_forearm = manifest.find("robots.ro6.forearm");
+  const auto* arm_tool = manifest.find("robots.ro6.tool");
+  assert(arm_turret != nullptr && arm_upper != nullptr &&
+         arm_forearm != nullptr && arm_tool != nullptr);
+  assert(arm_turret->expected_bounds_m.maximum_m[0] >= 0.30 - 1e-9);
+  assert(arm_upper->expected_bounds_m.minimum_m[0] >= -1e-9 &&
+         arm_upper->expected_bounds_m.maximum_m[0] >= 0.25 - 1e-9);
+  assert(arm_forearm->expected_bounds_m.minimum_m[0] >= -1e-9 &&
+         arm_forearm->expected_bounds_m.maximum_m[0] >= 0.18 - 1e-9);
+  assert(arm_tool->expected_bounds_m.minimum_m[0] >= -1e-9 &&
+         arm_tool->expected_bounds_m.maximum_m[0] >= 0.12 - 1e-9);
+
   std::set<std::string> inventory;
   for (const auto& entry : fs::recursive_directory_iterator(models_root)) {
     if (!entry.is_regular_file()) continue;

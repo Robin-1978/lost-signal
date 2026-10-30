@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -1753,6 +1754,42 @@ WalkaroundView walkaround_view(const Frame& frame,
  state.dist_m = 0.82f;
  state.pitch_deg = 8.0f;
  state.yaw_deg = 35.0f;
+  } else if (component_id.rfind("arm_joint_", 0) == 0) {
+    // Arm links are relative to the MuJoCo base frame.  Resolve the
+    // requested joint/link from the recorded pose table so the teaching
+    // camera follows the same articulated state as the renderer.  Unknown
+    // or unavailable links fall back to the chassis without inventing a
+    // presentation pose.
+    const std::string ordinal = component_id.substr(10);
+    char* end = nullptr;
+    const long requested = std::strtol(ordinal.c_str(), &end, 10);
+    if (end != ordinal.c_str() && *end == '\0' && requested >= 1 &&
+        requested <= static_cast<long>(frame.body.arm_links.size())) {
+      const auto& link = frame.body.arm_links[
+          static_cast<std::size_t>(requested - 1)];
+      if (link.valid && link.pose.valid) {
+        const Vector3 p = body_local_to_world(frame.body, link.pose);
+        focus_x = p.x;
+        focus_y = -p.z;
+        focus_z = p.y;
+        state.dist_m = 0.72f;
+        state.pitch_deg = 18.0f;
+        state.yaw_deg = 28.0f;
+      }
+    }
+  } else if (component_id == "com" && frame.body.com_z_m != 0.0) {
+    FrameLinkPose com;
+    com.valid = true;
+    com.x_m = frame.body.com_x_m;
+    com.y_m = frame.body.com_y_m;
+    com.z_m = frame.body.com_z_m;
+    const Vector3 p = body_local_to_world(frame.body, com);
+    focus_x = p.x;
+    focus_y = -p.z;
+    focus_z = p.y;
+    state.dist_m = 0.95f;
+    state.pitch_deg = 22.0f;
+    state.yaw_deg = 34.0f;
  } else if (component_id == "mission") {
  const FramePlace* target = nullptr;
  for (const auto& place : frame.places) {

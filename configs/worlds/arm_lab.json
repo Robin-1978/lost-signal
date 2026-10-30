@@ -1,0 +1,52 @@
+{
+ "format": "lost-signal-world/2",
+ "initial_pose": {
+  "x_m": 0.0,
+  "y_m": 0.0,
+  "yaw_rad": 0.0,
+  "position_sigma_m": 0.10,
+  "heading_sigma_rad": 0.05
+ },
+ "boxes": [
+  {
+   "box_id": "arm_station",
+   "impact_material": "metal",
+   "x0": 2.0,
+   "y0": 1.0,
+   "x1": 2.8,
+   "y1": 2.0,
+   "height_m": 0.85
+  },
+  {
+   "box_id": "safety_barrier",
+   "impact_material": "polymer",
+   "x0": 1.0,
+   "y0": -1.25,
+   "x1": 1.35,
+   "y1": -0.45,
+   "height_m": 0.65
+  },
+  {
+   "box_id": "arm_calibration_gate",
+   "impact_material": "glass",
+   "x0": 1.1,
+   "y0": 0.70,
+   "x1": 1.2,
+   "y1": 1.30,
+   "height_m": 1.10
+  }
+ ],
+ "places": [
+  {
+   "place_id": "arm_calibration_gate",
+   "x_m": 0.25,
+   "y_m": 0.0,
+   "yaw_rad": 0.0
+  }
+ ],
+ "materials": [],
+ "zones": [],
+ "terrain": [],
+ "slabs": [],
+ "environment": []
+}

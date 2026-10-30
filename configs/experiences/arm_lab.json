@@ -1,0 +1,51 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "arm_lab",
+ "title": "ARM LAB: JOINTS, TORQUE, AND CONTACT",
+ "subtitle": "Drive to the calibration gate, then inspect a four-joint arm whose pose comes from the physical plant.",
+ "files": {
+  "map": "../worlds/arm_lab.json",
+  "scene": "../worlds/arm_lab.scene.json",
+  "robot": "../robot/ro6_arm.json",
+  "sim": "../sim/default.json"
+ },
+ "objectives": ["arm_calibration_gate"],
+ "time_limit_steps": 1400,
+ "briefing": [
+  "MISSION: reach the calibration gate with zero collisions and settle the chassis.",
+  "INSPECT: the four arm links are separate MuJoCo bodies; each mesh is bound to its live joint frame.",
+  "PROVE: joint axes, effort, encoder feedback, COM, and contact are engineering evidence, not shortcuts into ROBOT."
+ ],
+ "intro": {
+  "shots": [
+   {"component_id":"arm_joint_1","title":"THE BASE OWNS THE ARM ROOT","caption":"The arm base is mounted from the robot profile. Its first joint origin and axis are part of the same physical model as the drive wheels.","duration_s":1.7},
+   {"component_id":"arm_joint_1","title":"EACH LINK HAS A REAL JOINT","caption":"The upper arm follows its MuJoCo body and joint pose. The viewer never integrates a decorative angle from wall-clock time.","duration_s":1.7},
+   {"component_id":"arm_joint_4","title":"THE TOOL RESPONDS TO EFFORT","caption":"Operator effort is bounded, expires through the same watchdog, and is checked against encoder freshness before reaching the plant.","duration_s":1.7},
+   {"component_id":"mission","title":"ARRIVAL IS TWO INDEPENDENT VERDICTS","caption":"ROBOT decides from measurements and estimates. SIM separately checks physical clearance, contact, and the settled stop.","duration_s":1.7}
+  ]
+ },
+ "walkaround": [
+  {"component_id":"arm_joint_1","title":"SHOULDER JOINT / AXIS","lesson":"The first link starts at the configured arm base. Its axis and pose are read directly from MuJoCo.","required":false},
+  {"component_id":"arm_joint_2","title":"ELBOW JOINT / LOAD","lesson":"Joint damping and torque limits are plant parameters. A visual link cannot move without the simulated joint responding.","required":false},
+  {"component_id":"arm_joint_4","title":"TOOL / ENCODER FEEDBACK","lesson":"The tool is the fourth joint link. Real hardware uses the same typed arm encoder and effort contract.","required":false},
+  {"component_id":"com","title":"COM AND CONTACT","lesson":"Engineering view can show center of mass, collision geometry, joint axes, and live contact normals. These remain SIM evidence.","required":false}
+ ],
+ "prediction": {
+  "question":"What should happen when arm effort is removed while the arm is moving?",
+  "choices":[
+   {"choice_id":"settle","label":"The links coast and settle under damping and gravity","explanation":"The plant applies the configured torque limits, damping, gravity, and contacts. The renderer only reads the resulting joint poses.","evidence_rule":"independent_acceptance"},
+   {"choice_id":"teleport","label":"The viewer snaps each link to a target angle","explanation":"A draw-time animation would violate the MuJoCo pose contract and is not an accepted result.","evidence_rule":"sim_rejected"},
+   {"choice_id":"incomplete","label":"The arm lesson has no physical evidence","explanation":"A run without a terminal mission or usable feedback is incomplete evidence.","evidence_rule":"incomplete"}
+  ]
+ },
+ "running_prompt":"Use Engineering view to inspect joint axes, COM, contacts, and encoder feedback. In sandbox mode H enables chassis/arm operator input: I/K, O/L, P/;, [/'].",
+ "debrief": {
+  "success_title":"ARM PHYSICS RECORDED",
+  "failure_title":"ARM SAFETY GATE FAILED",
+  "lessons":[
+   "A manipulator is an articulated physical system: link geometry, joint axis, torque, damping, COM, and contact all matter.",
+   "The renderer consumes MuJoCo body and joint read-back; it does not invent a second arm state.",
+   "ROBOT receives encoder measurements and accepted commands, never simulator contact truth or score."
+  ]
+ }
+}

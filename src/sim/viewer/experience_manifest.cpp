@@ -465,7 +465,15 @@ bool load_experience_manifest(const std::string& path,
  }
  shot.duration_s = duration->as_num();
  total_duration_s += shot.duration_s;
+ const auto is_live_component = [](const std::string& id) {
+   if (id == "com") return true;
+   constexpr const char* prefix = "arm_joint_";
+   if (id.rfind(prefix, 0) != 0 || id.size() != 11) return false;
+   const char ordinal = id.back();
+   return ordinal >= '1' && ordinal <= '4';
+ };
  const bool known_component = shot.component_id == "mission" ||
+ is_live_component(shot.component_id) ||
  std::any_of(parsed.walkaround.begin(), parsed.walkaround.end(),
  [&](const ExperienceWalkaroundStop& stop) {
  return stop.component_id == shot.component_id;

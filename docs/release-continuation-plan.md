@@ -30,7 +30,7 @@
 2. **F3 物理/渲染自动验收**：已完成轮心接地、joint axis、COM/contact、collision geometry 和固定子步 timestep-sensitivity gate；资产 grounding point 现在必须落在声明 bounds 内。
 3. **D2–D4 视觉发布债务**：D2 地面材质、D3 音频清理/登记与 D4 模型来源审计已完成；继续进入 E1/E2 教学内容。
 4. **E1/E2/C4 教学内容**：E1 的轮胎、LiDAR、算力装配 registry 已完成并接入 assembly_lab；E2 本地 profile/星级/知识卡存储第一切已完成，继续接 Viewer 的章节进度和知识卡界面以及四底盘/算法差异课程。成对 replay/report 导出基础已存在，后续补教学存档界面；扩展 typed experiment registry 时不得把 SIM truth 暴露给 ROBOT。
-5. **动态 actor/机械臂课程扩展**：动态 actor 横穿教学章及其匿名 track/预测/让行回归已完成；下一子项是继续使用 MuJoCo body/joint/contact 驱动机械臂课程，补关节轴、碰撞体、COM 和真实接触效果的工程验收。
+5. **动态 actor/机械臂课程扩展**：动态 actor 横穿教学章及其匿名 track/预测/让行回归已完成；机械臂课程第一切已完成：`arm_lab` 使用同一 `ScenarioSession`/ROBOT seam，四个 link 的 GLB 以 MuJoCo joint frame 为原点、沿配置的局部 +X 装配，工程视图可检查关节轴、碰撞体、COM、接触和 encoder feedback。新增的 `arm_experience` 回归证明 operator effort 先经过 ROBOT 校验/watchdog 再进入物理关节，清除 effort 后由重力/阻尼自然收敛；SIM 真值没有进入 ROBOT。后续只扩展真实抓取/负载课程，不另造 draw-time 姿态或关卡特化算法。
 
 ### 实机外部验收队列
 
@@ -184,6 +184,11 @@
  新增 Signal Town 五目标、工业 20 万平方米和连续坡/低抓地三个 manifest；它们复用
  既有 Runtime，不增加关卡专用算法或真值入口，缺少装饰场景的地图明确使用物理几何
  fallback。manifest 回归现在会解析这三个入口并验证 map/scene 引用。
+- 机械臂视觉资产与课程已落地：`assets/models/robots/ro6/{turret,upper_arm,forearm,tool}.glb`
+  由 `tools/modeling/build_arm_assets.py` 可重复生成。每个 mesh 的 manifest bounds、pivot、
+  link binding、材质角色和内容 hash 都经过 Blender 资产审计；上游 link 不再沿用竖直旧装饰
+  mesh，而是从关节原点沿 MuJoCo 的局部 +X 延伸。`arm_lab` 的 `arm_experience` 测试覆盖
+  四个 live link pose、joint axis、operator effort、clear/settle 和零碰撞终态。
 - 代码清理阶段消除了路线流水线中两个“成功后仍写无效状态”的死赋值，简化 DWA
  非完整分支的恒真条件，并让 JSON 对象查找不产生未使用结构化绑定。`cppcheck`
  对 `src/robot` 的剩余提示均为可读性层面的 `std::find_if/count_if` 建议或 Eigen
