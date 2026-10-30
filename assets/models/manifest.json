@@ -562,7 +562,7 @@
         ]
       },
       "content_hash": "fnv1a64:acb8cec0cb29e2f3",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:environment/research_base/cable_reel.glb",
       "pivot_semantic": "world_fixture",
       "asset_to_link_translation_m": [
@@ -627,7 +627,7 @@
         ]
       },
       "content_hash": "fnv1a64:1e712ba3c7831aad",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:environment/research_base/control_console.glb",
       "pivot_semantic": "world_fixture",
       "asset_to_link_translation_m": [
@@ -692,7 +692,7 @@
         ]
       },
       "content_hash": "fnv1a64:692ad34899def474",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:environment/research_base/maintenance_crates.glb",
       "pivot_semantic": "world_fixture",
       "asset_to_link_translation_m": [
@@ -757,7 +757,7 @@
         ]
       },
       "content_hash": "fnv1a64:f086f7cd20bce447",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:environment/research_base/plant_cluster.glb",
       "pivot_semantic": "world_fixture",
       "asset_to_link_translation_m": [
@@ -822,7 +822,7 @@
         ]
       },
       "content_hash": "fnv1a64:22726e7a2b97dd9a",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:environment/research_base/rubble_cluster.glb",
       "pivot_semantic": "world_fixture",
       "asset_to_link_translation_m": [
@@ -886,7 +886,7 @@
         ]
       },
       "content_hash": "fnv1a64:a6664cc3343f17d2",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:environment/research_base/service_light.glb",
       "pivot_semantic": "world_fixture",
       "asset_to_link_translation_m": [
@@ -951,7 +951,7 @@
         ]
       },
       "content_hash": "fnv1a64:e3e492f1bb7aaab5",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:environment/research_base/wall_panel.glb",
       "pivot_semantic": "world_fixture",
       "asset_to_link_translation_m": [
@@ -1016,7 +1016,7 @@
         ]
       },
       "content_hash": "fnv1a64:97b3082d3db3eb50",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:environment/research_base/warning_strip.glb",
       "pivot_semantic": "world_fixture",
       "asset_to_link_translation_m": [
@@ -1468,7 +1468,7 @@
         ]
       },
       "content_hash": "fnv1a64:ea22714e0a7613c5",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/caster_fork.glb",
       "pivot_semantic": "caster_swivel_joint",
       "asset_to_link_translation_m": [
@@ -1529,7 +1529,7 @@
       "reference_radius_m": 0.055,
       "reference_half_width_m": 0.048,
       "content_hash": "fnv1a64:acb46af493b8ca13",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/caster_wheel.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -1594,7 +1594,7 @@
         ]
       },
       "content_hash": "fnv1a64:56272edb34f57131",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/chassis.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "base_link",
       "asset_to_link_translation_m": [
@@ -1653,7 +1653,7 @@
         ]
       },
       "content_hash": "fnv1a64:b7a515cb30134141",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/compute_light.glb",
       "pivot_semantic": "base_link",
       "asset_to_link_translation_m": [
@@ -1712,7 +1712,7 @@
         ]
       },
       "content_hash": "fnv1a64:db9f26f32c28d1d7",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/compute_performance.glb",
       "pivot_semantic": "base_link",
       "asset_to_link_translation_m": [
@@ -1771,7 +1771,7 @@
         ]
       },
       "content_hash": "fnv1a64:435a65484a0618d3",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/lidar_fast.glb",
       "pivot_semantic": "sensor_frame",
       "asset_to_link_translation_m": [
@@ -1835,7 +1835,7 @@
         ]
       },
       "content_hash": "fnv1a64:640fbd0723915617",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/lidar_long.glb",
       "pivot_semantic": "sensor_frame",
       "asset_to_link_translation_m": [
@@ -1899,7 +1899,7 @@
         ]
       },
       "content_hash": "fnv1a64:6becd05253201c54",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/lidar_standard.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "sensor_frame",
       "asset_to_link_translation_m": [
@@ -1965,7 +1965,7 @@
       "reference_radius_m": 0.1,
       "reference_half_width_m": 0.051,
       "content_hash": "fnv1a64:c718a9eccff9494a",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/wheel_eco.glb",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -2032,7 +2032,7 @@
       "reference_radius_m": 0.1,
       "reference_half_width_m": 0.073,
       "content_hash": "fnv1a64:b9b608270572968b",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/wheel_grip.glb",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -2099,7 +2099,7 @@
       "reference_radius_m": 0.1,
       "reference_half_width_m": 0.061,
       "content_hash": "fnv1a64:4a13e125db9a9d70",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/wheel_standard.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -2165,7 +2165,7 @@
         ]
       },
       "content_hash": "fnv1a64:6abbbd5416e59b36",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro2/chassis.glb",
       "pivot_semantic": "base_link",
       "asset_to_link_translation_m": [
@@ -2224,7 +2224,7 @@
         ]
       },
       "content_hash": "fnv1a64:f1cd8d5ae4c2d37f",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro2/front_left_knuckle.glb",
       "pivot_semantic": "steer_joint",
       "asset_to_link_translation_m": [
@@ -2283,7 +2283,7 @@
         ]
       },
       "content_hash": "fnv1a64:4ac99f3fe5bac69b",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro2/front_right_knuckle.glb",
       "pivot_semantic": "steer_joint",
       "asset_to_link_translation_m": [
@@ -2342,7 +2342,7 @@
         ]
       },
       "content_hash": "fnv1a64:e71f1eb8c5afcdbe",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/hull.glb",
       "pivot_semantic": "base_link",
       "asset_to_link_translation_m": [
@@ -2401,7 +2401,7 @@
         ]
       },
       "content_hash": "fnv1a64:2c71745fe57ce2ae",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/hull.gltf",
       "pivot_semantic": "source_reference",
       "asset_to_link_translation_m": [
@@ -2458,7 +2458,7 @@
         ]
       },
       "content_hash": "fnv1a64:4973cb852733ce59",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/track.glb",
       "pivot_semantic": "track_link",
       "asset_to_link_translation_m": [
@@ -2522,7 +2522,7 @@
         ]
       },
       "content_hash": "fnv1a64:a3c3815bf2a45717",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/track_pad.gltf",
       "pivot_semantic": "source_reference",
       "asset_to_link_translation_m": [
@@ -2579,7 +2579,7 @@
         ]
       },
       "content_hash": "fnv1a64:aee8a8d91bafa4db",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/track_road_grip.glb",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -2644,7 +2644,7 @@
         ]
       },
       "content_hash": "fnv1a64:4ca3b73ad0f8d7c1",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/track_road_low_resistance.glb",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -2709,7 +2709,7 @@
         ]
       },
       "content_hash": "fnv1a64:fbd1fdb1441faa28",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/track_road_sand.glb",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -2774,7 +2774,7 @@
         ]
       },
       "content_hash": "fnv1a64:2423dac037da6b10",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/track_road_standard.glb",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -2839,7 +2839,7 @@
         ]
       },
       "content_hash": "fnv1a64:336c1edb2c07657d",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro4/chassis.glb",
       "pivot_semantic": "base_link",
       "asset_to_link_translation_m": [
@@ -2900,7 +2900,7 @@
       "reference_radius_m": 0.05,
       "reference_half_width_m": 0.06,
       "content_hash": "fnv1a64:ef2070ae3086e70e",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro4/swerve_module.glb",
       "pivot_semantic": "steer_joint",
       "asset_to_link_translation_m": [
@@ -2965,7 +2965,7 @@
         ]
       },
       "content_hash": "fnv1a64:d94b784a1cd0808d",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro5/chassis.glb",
       "pivot_semantic": "base_link",
       "asset_to_link_translation_m": [
@@ -3026,7 +3026,7 @@
       "reference_radius_m": 0.072,
       "reference_half_width_m": 0.0405,
       "content_hash": "fnv1a64:6b2dee1ae230452d",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro5/roller_left.glb",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -3093,7 +3093,7 @@
       "reference_radius_m": 0.072,
       "reference_half_width_m": 0.0405,
       "content_hash": "fnv1a64:4fa488ec775a64cb",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro5/roller_right.glb",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
@@ -3158,7 +3158,7 @@
         ]
       },
       "content_hash": "fnv1a64:6f9ad2f2ffa2598e",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro6/forearm.glb",
       "pivot_semantic": "arm_joint",
       "asset_to_link_translation_m": [
@@ -3217,7 +3217,7 @@
         ]
       },
       "content_hash": "fnv1a64:1d278850d36da9c0",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro6/tool.glb",
       "pivot_semantic": "arm_joint",
       "asset_to_link_translation_m": [
@@ -3276,7 +3276,7 @@
         ]
       },
       "content_hash": "fnv1a64:fd173275c446f2cd",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro6/turret.glb",
       "pivot_semantic": "arm_joint",
       "asset_to_link_translation_m": [
@@ -3335,7 +3335,7 @@
         ]
       },
       "content_hash": "fnv1a64:28a550801db73cd2",
-      "license": "NOASSERTION",
+      "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro6/upper_arm.glb",
       "pivot_semantic": "arm_joint",
       "asset_to_link_translation_m": [

@@ -28,7 +28,7 @@
 
 1. **F4 传感器 realism profile**：已完成，见下方阶段记录。
 2. **F3 物理/渲染自动验收**：已完成轮心接地、joint axis、COM/contact、collision geometry 和固定子步 timestep-sensitivity gate；资产 grounding point 现在必须落在声明 bounds 内。
-3. **D2–D4 视觉发布债务**：D2 地面材质与 D3 音频清理/登记已完成；最后处理 asset manifest 中的 `NOASSERTION` 来源项。
+3. **D2–D4 视觉发布债务**：D2 地面材质、D3 音频清理/登记与 D4 模型来源审计已完成；继续进入 E1/E2 教学内容。
 4. **E1/E2/C4 教学内容**：把轮胎、LiDAR、算力等装配选择映射为 typed 配置；加入本地 profile、星级、知识卡、章节进度、成对 replay/report 导出和四底盘/算法差异课程。扩展 typed experiment registry 时不得把 SIM truth 暴露给 ROBOT。
 5. **动态 actor/机械臂课程扩展**：继续使用 MuJoCo body/joint/contact 驱动，新增工程视图所需的关节轴、碰撞体、COM 和真实接触效果。
 
@@ -271,7 +271,13 @@
 - 删除了未被 Viewer 加载的五个旧事件音和孤立 `cues.json`；当前 WAV 库与 `ViewerAudio` 的九个加载端点一一对应，并由 `tests/test_audio_assets` 检查死文件不会回流。
 - 增加 `assets/audio/manifest.json` 与 `LICENSES.md`。机械声仍只消费完成 SIM step 的接触、打滑、负载、制动和冲量证据；新增的 `environment_bed.wav` 是低增益、确定性、无第三方录音的中性环境循环，不会进入 ROBOT、score 或物理输入。
 - 环境循环与四条机械循环共用暂停、回退、Turbo 和无音频设备的停止策略；`environment_loop_gain` 是 Viewer 配置项并受范围校验，不参与任务阈值。`physical_audio`、`viewer_audio` 和 `audio_assets` 定向回归通过后，单独提交本阶段。
-- D4 `assets/models/manifest.json` 的 `NOASSERTION` 仍保留为发布阻断项；未取得可核验的原始许可或完成重新建模前，不把历史资产改标成项目许可。
+- D4 模型来源审计已完成：39 个 legacy-main 条目均有仓库提交证据，根 `LICENSE`/`NOTICE` 已恢复，manifest 中 `NOASSERTION` 为 0；原始 `legacy-main:*` source artifact 保留，后续若发现外部来源必须替换为上游许可证。
+
+### D4 模型来源完成检查点（2026-10-30）
+
+- `assets/models/PROVENANCE.md` 记录审计范围、提交作者、保留的 legacy source artifact 和替换规则；`assets/models/LICENSES.md` 说明 Apache-2.0、CC0-1.0 与项目生成资产的适用关系。
+- 根 `LICENSE`、`NOTICE` 和 `THIRD_PARTY_NOTICES.md` 恢复到当前分支，模型 manifest 的 39 个历史 `NOASSERTION` 已依据仓库来源证据登记为 `Apache-2.0`，没有把任何未知第三方 URL 或许可证凭空填入。
+- `test_asset_manifest` 现在 fail closed 地拒绝 `NOASSERTION`，并继续验证 manifest 与 GLB/GLTF 库存一致；D2、D3、D4 形成独立视觉发布提交链。
 - 同场景 headless 1200 步为 6.40×/320.2 steps/s，ROBOT tick p99/max 9.249/18.929 ms。发布配置 `signal_town` 在 5901 步完成 5/5、0 碰撞，RTF 6.34×，ROBOT tick p99/max 6.432/14.146 ms。
 - 详细方法、环境与复现命令见 `docs/release-performance-2026-10-27.md`。
 - 阶段 4 已提交为 `fba2d87 test: verify accelerated simulation consistency`；当前 HEAD 为 `fba2d87`，分支相对远端领先 5 个提交。

@@ -189,11 +189,11 @@
 - **验收**：`assets/audio` 的九个 WAV 与代码加载端点一一对应，由 `tests/test_audio_assets` 门禁检查；新增环境循环有 `assets/audio/manifest.json` 与 `LICENSES.md` 来源/许可证登记。未引用的五个旧 WAV 与 `cues.json` 已删除。
 - **范围与依赖**：音频资产与 Viewer；无依赖。
 
-#### D4 资产来源债务清零 [P1]
+#### D4 资产来源债务清零 [P1]（已完成，2026-10-30）
 
 - **依据**：`assets/models/manifest.json` 53 项中 39 项为 `NOASSERTION`、8 项 `CC0-1.0`、6 项 `LicenseRef-LostSignal-Project`；设计文档 `:363` 写明发布资产包前必须清零这项来源债务；音频与贴图没有许可证登记（模型清单之外仅有 `assets/models/LICENSES.md` 与字体的 `assets/fonts/OFL.txt`）。
 - **方案**：逐项补来源（自制资产登记为 `LicenseRef-LostSignal-Project`，第三方资产登记实际许可证与来源）；为音频与贴图增加与模型同级的清单。
-- **验收**：manifest 中 `NOASSERTION` 为 0，并作为发布门禁；音频与贴图有等价登记。
+- **验收**：manifest 中 `NOASSERTION` 为 0，并由 `test_asset_manifest` 作为发布门禁；音频有 `assets/audio/manifest.json`/`LICENSES.md`，模型有 `PROVENANCE.md`/`LICENSES.md`，根许可证与第三方声明已恢复。
 - **范围与依赖**：资产元数据；无依赖。
 
 ### E. 新玩法

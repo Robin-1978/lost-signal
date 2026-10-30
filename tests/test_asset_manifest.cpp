@@ -69,6 +69,10 @@ int main() {
  if (!real_loaded) std::cerr << error << '\n';
  assert(real_loaded);
   assert(!manifest.assets().empty());
+ for (const auto& asset : manifest.assets()) {
+   // Release assets may not carry the old unverified provenance sentinel.
+   assert(asset.license != "NOASSERTION");
+ }
  const auto* worker = manifest.find("actors.worker");
  assert(worker != nullptr);
  assert(worker->animation_clips.size() == 1);
