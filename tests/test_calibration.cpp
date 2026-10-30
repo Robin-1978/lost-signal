@@ -119,6 +119,16 @@ int main() {
  nominal_chassis.profile_id = "ro1.nominal";
  assert(make_nominal_native_hardware_profile(description, nominal_chassis,
                                              nominal, &error));
+ assert(nominal.source == NativeHardwareProfileSource::kNominalCommissioning);
+ assert(nominal.calibration.wheel_radius_scale == 1.0);
+ assert(nominal.calibration.track_width_scale == 1.0);
+ assert((nominal.calibration.imu_accel_bias_mps2 ==
+         std::array<double, 3>{0.0, 0.0, 0.0}));
+ assert((nominal.calibration.imu_gyro_bias_radps ==
+         std::array<double, 3>{0.0, 0.0, 0.0}));
+ assert(nominal.calibration.lidar_time_offset_s == 0.0);
+ assert(nominal.calibration.sample_count == 0);
+ assert(nominal.calibration.input_digest.rfind("nominal:", 0) == 0);
  NativeHardwareProfileRequirements nominal_requirements;
  nominal_requirements.calibration.robot_id = description.robot_id;
  nominal_requirements.calibration.robot_description_hash =
