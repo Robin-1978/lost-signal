@@ -551,6 +551,7 @@ int main(int argc, char** argv) {
  std::fprintf(stderr,
  "step=%ld objective=%s goal=%s constraint=%s reason=%s action=%s "
  "v=%.2f w=%.2f "
+ "route=%zu/%zu gear=%d cusp=%d/%d cusp_d=%.2f "
  "truth=(%.2f,%.2f,%.2f,z=%.2f) est=(%.2f,%.2f,%.2f,z=%.2f,v=%.2f,w=%.2f) "
  "clr=%.2f safety=%s loc=%s "
  "collision=%s/%s/%s dyn_clr=%.2f localized=%s "
@@ -561,8 +562,15 @@ int main(int argc, char** argv) {
  session->current_goal().state ==
  robot::iface::GoalState::kActive ? "active" : "idle",
  ev.constraint_code.c_str(), ev.reason_code.c_str(), ev.action_code.c_str(),
- ev.target_speed_mps, ev.target_yaw_rate_radps, truth.body_x_m,
- truth.body_y_m, truth.body_yaw_rad, truth.body_z_m, diag.estimate.x_m,
+ ev.target_speed_mps, ev.target_yaw_rate_radps,
+ static_cast<std::size_t>(diag.evidence.route_segment),
+ static_cast<std::size_t>(diag.evidence.route_point_count),
+ diag.evidence.requested_gear,
+ diag.evidence.gear_change_pending ? 1 : 0,
+ diag.evidence.gear_change_braking_armed ? 1 : 0,
+ diag.evidence.gear_change_endpoint_distance_m,
+ truth.body_x_m, truth.body_y_m, truth.body_yaw_rad, truth.body_z_m,
+ diag.estimate.x_m,
  diag.estimate.y_m, diag.estimate.yaw_rad, diag.estimate.z_m,
  diag.odometry_estimate.forward_mps, diag.odometry_estimate.yaw_rate_radps,
  recorded == nullptr ? 999.0 : recorded->judge.static_clearance_m,

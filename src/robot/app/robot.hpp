@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -38,6 +40,11 @@ class IRobot {
  // deployment input with uncertainty, never inferred from simulator truth.
  virtual void set_initial_pose(double x_m, double y_m, double yaw_rad,
  double position_sigma_m, double heading_sigma_rad) = 0;
+  // Typed articulated-arm operator input. Implementations must apply the
+  // same watchdog and fresh encoder gate as their native actuator path.
+  virtual bool set_operator_arm_effort(
+      std::uint8_t count, const std::array<double, 4>& effort) = 0;
+  virtual void clear_operator_arm_effort() = 0;
   // Async goal request: resolves place_id through the map provider, and —
   // only once the executive accepts — arms the coordinator route, returning
   // a handle immediately. Unknown ids fail closed with an invalid handle

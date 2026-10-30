@@ -728,6 +728,15 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  std::sqrt(config_.lateral_accel_mps2 /
  std::abs(target_curvature)));
  }
+
+ // The final point is already behind the current travel direction while the
+ // route still requests the same gear. Continuing to reward route progress
+ // here makes an Ackermann base drive farther past the pose before the next
+ // global replan can choose a reverse connector. Hold the route-motion
+ // critic to the reachable braking floor for this cycle; the existing
+ // response/deceleration envelope still determines how much speed can be
+ // removed, and the next cycle consumes route_replan_requested.
+ if (terminal_behind_active_gear) tracking_speed_limit_mps = 0.0;
  }
  // Cross-track reserve is a stopping-distance budget. Account for actuator
  // response delay, then solve d = v*t_response + v^2/(2*a) for v. This
@@ -1128,7 +1137,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // in the ranked family, so the validator can select it after rejecting
  // moving proposals. An armed gear-change cusp is the one deliberate stop.
  const bool prioritize_route_motion =
- route_motion_required && !(gear_change && cusp_braking_armed_ &&
+ route_motion_required && !terminal_behind_active_gear &&
+ !(gear_change && cusp_braking_armed_ &&
  endpoint_distance_m <= cusp_capture_m);
  const double minimum_sample_speed_mps = std::min(
  v_max, std::max(1e-3, config_.velocity_sample_step_mps));

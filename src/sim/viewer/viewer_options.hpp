@@ -10,6 +10,9 @@ inline constexpr double kDefaultSandboxHistorySeconds = 120.0;
 
 struct ViewerOptions {
   std::string robot_path;
+  // Named shortcut for the standard profiles under configs/robot.
+  // --robot remains available for a custom, fully authored profile.
+  std::string chassis_kind;
   std::string sim_path;
   std::string map_path;
   std::string assets_path;

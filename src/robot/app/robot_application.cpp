@@ -115,7 +115,40 @@ core::Status RobotApplication::activate() {
   return bringup_.activate_all();
 }
 
-void RobotApplication::shutdown() { bringup_.cleanup_all(); }
+void RobotApplication::shutdown() {
+  clear_operator_arm_effort();
+  bringup_.cleanup_all();
+}
+
+bool RobotApplication::set_operator_arm_effort(
+    std::uint8_t count, const std::array<double, 4>& effort) {
+  if (count > 4) return false;
+  for (std::uint8_t i = 0; i < count; ++i) {
+    if (!std::isfinite(effort[i]) || effort[i] < -1.0 || effort[i] > 1.0) {
+      return false;
+    }
+  }
+  for (std::uint8_t i = count; i < effort.size(); ++i) {
+    if (effort[i] != 0.0) return false;
+  }
+  if (count == 0) {
+    clear_operator_arm_effort();
+    return true;
+  }
+  operator_arm_active_ = true;
+  operator_arm_count_ = count;
+  operator_arm_effort_ = effort;
+  ++operator_arm_generation_;
+  return true;
+}
+
+void RobotApplication::clear_operator_arm_effort() {
+  operator_arm_active_ = false;
+  operator_arm_count_ = 0;
+  operator_arm_effort_.fill(0.0);
+  operator_arm_last_update_ns_ = core::kInvalidTime;
+  ++operator_arm_generation_;
+}
 
 iface::GoalHandle RobotApplication::request_goal(
     const iface::TaskRequest& req) {
@@ -296,6 +329,29 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
  iface::ChassisControlOwner::kHostMotionLoop
  ? chassis_->to_actuator(body, fb, now_ns)
  : iface::ActuatorCommand::SafeStop(now_ns, chassis_->actuator_mode());
+ // Arm effort is a separate typed execution domain from chassis kinematics.
+ // It is deliberately merged only after the chassis has produced its
+ // fail-closed actuator command: a stale arm encoder never turns a safe
+ // chassis stop into an unbounded manipulator command.
+ if (operator_arm_active_) {
+   if (operator_arm_generation_ != operator_arm_consumed_generation_) {
+     operator_arm_consumed_generation_ = operator_arm_generation_;
+     operator_arm_last_update_ns_ = now_ns;
+   }
+   const bool arm_watchdog_fresh =
+       operator_arm_last_update_ns_ != core::kInvalidTime &&
+       now_ns >= operator_arm_last_update_ns_ &&
+       now_ns - operator_arm_last_update_ns_ <=
+           iface::kDefaultCommandWatchdogNs;
+   const bool arm_feedback_fresh =
+       feedback_fresh && fb.arm_count >= operator_arm_count_;
+   if (arm_watchdog_fresh && arm_feedback_fresh) {
+     act.arm_count = operator_arm_count_;
+     act.arm = operator_arm_effort_;
+   } else if (!arm_watchdog_fresh) {
+     clear_operator_arm_effort();
+   }
+ }
  last_body_command_ = body;
   channel_.publish_command(body);
   channel_.publish_actuator(act);

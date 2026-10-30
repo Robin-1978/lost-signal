@@ -29,6 +29,13 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
  app_.set_initial_pose(x_m, y_m, yaw_rad, position_sigma_m,
  heading_sigma_rad);
  }
+ bool set_operator_arm_effort(
+     std::uint8_t count, const std::array<double, 4>& effort) override {
+   return app_.set_operator_arm_effort(count, effort);
+ }
+ void clear_operator_arm_effort() override {
+   app_.clear_operator_arm_effort();
+ }
 
   ::lost_signal::robot::iface::GoalHandle request_goal(
       const ::lost_signal::robot::iface::TaskRequest& req) override {

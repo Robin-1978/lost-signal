@@ -1,0 +1,24 @@
+{
+ "format": "lost-signal-world/2",
+ "survey": {"resolution_m": 0.1},
+ "initial_pose": {
+  "x_m": 0.0,
+  "y_m": 0.0,
+  "yaw_rad": 0.0,
+  "position_sigma_m": 0.35,
+  "heading_sigma_rad": 0.05
+ },
+ "boxes": [
+  {"box_id":"east_wall_south","x0":5.0,"y0":-6.0,"x1":5.3,"y1":-0.8,"height_m":1.5},
+  {"box_id":"east_wall_north","x0":5.0,"y0":0.8,"x1":5.3,"y1":6.0,"height_m":1.5},
+  {"box_id":"goal_wall","x0":9.5,"y0":-2.0,"x1":9.8,"y1":2.0,"height_m":1.5}
+ ],
+ "places": [
+  {"place_id":"dynamic_gate","x_m":8.0,"y_m":0.0,"yaw_rad":0.0}
+ ],
+ "materials": [],
+ "zones": [],
+ "terrain": [],
+ "slabs": [],
+ "environment": []
+}

@@ -29,6 +29,37 @@ int main() {
     assert(options.initial_physics_overlay);
   }
   {
+    const char* argv[] = {"sim_viewer", "--chassis", "tracked", "--map",
+                          "town.json"};
+    lost_signal::sim::viewer::ViewerOptions options;
+    std::string error;
+    assert(lost_signal::sim::viewer::parse_viewer_options(
+        static_cast<int>(std::size(argv)), const_cast<char**>(argv), options,
+        &error));
+    assert(error.empty());
+    assert(options.chassis_kind == "tracked");
+    assert(options.map_path == "town.json");
+  }
+  {
+    const char* argv[] = {"sim_viewer", "--chassis", "hovercraft"};
+    lost_signal::sim::viewer::ViewerOptions options;
+    std::string error;
+    assert(!lost_signal::sim::viewer::parse_viewer_options(
+        static_cast<int>(std::size(argv)), const_cast<char**>(argv), options,
+        &error));
+    assert(error.find("--chassis") != std::string::npos);
+  }
+  {
+    const char* argv[] = {"sim_viewer", "--robot", "custom.json",
+                          "--chassis", "swerve"};
+    lost_signal::sim::viewer::ViewerOptions options;
+    std::string error;
+    assert(!lost_signal::sim::viewer::parse_viewer_options(
+        static_cast<int>(std::size(argv)), const_cast<char**>(argv), options,
+        &error));
+    assert(error.find("mutually exclusive") != std::string::npos);
+  }
+  {
     const char* argv[] = {"sim_viewer", "--rate", "64.1"};
     lost_signal::sim::viewer::ViewerOptions options;
     std::string error;

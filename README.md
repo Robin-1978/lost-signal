@@ -108,7 +108,35 @@ that uses every named place in that world:
 ./build/sim_viewer --map configs/worlds/signal_town_big.json --3d
 ./build/sim_viewer --experience configs/experiences/ice_lab.json --3d
 ./build/sim_viewer --chapter proving_ground --3d --maximized
+./build/sim_viewer --chapter dynamic_safety_lab --3d
 ```
+
+工程模式可以直接选择标准底盘配置。`--chassis` 只接受底盘种类名，仍然
+使用同一份 `configs/robot/*.json` 硬件契约；需要自定义轮距、质量或传感器
+外参时再使用 `--robot FILE`：
+
+```sh
+./build/sim_viewer --3d --map configs/worlds/signal_town.json \
+  --chassis differential
+./build/sim_viewer --3d --map configs/worlds/signal_town.json \
+  --chassis ackermann
+./build/sim_viewer --3d --map configs/worlds/signal_town.json \
+  --chassis tracked
+./build/sim_viewer --3d --map configs/worlds/signal_town.json \
+  --chassis mecanum
+./build/sim_viewer --3d --map configs/worlds/signal_town.json \
+  --chassis swerve
+```
+
+也可以直接运行底盘对照课程：
+
+```sh
+./build/sim_viewer --chapter chassis_lab --3d
+```
+
+该课程先运行差速基线；完成后在复盘页点击 `RUN VISIBLE VARIANT`（或按
+`A`）运行同一路线的 Ackermann 变体。`--chassis` 与 `--robot` 不能同时
+使用，避免出现两个互相冲突的硬件契约。
 
 The complete Viewer catalog is discoverable without opening a window:
 

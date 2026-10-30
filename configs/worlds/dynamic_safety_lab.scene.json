@@ -1,0 +1,15 @@
+{
+ "format":"lost-signal-scene/1",
+ "scene_id":"dynamic_safety_lab",
+ "surface_only_max_height_m":0.10,
+ "camera":{"distance_m":6.2,"yaw_deg":38.0,"pitch_deg":31.0,"target_height_m":0.25,"follow_smoothing_s":0.32,"lookahead_s":0.80,"speed_distance_gain_s":0.60,"minimum_distance_m":2.8,"maximum_distance_m":12.0},
+ "lighting":{"direction_xyz":[-0.52,0.28,-1.0],"directional_rgba":[255,228,194,255],"ambient_rgba":[56,75,83,255],"fog_rgba":[15,27,33,255],"directional_intensity":1.12,"ambient_intensity":0.84,"fog_start_m":16.0,"fog_end_m":36.0,"exposure":0.98,"bloom_threshold":0.78,"bloom_strength":0.24,"vignette_strength":0.11,"shadow_map_resolution":2048,"shadow_extent_m":24.0,"shadow_strength":0.64},
+ "floor":{"material_id":"paved","base_rgba":[42,52,55,255],"grid_rgba":[88,111,113,105],"grid_spacing_m":1.0},
+ "instances":[
+  {"instance_id":"east_wall_south_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"east_wall_south","position_m":[5.15,-3.4,0.0],"scale":[2.24,1.0,1.0],"yaw_deg":90.0},
+  {"instance_id":"east_wall_north_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"east_wall_north","position_m":[5.15,3.4,0.0],"scale":[2.24,1.0,1.0],"yaw_deg":90.0},
+  {"instance_id":"goal_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"goal_wall","position_m":[9.65,0.0,0.0],"scale":[1.71,1.0,1.0],"yaw_deg":90.0},
+  {"instance_id":"start_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[0.0,0.0,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
+  {"instance_id":"gate_marker","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[8.0,0.0,0.004],"scale":[0.9,0.9,1.0],"yaw_deg":0.0}
+ ]
+}

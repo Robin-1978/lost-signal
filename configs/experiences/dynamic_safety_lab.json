@@ -1,0 +1,50 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "dynamic_safety_lab",
+ "title": "DYNAMIC SAFETY LAB: MEASURE, PREDICT, YIELD",
+ "subtitle": "Learn how a robot reacts to anonymous moving actors without receiving their routes or identities.",
+ "files": {
+  "map": "../worlds/dynamic_safety_lab.json",
+  "scene": "../worlds/dynamic_safety_lab.scene.json",
+  "robot": "../robot/differential.json",
+  "sim": "../sim/default.json"
+ },
+ "objectives": ["dynamic_gate"],
+ "time_limit_steps": 2400,
+ "briefing": [
+  "MISSION: reach the first town gate with zero physical contact.",
+  "OBSERVE: moving vehicles are anonymous ROBOT tracks built from timed sensor measurements.",
+  "PROVE: prediction proposes a safe action, while Validator and Safety independently reject unsafe sweeps."
+ ],
+ "intro": {
+  "shots": [
+   {"component_id":"forklift","title":"THE ACTOR IS NOT AN ORACLE","caption":"SIM owns the actor body and authored route for scoring. ROBOT receives only anonymous measurements and its own dynamic tracks.","duration_s":1.5},
+   {"component_id":"lidar","title":"PREDICTION STARTS WITH TIMESTAMPS","caption":"A moving obstacle is forecast from measured motion and uncertainty. Future script waypoints never cross the ROBOT boundary.","duration_s":1.5},
+   {"component_id":"chassis","title":"YIELDING IS A VALID COMMAND","caption":"A safe hold or detour is selected through the same local map, swept envelope, Validator, and Safety chain as every other command.","duration_s":1.5},
+   {"component_id":"mission","title":"REACH THE GATE SAFELY","caption":"The mission verdict combines ROBOT completion with independent SIM contact and physical arrival evidence.","duration_s":1.5}
+  ]
+ },
+ "walkaround": [
+  {"component_id":"forklift","title":"ANONYMOUS MOVING ACTOR","lesson":"The rendered actor pose comes from MuJoCo body state, but ROBOT sees a measurement-derived track rather than an actor ID or route script.","required":true},
+  {"component_id":"lidar","title":"TIMED RANGE MEASUREMENTS","lesson":"Prediction quality depends on acquisition time, local geometry, and uncertainty; stale or missing scans must trigger a safe response.","required":true},
+  {"component_id":"chassis","title":"LOCAL SAFETY CONTRACT","lesson":"The local costmap and swept footprint validate every candidate before the chassis receives a command.","required":false}
+ ],
+ "prediction": {
+  "question": "What should the robot do when an anonymous actor approaches the planned sweep?",
+  "choices": [
+   {"choice_id":"yield_and_resume","label":"Slow or hold, then resume after measured clearance is safe","explanation":"The action is based on current tracks, prediction uncertainty, and the local safety envelope.","evidence_rule":"independent_acceptance"},
+   {"choice_id":"use_route_script","label":"Use the actor's authored route to pass first","explanation":"SIM actor identity and future script stay outside ROBOT.","evidence_rule":"sim_rejected"},
+   {"choice_id":"drive_through","label":"Keep speed because the map looks clear","explanation":"A static map cannot replace current dynamic measurements and the safety monitor.","evidence_rule":"incomplete"}
+  ]
+ },
+ "running_prompt": "Watch anonymous tracks, prediction horizon, local costmap, swept envelope, and the final safety command.",
+ "debrief": {
+  "success_title": "DYNAMIC SAFETY VERIFIED",
+  "failure_title": "DYNAMIC ROUTE NEEDS REVIEW",
+  "lessons": [
+   "Actor identities and future scripts remain SIM-only; ROBOT reasons from measurements.",
+   "Prediction is evidence for planning, never permission to bypass Validator or Safety.",
+   "A safe hold is temporary evidence gathering; contact remains a hard physical failure."
+  ]
+ }
+}

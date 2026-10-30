@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <array>
 #include <limits>
 
 namespace lost_signal::sim::viewer {
@@ -43,12 +44,22 @@ bool parse_float(const std::string& value, float& output, float minimum,
   return true;
 }
 
+bool known_chassis_kind(const std::string& value) {
+  static constexpr std::array<const char*, 5> kKinds{
+      "differential", "ackermann", "tracked", "mecanum", "swerve"};
+  for (const char* kind : kKinds) {
+    if (value == kind) return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 void print_viewer_usage() {
   std::puts(
       "usage: sim_viewer [--play | --sandbox | --experience FILE]\n"
-      " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
+      " [--robot FILE | --chassis differential|ackermann|tracked|mecanum|swerve]\n"
+      " [--sim FILE] [--map FILE] [--scene FILE]\n"
       " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
       " [--lidar] [--robot-evidence] [--shot N FILE]\n"
       " [--physics-overlay]\n"
@@ -106,6 +117,16 @@ bool parse_viewer_options(int argc, char** argv, ViewerOptions& options,
       options.source_requested = true;
     } else if (argument == "--robot") {
       if (!next_value(index, argc, argv, options.robot_path, "--robot", error)) return false;
+      options.source_requested = true;
+    } else if (argument == "--chassis") {
+      if (!next_value(index, argc, argv, options.chassis_kind, "--chassis", error)) return false;
+      if (!known_chassis_kind(options.chassis_kind)) {
+        if (error != nullptr) {
+          *error = "bad --chassis: expected differential, ackermann, tracked, "
+                   "mecanum, or swerve";
+        }
+        return false;
+      }
       options.source_requested = true;
     } else if (argument == "--sim") {
       if (!next_value(index, argc, argv, options.sim_path, "--sim", error)) return false;
@@ -188,6 +209,12 @@ bool parse_viewer_options(int argc, char** argv, ViewerOptions& options,
       if (error != nullptr) *error = "unknown option: " + argument;
       return false;
     }
+  }
+  if (!options.chassis_kind.empty() && !options.robot_path.empty()) {
+    if (error != nullptr) {
+      *error = "--chassis and --robot are mutually exclusive; use --robot for a custom profile";
+    }
+    return false;
   }
   return true;
 }

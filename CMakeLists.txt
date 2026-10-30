@@ -607,6 +607,19 @@ target_link_libraries(test_dynamic_crossing_mission PRIVATE
 )
 add_test(NAME dynamic_crossing_mission COMMAND test_dynamic_crossing_mission)
 
+add_executable(test_dynamic_safety_experience_mission
+ tests/test_dynamic_safety_experience_mission.cpp
+)
+target_compile_definitions(test_dynamic_safety_experience_mission PRIVATE
+ TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_link_libraries(test_dynamic_safety_experience_mission PRIVATE
+ lost_signal_sim_scenario
+ lost_signal_sim_experiment
+)
+add_test(NAME dynamic_safety_experience_mission
+ COMMAND test_dynamic_safety_experience_mission)
+
 add_executable(test_motion_pipeline
  tests/test_motion_pipeline.cpp
 )

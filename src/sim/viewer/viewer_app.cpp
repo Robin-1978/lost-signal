@@ -498,6 +498,10 @@ int lost_signal::sim::viewer::run_viewer(int argc, char** argv) {
    return 0;
  }
  std::string robot_path = options.robot_path;
+ if (!options.chassis_kind.empty()) {
+   robot_path = (std::filesystem::path("configs/robot") /
+                 (options.chassis_kind + ".json")).string();
+ }
  std::string sim_path = options.sim_path;
  std::string map_path = options.map_path;
  std::string assets_path = options.assets_path;
@@ -606,7 +610,7 @@ int lost_signal::sim::viewer::run_viewer(int argc, char** argv) {
  }
  if (catalog_requested) {
  std::puts("SANDBOX manual_control       mode=operator body_command=WASD/arrows "
-           "safety=validator+raw_scan+watchdog");
+           "arm_effort=I/K O/L P/; [/'] safety=validator+raw_scan+watchdog");
  }
  return 0;
  }
@@ -1296,7 +1300,10 @@ bool show_estimate = initial_show_robot_evidence;
     }
  if (!experience_loaded && IsKeyPressed(KEY_H)) {
  manual_control = !manual_control;
- if (!manual_control) session->clear_operator_command();
+ if (!manual_control) {
+   session->clear_operator_command();
+   session->clear_operator_arm_effort();
+ }
  }
     if (edit_mode) {
       if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && on_map) {
@@ -1343,8 +1350,26 @@ bool show_estimate = initial_show_robot_evidence;
  const double max_yaw = robot_config.has_value()
  ? robot_config->limits.max_yaw_rate_radps : 2.0;
  session->set_operator_command(forward * max_forward, yaw * max_yaw);
+ if (robot_config.has_value() && robot_config->profile.arm.enabled) {
+   // Four arm channels use paired keys. This is an operator refresh, not a
+   // direct plant write: RobotApplication applies its encoder freshness and
+   // watchdog gates before any effort reaches the SIM actuator boundary.
+   std::array<double, 4> arm_effort = {
+       (IsKeyDown(KEY_I) ? 1.0 : 0.0) -
+           (IsKeyDown(KEY_K) ? 1.0 : 0.0),
+       (IsKeyDown(KEY_O) ? 1.0 : 0.0) -
+           (IsKeyDown(KEY_L) ? 1.0 : 0.0),
+       (IsKeyDown(KEY_P) ? 1.0 : 0.0) -
+           (IsKeyDown(KEY_SEMICOLON) ? 1.0 : 0.0),
+       (IsKeyDown(KEY_LEFT_BRACKET) ? 1.0 : 0.0) -
+           (IsKeyDown(KEY_APOSTROPHE) ? 1.0 : 0.0)};
+   session->set_operator_arm_effort(4, arm_effort);
+ } else {
+   session->clear_operator_arm_effort();
+ }
  } else if (!experience_loaded) {
  session->clear_operator_command();
+ session->clear_operator_arm_effort();
  }
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
@@ -2055,7 +2080,7 @@ playback.turbo() || paused || !live_audio);
  ? "space pause  N step  L lidar  E ROBOT AI  K SIM truth debug  U view  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom"
  : "space pause  N step  L lidar  E ROBOT AI  U view  F follow  Q quality  0 fit  +/- speed  V 2D/3D  right-drag pan/orbit  wheel zoom";
  if (!experience_loaded && manual_control) {
- control_help = "space pause N step H manual ON WASD/arrows drive L lidar E ROBOT AI K SIM truth U view F follow Q quality +/- speed V 2D/3D M edit";
+ control_help = "space pause N step H manual ON WASD/arrows drive I/K O/L P/; [/'] arm L lidar E ROBOT AI K SIM truth U view F follow Q quality +/- speed V 2D/3D M edit";
  }
  DrawRectangle(6, GetScreenHeight() - 34, GetScreenWidth() - 12, 28,
  Color{242, 246, 244, 208});

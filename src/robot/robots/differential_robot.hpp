@@ -29,6 +29,13 @@ class DifferentialRobot : public app::IRobot {
  inner_->set_initial_pose(x_m, y_m, yaw_rad, position_sigma_m,
  heading_sigma_rad);
  }
+ bool set_operator_arm_effort(
+     std::uint8_t count, const std::array<double, 4>& effort) override {
+   return inner_->set_operator_arm_effort(count, effort);
+ }
+ void clear_operator_arm_effort() override {
+   inner_->clear_operator_arm_effort();
+ }
 
   iface::GoalHandle request_goal(const iface::TaskRequest& req) override {
     return inner_->request_goal(req);

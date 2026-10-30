@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <optional>
 #include <memory>
 #include <stdexcept>
@@ -67,6 +69,14 @@ class ScenarioSession {
  app_.set_operator_command(forward_mps, yaw_rate_radps);
  }
  void clear_operator_command() { app_.clear_operator_command(); }
+ // Manual arm input follows the same ROBOT-side effort/watchdog seam as a
+ // native operator panel. It is not a direct World command and therefore
+ // cannot observe or inject simulated joint truth.
+ bool set_operator_arm_effort(std::uint8_t count,
+                              const std::array<double, 4>& effort) {
+   return app_.set_operator_arm_effort(count, effort);
+ }
+ void clear_operator_arm_effort() { app_.clear_operator_arm_effort(); }
   void step_once();
  // Build the safe-zero plant and expose its initial SIM pose for a pre-run
  // viewer without advancing physics time or publishing observations.

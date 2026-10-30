@@ -1,0 +1,18 @@
+{
+ "actors": [
+  {
+   "id":"anonymous_crossing_vehicle",
+   "x":4.0,
+   "y":-5.5,
+   "radius_m":0.7,
+   "height_m":2.0,
+   "speed_mps":1.4,
+   "behavior":"waypoints",
+   "waypoints":[{"x":4.0,"y":6.0}],
+   "loop":false,
+   "waits":[],
+   "seed":174293,
+   "visual_kind":"forklift"
+  }
+ ]
+}

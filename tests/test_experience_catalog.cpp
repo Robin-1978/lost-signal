@@ -62,9 +62,9 @@ int main() {
  assert(runtime.session->episode().steps().front().presentation.captured);
  ++checked;
  }
- // There are fourteen published chapters. Keep this exact so a manifest can
+ // There are fifteen published chapters. Keep this exact so a manifest can
  // never silently disappear from the campaign/catalog test.
- assert(checked == 14);
+ assert(checked == 15);
  assert(ids.size() == checked);
  return 0;
 }

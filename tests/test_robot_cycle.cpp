@@ -1,4 +1,5 @@
 #include <cassert>
+#include <array>
 #include <cstdio>
 
 #include "robot/app/robot_application.hpp"
@@ -134,6 +135,55 @@ int main() {
  const iface::ActuatorCommand expired =
  wheel_app.take_actuator(300'000'000);
  assert(expired.is_safe_stop());
+ }
+
+ // Arm operator effort uses the same expiry and fresh-feedback gates as a
+ // deployable actuator path. It can coexist with a chassis stop, but never
+ // runs from stale or absent arm encoder feedback.
+ {
+ app::RobotApplication arm_app(nullptr);
+ assert(arm_app.register_provider(
+ {"arm.encoder", iface::EndpointRole::kEncoder,
+ iface::ProviderBackend::kNative, "base_link"}));
+ assert(arm_app.configure().ok && arm_app.activate().ok);
+ iface::ObservationFrame arm_obs;
+ arm_obs.sequence = 1;
+ arm_obs.stamp_ns = 1'000'000;
+ arm_obs.source = "arm.encoder";
+ arm_obs.frame = core::Frame::kBaseLink;
+ arm_obs.odometry_valid = true;
+ arm_obs.drive_count = 2;
+ arm_obs.drive_radps = {0.0, 0.0, 0.0, 0.0};
+ arm_obs.arm_count = 4;
+ arm_obs.arm_rad = {0.0, 0.1, 0.2, 0.3};
+ assert(arm_app.publish_observation(arm_obs));
+ const std::array<double, 4> effort = {0.25, -0.5, 0.0, 0.75};
+ assert(arm_app.set_operator_arm_effort(4, effort));
+ arm_app.tick(1'000'000);
+ const iface::ActuatorCommand arm_act = arm_app.take_actuator(1'000'000);
+ assert(arm_act.is_safe_stop() == false);
+ assert(arm_act.arm_count == 4);
+ assert(arm_act.arm == effort);
+ assert(iface::valid_actuator_command(arm_act, 1'000'000));
+
+ // Once the encoder observation is older than the declared reaction window,
+ // a newly requested effort is rejected even though its operator request is
+ // otherwise valid.
+ assert(arm_app.set_operator_arm_effort(4, effort));
+ arm_app.tick(250'000'000);
+ const iface::ActuatorCommand stale_arm =
+     arm_app.take_actuator(250'000'000);
+ assert(stale_arm.arm_count == 0);
+ for (double value : stale_arm.arm) assert(value == 0.0);
+
+ // A request that is not refreshed expires at the common actuator watchdog.
+ assert(arm_app.set_operator_arm_effort(4, effort));
+ arm_app.tick(251'000'000);
+ arm_app.tick(400'000'000);
+ const iface::ActuatorCommand expired_arm =
+     arm_app.take_actuator(400'000'000);
+ assert(expired_arm.arm_count == 0);
+ for (double value : expired_arm.arm) assert(value == 0.0);
  }
 
   // Shutdown returns modules to Unconfigured; tick holds again.

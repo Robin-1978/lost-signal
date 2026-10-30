@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -85,6 +87,15 @@ class RobotApplication : public IRobot {
   coordinator_.set_operator_command(forward_mps, yaw_rate_radps);
  }
  void clear_operator_command() { coordinator_.clear_operator_command(); }
+ // Articulated-arm operator input remains inside the ROBOT actuator boundary.
+ // The request is a normalized effort per declared arm joint. It is refreshed
+ // by the caller (the same dead-man cadence used by native drivers); the
+ // application expires it with the common actuator watchdog and accepts it
+ // only while fresh arm encoder feedback is present. A count of zero clears
+ // the request. No SIM pose or joint truth crosses this seam.
+ bool set_operator_arm_effort(std::uint8_t count,
+                              const std::array<double, 4>& effort) override;
+ void clear_operator_arm_effort() override;
  // Clears a latched execution fault only after the hardware/operator has
  // confirmed a stationary safe state; no planner tick clears it implicitly.
  void acknowledge_execution_recovery() {
@@ -226,6 +237,12 @@ class RobotApplication : public IRobot {
  iface::ChassisControlOwner control_owner_ =
  iface::ChassisControlOwner::kHostMotionLoop;
  iface::MotionCommand last_body_command_{};
+ bool operator_arm_active_ = false;
+ std::uint8_t operator_arm_count_ = 0;
+ std::array<double, 4> operator_arm_effort_ = {};
+ std::uint64_t operator_arm_generation_ = 0;
+ std::uint64_t operator_arm_consumed_generation_ = 0;
+ core::MonotonicNs operator_arm_last_update_ns_ = core::kInvalidTime;
 };
 
 }  // namespace lost_signal::robot::app
