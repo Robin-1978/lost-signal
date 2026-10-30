@@ -22,6 +22,7 @@ struct MotionDecisionResult {
  std::string constraint = "none";
  std::string reason = "no-plan";
  std::string route_diagnostic;
+ std::string recovery_diagnostic;
  double prediction_horizon_s = 0.0;
  std::size_t prediction_hypotheses = 0;
  double validated_static_clearance_m =

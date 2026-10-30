@@ -124,6 +124,9 @@ struct GlobalSearchResult {
   };
   std::vector<RunnerUp> runner_ups;
   std::size_t usable_returns = 0;
+  // Effective geometric support normalized by minimum_returns.  It is a
+  // diagnostic and recovery gate, never simulator truth.
+  double geometric_support = 0.0;
   std::size_t coarse_evaluations = 0;
  // Cells touched while preparing the immutable map revision's occupied-area
  // prefix and likelihood distance field. The first search on a revision

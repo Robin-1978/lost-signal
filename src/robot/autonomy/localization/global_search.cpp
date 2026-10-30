@@ -279,6 +279,26 @@ struct GlobalSearcher::WorkState {
  for (const auto& beam : full) {
  if (beam.hit) ++result.usable_returns;
  }
+ {
+  // Effective support is the configured baseline return count tempered by
+  // the scan's angular second moment.  It is a property of the frozen
+  // ROBOT-side measurement and is independent of the candidate pose.
+  double c2 = 0.0;
+  double s2 = 0.0;
+  for (const auto& beam : full) {
+   if (!beam.hit) continue;
+   c2 += std::cos(2.0 * beam.angle);
+   s2 += std::sin(2.0 * beam.angle);
+  }
+  const double angular = result.usable_returns >= 2
+      ? std::clamp(1.0 - std::hypot(c2, s2) /
+                             static_cast<double>(result.usable_returns),
+                   0.0, 1.0)
+      : 0.0;
+  result.geometric_support = angular *
+      static_cast<double>(result.usable_returns) /
+      static_cast<double>(std::max<std::size_t>(1, config.minimum_returns));
+ }
  if (result.usable_returns < config.minimum_returns) {
  finish("insufficient geometric returns");
  return;
@@ -536,6 +556,9 @@ struct GlobalSearcher::WorkState {
  candidate.yaw_rad = heading;
  candidate.score = pose.score;
  candidate.overlap = pose.overlap;
+ candidate.geometric_support = pose.angular_observability *
+     static_cast<double>(pose.usable_returns) /
+     static_cast<double>(std::max<std::size_t>(1, config.minimum_returns));
  const auto same = [&](const ScanMatchResult& value) {
  return std::hypot(value.x_m - candidate.x_m,
  value.y_m - candidate.y_m) < config.refine_ambiguity_distance_m &&
@@ -679,6 +702,7 @@ struct GlobalSearcher::WorkState {
  result.heading_sigma_rad = best.heading_sigma_rad;
  result.score = best.score;
  result.overlap = best.overlap;
+ result.geometric_support = best.geometric_support;
  if (!std::isfinite(best.score) || best.overlap < config.minimum_overlap) {
  finish("global map overlap below acceptance gate");
  return;
@@ -1055,6 +1079,7 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  w.final_best.overlap = ev.overlap;
  w.final_best.position_sigma_m = seed.position_sigma_m;
  w.final_best.heading_sigma_rad = seed.heading_sigma_rad;
+ w.final_best.geometric_support = seed.geometric_support;
  }
  }
  ++w.final_ih;

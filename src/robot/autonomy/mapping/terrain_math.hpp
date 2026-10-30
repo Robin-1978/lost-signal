@@ -39,9 +39,30 @@ inline double survey_longitudinal_grade(const iface::MapSnapshot& map,
   if (!map.has_elevation()) return 0.0;
   const double eps = std::max(0.1, map.resolution_m);
   const double c = std::cos(yaw_rad), s = std::sin(yaw_rad);
-  const float ahead = map.elevation_at(x_m + 0.5 * eps * c, y_m + 0.5 * eps * s);
+  const double ahead_x = x_m + 0.5 * eps * c;
+  const double ahead_y = y_m + 0.5 * eps * s;
+  const double behind_x = x_m - 0.5 * eps * c;
+  const double behind_y = y_m - 0.5 * eps * s;
+  // Elevation is a ground prior. Occupied raster cells describe obstacle
+  // geometry, not a walkable raised surface; using their authored box tops in
+  // a finite difference turns a wall edge into a false grade/cross-slope and
+  // can reject an otherwise safe recovery. Terrain cells remain unknown or
+  // free, so genuine ramps and slabs retain their measured gradient.
+  const auto occupied = [&](double wx, double wy) {
+    const int gx = static_cast<int>(std::floor(
+        (wx - map.origin_x_m) / map.resolution_m));
+    const int gy = static_cast<int>(std::floor(
+        (wy - map.origin_y_m) / map.resolution_m));
+    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map.width) ||
+        gy >= static_cast<int>(map.height)) {
+      return false;
+    }
+    return map.occupancy[static_cast<std::size_t>(gy) * map.width + gx] >= 50;
+  };
+  if (occupied(ahead_x, ahead_y) || occupied(behind_x, behind_y)) return 0.0;
+  const float ahead = map.elevation_at(ahead_x, ahead_y);
   const float behind =
-      map.elevation_at(x_m - 0.5 * eps * c, y_m - 0.5 * eps * s);
+      map.elevation_at(behind_x, behind_y);
   if (!std::isfinite(ahead) || !std::isfinite(behind)) return 0.0;
   return static_cast<double>(ahead - behind) / eps;
 }

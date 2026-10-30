@@ -430,7 +430,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const bool reach_committed = escape_active_ && escape_reach_active_;
  std::array<LocalCandidate, 4> reachable{};
  std::size_t reachable_count = 0;
- if (stop_is_unsafe || reach_committed) {
+ if (stop_is_unsafe || reach_committed || observation_recovery_required) {
  const auto add_reachable = [&](double forward, double lateral) {
  if (std::abs(forward) < 1e-9 && std::abs(lateral) < 1e-9) return;
  LocalCandidate candidate;
@@ -508,11 +508,20 @@ MotionDecisionResult MotionDecisionPipeline::run(
  std::size_t order, bool reachable_speed) {
  const ValidationResult verdict = validator.validate(
  candidate, est, perception, prediction, observation, survey);
- if (!verdict.accepted) return;
+ if (!verdict.accepted) {
+   if (out.recovery_diagnostic.empty()) {
+     out.recovery_diagnostic = verdict.reason.empty()
+         ? trajectory_verdict_name(verdict.verdict) : verdict.reason;
+   }
+   return;
+ }
  // The minimum-risk exception admits a slow creep that still meets a
  // predicted track. A reachable-speed candidate has no such exception:
  // it is used only when its whole rollout is clear.
  if (reachable_speed && verdict.verdict != TrajectoryVerdict::kAccepted) {
+   if (out.recovery_diagnostic.empty()) {
+     out.recovery_diagnostic = trajectory_verdict_name(verdict.verdict);
+   }
  return;
  }
 
@@ -562,13 +571,21 @@ MotionDecisionResult MotionDecisionPipeline::run(
  consider_recovery(reachable[i], recovery_count + i, true);
  }
  };
- if (reach_committed) consider_reachable();
+ if (reach_committed || observation_recovery_required) consider_reachable();
  if (!have_recovery) {
  for (std::size_t i = 0; i < recovery_count; ++i) {
  consider_recovery(recovery[i], i, false);
  }
+ // A forward-proximity verdict is already an independent sensor decision
+ // that the held pose or forward rollout is unsafe.  In that case a
+ // low-speed crawl can remain below the motor torque needed to leave contact
+ // because the acceleration limiter is anchored to the measured zero speed.
+ // Admit the full reachable reverse/forward set as well; Validator still
+ // rejects every trajectory that cannot be executed safely, and the quality
+ // ordering prefers the reverse member that clears the blocked direction.
  if (!reachable_considered &&
- !(have_recovery && best_quality.nominally_safe)) {
+     (forward_blocked || observation_recovery_required ||
+      !(have_recovery && best_quality.nominally_safe))) {
  consider_reachable();
  }
  }
@@ -616,6 +633,9 @@ MotionDecisionResult MotionDecisionPipeline::run(
  out.reason = "planner candidates rejected: " + first_rejection.reason;
  } else {
  out.reason = "no-plan; recovery rejected";
+ if (!out.recovery_diagnostic.empty()) {
+   out.reason += ":" + out.recovery_diagnostic;
+ }
  }
 
  if (out.validated_swept_centerline.empty() && hold_verdict.accepted &&

@@ -184,6 +184,9 @@ int main() {
 
     const double sigma_before_search_failure =
         estimator.estimate().position_sigma_m;
+    // The estimator API consumes one-sigma evidence. A caller that searched a
+    // probability envelope must convert it first; passing the envelope back
+    // directly would multiply uncertainty on every failed retry.
     estimator.note_absolute_search_failure(4.0, 0.8, 5);
     assert(estimator.estimate().position_sigma_m >= 4.0);
     assert(estimator.estimate().heading_sigma_rad >= 0.8);

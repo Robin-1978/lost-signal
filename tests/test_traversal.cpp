@@ -61,6 +61,13 @@ int main() {
                                                           0.0)) < 0.02);
     assert(std::abs(robot::autonomy::survey_longitudinal_grade(map, 0.5, 1.0,
                                                                0.0)) < 0.02);
+    // Obstacle elevation is not a traversable terrain slope. A wall edge in
+    // the occupancy layer must not turn its box top into a cross-slope gate.
+    auto wall = map;
+    wall.occupancy[4 * wall.width + 16] = 100;
+    wall.elevation_m[4 * wall.width + 16] = 3.0f;
+    assert(robot::autonomy::survey_lateral_grade(wall, 4.0, 1.125, 0.0) ==
+           0.0);
     robot::iface::MapSnapshot bare;  // no raster: flat assumption
     assert(robot::autonomy::survey_longitudinal_grade(bare, 4.0, 1.0, 0.0) ==
            0.0);

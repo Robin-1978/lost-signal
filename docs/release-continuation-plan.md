@@ -1102,3 +1102,17 @@ ROBOT。
   定向回归通过。
 - 路线管线保留结构化 planner diagnostic 并在 ROBOT evidence reason 中呈现，便于长图
   失败区分 endpoint、地图快照和搜索耗尽；该诊断不含真值、actor identity 或 score。
+
+### Planner escape seed and wheel presentation polish（2026-10-31）
+
+- 第二个真实失败点已修复：定位修正后估计起点可能落在保守的膨胀清障区内。A* 现在只
+  把原始占据单元判为硬失败；自由但落在膨胀边界内的起点保留为 ROBOT 估计的逃逸种子，
+  路线首点也保留精确估计位姿，避免先把底盘命令到膨胀栅格中心。局部 Validator/Safety
+  仍检查第一段实际运动，未放宽清障合同，也没有新增关卡阈值或 SIM 真值入口。
+- `survey_longitudinal_grade()` 不再把墙体/障碍物 authored box 顶面当作可行驶坡面；只有
+  未占据的 ground elevation 才参与有限差分。新增 traversal 回归锁定墙边不会制造假坡度，
+  真正的连续 ramp 仍保持其测得坡度。
+- 标准 RO-1 驱动轮的 Blender presentation asset 增加了保持在声明半径内的窄冠状胎面环，
+  仅用于侧视滚动识别，不改变 MuJoCo tire/contact geometry、轴向、轮心高度或碰撞尺寸。
+  `inspect_assets.py`、asset manifest hash、`test_asset_manifest`、`test_viewer_frame` 和
+  `test_mujoco_backend` 已验证该 GLB 的 bounds、grounding、triangle/material budget。

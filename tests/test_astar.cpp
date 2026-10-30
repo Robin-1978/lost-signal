@@ -160,6 +160,19 @@ int main() {
     assert(std::abs(r.points.back().yaw_rad - 1.0) < 1e-12);
   }
 
+  // A free start may lie inside the conservative clearance inflation after a
+  // pose correction. A* keeps it as an escape seed while rejecting raw
+  // occupied starts; the route must begin at the exact ROBOT estimate.
+  {
+    auto map = make_map(16, 16, 0.5, -4.0, -4.0);
+    std::fill(map.occupancy.begin(), map.occupancy.end(), 0);
+    fill_box(map, 0.5, -0.25, 1.0, 0.25);
+    const Route r = planner.plan(at(0.0, 0.0), {-2.0, 0.0, 0.0}, map);
+    assert(r.valid && r.points.size() >= 2);
+    assert(std::abs(r.points.front().x_m) < 1e-12);
+    assert(std::abs(r.points.front().y_m) < 1e-12);
+  }
+
  // Route refresh policy is module-owned: an explicit replan calls the
  // planner even when an existing route is still valid.
  {

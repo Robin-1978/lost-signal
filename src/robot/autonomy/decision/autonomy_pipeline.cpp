@@ -27,18 +27,32 @@ MotionDecisionResult DecisionCyclePipeline::run(
  map, replan, active_route,
  2.0 * std::max(0.0, limits.footprint_radius_m));
  if (route_state_changed) local_planner.reset_tracking();
+ // A failed global route is a ROBOT-side planning observation: the current
+ // estimate may have landed inside an inflated/occupied raster cell after
+ // drift, while the raw local scan still contains an executable escape. Feed
+ // that fact into the same validated observation-recovery path instead of
+ // converting it into a permanent stop. The fallback remains bounded by the
+ // chassis capabilities and the independent Validator/Safety gate.
+ const bool route_recovery_requested = route_.failed();
  MotionDecisionResult result = motion_.run(
  estimate, perception, local_map, active_route, limits, behavior_limits,
  observation, survey, now_ns, behavior, local_planner, validator,
- controller, forward_blocked, observation_motion_requested);
+ controller, forward_blocked,
+ observation_motion_requested || route_recovery_requested);
  local_replan_requested_ = result.route_replan_requested;
  if (!active_route.valid && route_.pending()) {
  result.constraint = "route_hold";
  result.reason = "global-plan-pending";
- } else if (!active_route.valid && route_.failed()) {
+ } else if (!active_route.valid && route_.failed() &&
+            result.command.is_safe_stop()) {
  result.constraint = "route_hold";
  result.reason = "global-plan-failed";
  result.route_diagnostic = route_.diagnostic();
+ } else if (!active_route.valid && route_.failed()) {
+  // Preserve the validated recovery command and carry the planner failure as
+  // structured diagnostics. A map-frame route failure must not suppress a
+  // safe raw-scan manoeuvre that can expose new geometry.
+  result.route_diagnostic = route_.diagnostic();
  }
  return result;
 }

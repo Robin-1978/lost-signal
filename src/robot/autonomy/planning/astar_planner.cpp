@@ -548,8 +548,15 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  return {GlobalPlanStatus::kFailed, {},
  "inflated global costmap is unavailable"};
  }
- if (cached_costmap_.lethal.occupancy[
- index(state.start_x, state.start_y)] >= 50) {
+ const std::size_t start_cell = index(state.start_x, state.start_y);
+ // A pose can be inside the conservative inflated envelope while still
+ // outside the authored obstacle (for example after a localization
+ // correction beside a wall). Keep that pose as an escape seed; the local
+ // validator and Safety gate the first physical motion. A raw occupied start
+ // remains a hard failure because the map itself says the chassis is inside
+ // geometry, not merely inside its clearance margin.
+ if (cached_costmap_.lethal.occupancy[start_cell] >= 50 &&
+     map.occupancy[start_cell] >= 50) {
  search_.reset();
  return {GlobalPlanStatus::kFailed, {},
  "start is inside the inflated lethal map"};
@@ -697,6 +704,13 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  current = state.parent[current];
  }
  std::reverse(route.points.begin(), route.points.end());
+ // The first raster center is only a search representative. Preserve the
+ // current ROBOT estimate as the route origin so an escape does not command
+ // a correction toward the center of the inflated start cell.
+ if (!route.points.empty()) {
+   route.points.front().x_m = state.start_world_x_m;
+   route.points.front().y_m = state.start_world_y_m;
+ }
  // A raster can place the estimated start and semantic goal in one cell.
  // Preserve a two-pose route in that case so the local planner can still
  // settle the requested terminal heading. Returning an invalid one-point

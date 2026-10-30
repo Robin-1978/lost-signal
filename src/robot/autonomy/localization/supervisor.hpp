@@ -103,6 +103,11 @@ class LocalizationSupervisor {
   MapWindow2D local_window(double odom_x_m, double odom_y_m) const;
  double global_recovery_radius_m(double position_sigma_m) const;
  double global_recovery_heading_radius_rad(double heading_sigma_rad) const;
+ // The same probability quantile used to turn one-sigma covariance into a
+ // recovery search envelope.  Callers that feed a searched envelope back to
+ // an estimator must convert it back to one-sigma first; otherwise a failed
+ // search would multiply covariance by the quantile on every retry.
+ double global_recovery_quantile() const;
  bool accept_global_innovation(double position_innovation_m,
  double heading_innovation_rad, double position_sigma_m,
  double heading_sigma_rad) const;

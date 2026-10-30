@@ -73,6 +73,12 @@ struct ScanMatchResult {
   double overlap = 0.0;
   double score_margin = 0.0;
   std::size_t usable_returns = 0;
+  // Effective geometric support normalized by the configured minimum return
+  // count.  A value of one means the scan has at least the baseline number of
+  // returns with a well-conditioned angular distribution; smaller values are
+  // retained for temporal tracking but must not be treated as a full absolute
+  // pose observation.  This is derived from the ROBOT scan only.
+  double geometric_support = 0.0;
   std::string rejection_reason = "unassessed";
 };
 
@@ -88,6 +94,9 @@ struct PoseScore {
   double score = 0.0;
   double overlap = 0.0;
   std::size_t usable_returns = 0;
+  // Angular second-moment observability of the hit bearings in [0, 1].  Zero
+  // means a collinear/one-sided set of returns; one is isotropic support.
+  double angular_observability = 0.0;
   // False when every beam scored exactly 0 (all unknown): no evidence either
   // way. Callers skip such hypotheses instead of ranking them at 0.
   bool has_evidence = false;

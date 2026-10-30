@@ -121,6 +121,20 @@ def refine_drive_wheel():
     cube("rotation_witness_left", (0.058, -0.056, 0.0),
         (0.028, 0.010, 0.040), mint, 0.0)
 
+    # A narrow crowned centre rib makes the load-bearing tread legible from
+    # the side without changing the declared wheel envelope.  The physical
+    # contact patch remains MuJoCo's tire/collision geometry; this is a
+    # presentation witness only.  Keep the ring inside radius=0.100 m and
+    # below the wheel triangle budget so every authored variant stays cheap.
+    bpy.ops.mesh.primitive_torus_add(
+        major_radius=0.097, minor_radius=0.003,
+        major_segments=12, minor_segments=4,
+        location=(0.0, 0.0, 0.0), rotation=(math.pi / 2.0, 0.0, 0.0))
+    crown = bpy.context.object
+    crown.name = "crowned_tread_rib"
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    assign(crown.name, tread)
+
     # Eighteen low-profile tread blocks stay below the declared contact radius.
     # They form one draw mesh after authoring and provide a clear rolling cadence.
     blocks = []

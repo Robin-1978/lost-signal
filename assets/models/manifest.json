@@ -2098,7 +2098,7 @@
       },
       "reference_radius_m": 0.1,
       "reference_half_width_m": 0.061,
-      "content_hash": "fnv1a64:4a13e125db9a9d70",
+      "content_hash": "fnv1a64:fce4cc034cbcf3f4",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/wheel_standard.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "wheel_roll_joint",

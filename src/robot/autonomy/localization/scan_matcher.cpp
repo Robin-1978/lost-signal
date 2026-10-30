@@ -12,6 +12,27 @@ namespace lost_signal::robot::autonomy {
 
 namespace {
 
+// The second angular moment is a compact, resolution-independent test of
+// whether returns constrain more than one bearing direction.  A line-like
+// scan (including two opposite walls) has concentration one and therefore
+// zero observability; an isotropic scan has concentration zero.  It is used
+// only to describe measurement geometry, never to inject a map or SIM pose.
+double angular_observability(const std::vector<ScanBeam>& beams) {
+  std::size_t hits = 0;
+  double c2 = 0.0;
+  double s2 = 0.0;
+  for (const auto& beam : beams) {
+    if (!beam.hit || !std::isfinite(beam.angle)) continue;
+    c2 += std::cos(2.0 * beam.angle);
+    s2 += std::sin(2.0 * beam.angle);
+    ++hits;
+  }
+  if (hits < 2) return 0.0;
+  const double concentration =
+      std::hypot(c2, s2) / static_cast<double>(hits);
+  return std::clamp(1.0 - concentration, 0.0, 1.0);
+}
+
 struct GridProjector {
   const iface::MapSnapshot& map;
   explicit GridProjector(const iface::MapSnapshot& m) : map(m) {}
@@ -208,6 +229,20 @@ PoseScore ScanMatcher::Batch::score(std::size_t slot, double x_m, double y_m,
   (void)body_z_m;  // 2D raster: height rides the sensor pose, not the score
   PoseScore out;
   out.usable_returns = usable_returns_;
+  // The bearing distribution is invariant across candidate poses, so it is
+  // safe to report the same measurement geometry for every score.
+  if (usable_returns_ >= 2) {
+    double c2 = 0.0;
+    double s2 = 0.0;
+    for (const auto& beam : beams_) {
+      if (!beam.hit) continue;
+      c2 += std::cos(2.0 * std::atan2(beam.sb, beam.cb));
+      s2 += std::sin(2.0 * std::atan2(beam.sb, beam.cb));
+    }
+    out.angular_observability = std::clamp(
+        1.0 - std::hypot(c2, s2) / static_cast<double>(usable_returns_),
+        0.0, 1.0);
+  }
   if (beams_.empty()) return out;
   RotSet& r = rot_for(slot, yaw_rad);
   const GridProjector projector(map);
@@ -296,6 +331,7 @@ PoseScore ScanMatcher::score_expected_ranges(
  beams.begin(), beams.end(), [](const ScanBeam& beam) {
  return beam.hit;
  }));
+  out.angular_observability = angular_observability(beams);
  out.has_evidence = evidence.valid;
  return out;
 }
@@ -340,6 +376,14 @@ ScanMatchResult ScanMatcher::localize(
     if (beam.hit) ++hit_returns;
   }
   result.usable_returns = hit_returns;
+  result.geometric_support =
+      static_cast<double>(hit_returns) /
+      static_cast<double>(std::max<std::size_t>(1, config_.minimum_returns));
+  // The normalized count is tempered by angular observability.  This keeps a
+  // sparse, nearly collinear scan useful to the temporal tracker without
+  // allowing it to masquerade as a full [x,y,yaw] observation.
+  const double bearing_support = angular_observability(beams);
+  result.geometric_support *= bearing_support;
   if (hit_returns < config_.minimum_returns) {
     result.rejection_reason = "insufficient geometric returns";
     return result;

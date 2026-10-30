@@ -182,6 +182,10 @@ double LocalizationSupervisor::global_recovery_heading_radius_rad(
  floor_rad, pose_quantile_3d(probability) * heading_sigma_rad));
 }
 
+double LocalizationSupervisor::global_recovery_quantile() const {
+  return pose_quantile_3d(config_.global_recovery_probability);
+}
+
 bool LocalizationSupervisor::accept_global_innovation(
  double position_innovation_m, double heading_innovation_rad,
  double position_sigma_m, double heading_sigma_rad) const {
