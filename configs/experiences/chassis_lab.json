@@ -4,12 +4,12 @@
  "title": "CHASSIS LAB: SAME ROUTE, DIFFERENT KINEMATICS",
  "subtitle": "Compare a differential base with Ackermann steering under the same route and sensor contract.",
  "files": {
-  "map": "../worlds/research_base.json",
-  "scene": "../worlds/research_base.scene.json",
+  "map": "../worlds/chassis_lab.json",
+  "scene": "../worlds/chassis_lab.scene.json",
   "robot": "../robot/differential.json",
   "sim": "../sim/default.json"
  },
- "objectives": ["glass_door"],
+ "objectives": ["chassis_goal"],
  "time_limit_steps": 1200,
  "briefing": [
   "The route, world, seed, sensors, and acceptance gates stay fixed between runs.",

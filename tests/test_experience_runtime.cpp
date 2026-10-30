@@ -236,6 +236,20 @@ int main() {
  assert(chassis_variant.robot_config->profile.chassis_kind == "ackermann");
  assert(chassis_baseline.invariant_digest == chassis_variant.invariant_digest);
  assert(chassis_variant.session->setup_world().truth().step == 0);
+ for (std::uint64_t step = 0;
+      step < chassis_experience.time_limit_steps &&
+      (!chassis_baseline.session->objectives_done() ||
+       !chassis_variant.session->objectives_done());
+      ++step) {
+   if (!chassis_baseline.session->objectives_done()) {
+     chassis_baseline.session->step_once();
+   }
+   if (!chassis_variant.session->objectives_done()) {
+     chassis_variant.session->step_once();
+   }
+ }
+ assert(chassis_baseline.session->objectives_done());
+ assert(chassis_variant.session->objectives_done());
  sim::viewer::KeyframeReviewConfig chassis_review;
  auto chassis_baseline_artifact = sim::experiment::capture_episode_artifact(
      "baseline", &sim::viewer::experience_variable_spec(

@@ -994,8 +994,9 @@ ROBOT。
 
 ### Viewer composition split（2026-10-30）
 
-- Viewer 的 composition root 已从渲染实现中拆开。`viewer_main.cpp` 现在只保留命令行、
-  ScenarioSession/ExperienceFlow 编排、输入、播放循环和 HUD 状态，约 2.2k 行；它不再
+- Viewer 的进程入口已经收敛为 `viewer_main.cpp` 的 5 行转发函数；完整应用编排移到
+  `viewer_app.cpp`，避免 `main()` 同时承担进程边界和运行时实现。`viewer_app.cpp` 仍只
+  负责参数、ScenarioSession/ExperienceFlow 生命周期、输入、播放循环和 HUD 编排，不再
   持有 GLB 资产加载、地面材质、阴影/bloom、2D/3D 场景绘制或 MuJoCo 姿态到显示坐标
   的转换实现。
 - 新增 `scene_renderer.hpp/.cpp` 作为 SIM-side presentation 模块：统一管理
@@ -1005,7 +1006,8 @@ ROBOT。
 - `experience_overlay` 与 `player_progress_ui` 继续独立于渲染模块；章节档案仍只读取本地
   profile 和 authored manifest。这样后续加入机械臂关节、更多 GLB 和教学视图时，可以在
   renderer/overlay 中扩展，不再把逻辑堆回启动循环。
-- 验收：`cmake --build build --target sim_viewer -j4` 通过，Debug CTest **93/93** 通过，
+- 验收：`cmake --build build --target sim_viewer -j4` 通过，入口/应用拆分后的 Debug
+  定向回归通过，
   包含 industrial 200K、signal_town、terrain/ice、四底盘、SLAM/loop closure、
   truth-isolation 与 robot-boundary。该阶段是 Viewer 结构提交点，后续算法/内容阶段继续
   单独提交。
@@ -1020,9 +1022,11 @@ ROBOT。
   baseline robot profile 作为固定输入，variant 的 chassis label 记录在 EpisodeArtifact，
   `EpisodePair::experiment_valid()` 要求两次 label 不同且 digest、地图、代码和预算一致。
   因而 chassis 差异可被审计，同时不会把 SIM truth、actor identity 或 score 送进 ROBOT。
-- 新增 `configs/experiences/chassis_lab.json`：同一 `research_base` 路线比较 differential
-  与 Ackermann，四项 verdict 仍由 immutable Episode pair 独立计算。课程只声明能力差异，
-  不改变 GoalArrival、Safety 或 planner 的关卡逻辑。
+- 新增连续、可观测但无路线特化障碍的 `configs/worlds/chassis_lab.json` 及其 scene：同一
+  `chassis_goal` 任务比较 differential 与 Ackermann，两个 profile 从相同起点沿同一物理
+  路段运行；侧向 landmark 保留 LiDAR/地图观测差异但不把 research_base 的复杂叉车通道
+  误当作底盘能力门禁。两次运行都必须经过统一 ROBOT 估计、Validator、Safety 和 SIM
+  truth arrival，不能通过放宽到达条件解决 Ackermann 的真实终端偏差。
 - `test_experience_manifest`、`test_experience_runtime` 和 `test_experience_catalog` 覆盖
-  分类域、variant profile、不同 chassis plant、digest 不变性和 pair label 校验；本阶段
-  定向回归（含 `truth_isolation`、`robot_boundary`）通过。
+  分类域、variant profile、不同 chassis plant、digest 不变性、pair label 和同一路线双
+  运行完成；本阶段定向回归（含 `truth_isolation`、`robot_boundary`）通过。
