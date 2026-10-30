@@ -122,6 +122,14 @@ CI 重放的契约测试：
 因此当前真正的外部依赖只剩具体硬件 profile/急停/负载的实测验收，以及 D/F/G 的产品
 范围扩展；SIM、回放和 native contract 层不应通过猜测数据伪造这些结果。
 
+### 当前状态校对（2026-10-30）
+
+历史审查中“标定产品化仍需代码化”的结论保留为当时的审查记录；当前分支已完成
+artifact schema、CSV 质量门禁、原子保存、online rollback、native profile 聚合校验和
+nominal commissioning。`7dc60b9` 又要求 source、`nominal:` digest 与零样本数一致，并
+把首次使用收敛为自动生成典型 profile 后再采集实测 CSV。软件契约和回放测试已完成，
+仍不能替代具体板卡的急停、负载、传输延迟和真实 calibration profile 实测。
+
 ## Git 仓库与发布边界
 
 当前阶段保持一个 monorepo，使用目录、CMake target、边界检查和 CI 区分产品面：
