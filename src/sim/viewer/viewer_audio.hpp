@@ -16,6 +16,9 @@ struct ViewerAudioConfig {
  // Mix controls only. This floor prevents inaudible streams from occupying
  // audio voices; it does not gate or alter the physical evidence state.
  double physical_loop_minimum_gain = 0.015;
+ // Environment bed is presentation-only and deliberately kept below the
+ // evidence-driven mechanical buses.
+ double environment_loop_gain = 0.10;
 };
 
 // Presentation-only audio. Cues consume completed, typed frame evidence and
@@ -71,6 +74,7 @@ class ViewerAudio {
  Loop rolling_;
  Loop slip_;
  Loop brake_;
+ Loop environment_;
  bool has_frame_ = false;
  std::uint64_t last_step_ = 0;
  bool robot_hold_active_ = false;

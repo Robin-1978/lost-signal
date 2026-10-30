@@ -15,7 +15,10 @@ ViewerAudio::ViewerAudio(const std::filesystem::path& assets_root,
  !std::isfinite(config_.sim_step_s) || !(config_.sim_step_s > 0.0) ||
  !std::isfinite(config_.physical_loop_minimum_gain) ||
  config_.physical_loop_minimum_gain < 0.0 ||
- config_.physical_loop_minimum_gain > 1.0) {
+ config_.physical_loop_minimum_gain > 1.0 ||
+ !std::isfinite(config_.environment_loop_gain) ||
+ config_.environment_loop_gain < 0.0 ||
+ config_.environment_loop_gain > 1.0) {
  throw std::invalid_argument("invalid viewer audio configuration");
  }
  if (!enabled) return;
@@ -34,6 +37,8 @@ ViewerAudio::ViewerAudio(const std::filesystem::path& assets_root,
  rolling_ = load_loop(audio / "wheel_roll.wav", 0.22f);
  slip_ = load_loop(audio / "tire_slip.wav", 0.32f);
  brake_ = load_loop(audio / "service_brake.wav", 0.28f);
+ environment_ = load_loop(audio / "environment_bed.wav",
+                          static_cast<float>(config_.environment_loop_gain));
 }
 
 ViewerAudio::~ViewerAudio() {
@@ -46,6 +51,7 @@ ViewerAudio::~ViewerAudio() {
  unload(rolling_);
  unload(slip_);
  unload(brake_);
+ unload(environment_);
  if (owns_device_) CloseAudioDevice();
 }
 
@@ -108,7 +114,7 @@ void ViewerAudio::unload(Loop& loop) {
 
 void ViewerAudio::stop_physical_loops() {
  if (!ready_) return;
- for (Loop* loop : {&motor_, &rolling_, &slip_, &brake_}) {
+ for (Loop* loop : {&motor_, &rolling_, &slip_, &brake_, &environment_}) {
  if (loop->loaded && IsMusicStreamPlaying(loop->music)) {
  StopMusicStream(loop->music);
  }
@@ -164,6 +170,9 @@ void ViewerAudio::update(const Frame& frame, bool terminal, bool successful,
  0.85 + 0.30 * physical.slip_intensity, false);
  update_loop(brake_, physical.brake_intensity,
  0.90 + 0.20 * physical.brake_intensity, false);
+ // This bed has no gameplay or physical meaning. It is intentionally
+ // separate from evidence-driven loops and muted during pause, rewind/Turbo.
+ update_loop(environment_, 1.0, 1.0, false);
  if (physical.impact_event) {
  play(collision_, physical.impact_intensity);
  }

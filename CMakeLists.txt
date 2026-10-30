@@ -930,6 +930,14 @@ add_executable(test_physical_audio
 target_link_libraries(test_physical_audio PRIVATE lost_signal_sim_viewer)
 add_test(NAME physical_audio COMMAND test_physical_audio)
 
+add_executable(test_audio_assets
+  tests/test_audio_assets.cpp
+)
+target_compile_definitions(test_audio_assets PRIVATE
+  TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+add_test(NAME audio_assets COMMAND test_audio_assets)
+
 add_executable(test_map_editor
   tests/test_map_editor.cpp
 )

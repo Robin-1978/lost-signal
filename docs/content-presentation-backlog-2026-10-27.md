@@ -182,11 +182,11 @@
 - **验收**：`signal_town` 截图中地面可见材质细节；物理材质与 ROBOT 观测的回归测试结果不变；5 张贴图均有引用，否则删除。
 - **范围与依赖**：Viewer 与资产；无依赖。
 
-#### D3 环境声身份与音频清理 [P2]
+#### D3 环境声身份与音频清理 [P2]（已完成，2026-10-30）
 
 - **依据**：`assets/audio` 只有事件音与循环音；`viewer_audio.cpp:29-36` 只加载 8 个 WAV（`collision`、`decision_wait`、`decision_clear`、`relay_restored`、`motor_drive`、`wheel_roll`、`tire_slip`、`service_brake`）；`fruit_damage`、`harvest_pickup`、`power_pickup`、`task_abandoned`、`traffic_warning` 与 `cues.json` 无代码引用；设计文档 `:521` 要求每套 kit 有声音身份。
 - **方案**：删除或归档 5 个未引用的 WAV 与 `cues.json`；为 research_base 制作第 1 条环境底噪循环，并登记来源与许可证。
-- **验收**：`assets/audio` 的文件与代码引用一一对应（可用脚本在测试中检查）；新增音频有来源与许可证登记。
+- **验收**：`assets/audio` 的九个 WAV 与代码加载端点一一对应，由 `tests/test_audio_assets` 门禁检查；新增环境循环有 `assets/audio/manifest.json` 与 `LICENSES.md` 来源/许可证登记。未引用的五个旧 WAV 与 `cues.json` 已删除。
 - **范围与依赖**：音频资产与 Viewer；无依赖。
 
 #### D4 资产来源债务清零 [P1]

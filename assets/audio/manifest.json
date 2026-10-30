@@ -1,0 +1,16 @@
+{
+  "format": "lost-signal-audio/1",
+  "license": "LicenseRef-LostSignal-Project",
+  "generator": "repository-authored deterministic source recipes; see git history",
+  "assets": [
+    {"id":"collision","path":"collision.wav","role":"event","source":"project-authored procedural impact identity","license":"LicenseRef-LostSignal-Project"},
+    {"id":"decision-wait","path":"decision_wait.wav","role":"event","source":"project-authored procedural UI cue","license":"LicenseRef-LostSignal-Project"},
+    {"id":"decision-clear","path":"decision_clear.wav","role":"event","source":"project-authored procedural UI cue","license":"LicenseRef-LostSignal-Project"},
+    {"id":"mission-complete","path":"relay_restored.wav","role":"event","source":"project-authored procedural UI cue","license":"LicenseRef-LostSignal-Project"},
+    {"id":"physical-motor-drive","path":"motor_drive.wav","role":"evidence_loop","source":"project-authored procedural motor identity","license":"LicenseRef-LostSignal-Project"},
+    {"id":"physical-wheel-roll","path":"wheel_roll.wav","role":"evidence_loop","source":"project-authored procedural rolling identity","license":"LicenseRef-LostSignal-Project"},
+    {"id":"physical-tire-slip","path":"tire_slip.wav","role":"evidence_loop","source":"project-authored procedural slip identity","license":"LicenseRef-LostSignal-Project"},
+    {"id":"physical-service-brake","path":"service_brake.wav","role":"evidence_loop","source":"project-authored procedural brake identity","license":"LicenseRef-LostSignal-Project"},
+    {"id":"environment-bed","path":"environment_bed.wav","role":"environment_loop","source":"project-authored deterministic ventilation/noise bed","license":"LicenseRef-LostSignal-Project"}
+  ]
+}

@@ -232,6 +232,8 @@ pose graph 与回环；serialized pose graph 保存/加载、已有地图 locali
 
 制动已成为正式 actuator contract：ROBOT 的正常停车、feedback 丢失和 watchdog 过期都会发布显式 service-brake 请求，SIM 使用配置中的力矩与 apply/release lag 驱动被动 MuJoCo 制动器。后续机械制动声直接读取这一命令及执行反馈，不能仅根据“机器人停住”播放。
 
+发布音频资产由 `assets/audio/manifest.json` 和 `LICENSES.md` 登记。当前环境床是低增益的确定性通风/底噪循环，机械循环仍按逐轮接触证据混音；未被 Viewer 使用的历史事件音不随发布包携带。
+
 ## 9. GLB 与 Blender 资产契约
 
 以后 GLB 数量会持续增加，不能继续在 Viewer 中按模型猜轴向、缩放和落地偏移。每套资产包含源 `.blend` 或可重复生成脚本、导出 GLB、manifest 和验证结果。
