@@ -361,6 +361,19 @@ bool parse_asset(const Json& node, AssetDefinition& asset,
  return false;
  }
  }
+ // Grounding points are the explicit mesh-to-link contract used by the
+ // renderer when seating an asset on a MuJoCo link.  Reject a declaration
+ // that lies outside the authored bounds; otherwise a typo can silently
+ // lift or bury a visual while the collision proxy remains correct.
+ for (const auto& point : asset.grounding_points_m) {
+   for (std::size_t axis = 0; axis < 3; ++axis) {
+     if (point[axis] < asset.expected_bounds_m.minimum_m[axis] ||
+         point[axis] > asset.expected_bounds_m.maximum_m[axis]) {
+       error = "asset grounding point lies outside expected bounds";
+       return false;
+     }
+   }
+ }
  const Json* radius = node.find("reference_radius_m");
  if (radius != nullptr) {
  if (!radius->is_num() || !std::isfinite(radius->as_num()) ||

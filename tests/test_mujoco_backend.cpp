@@ -10,7 +10,9 @@
 #include <vector>
 
 #include "robot/iface/task.hpp"
+#include "robot/platform/robot_config.hpp"
 #include "robot/platform/holonomic_kinematics.hpp"
+#include "sim/eval/robot_config.hpp"
 #include "sim/providers/sim_motion.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/world/terrain.hpp"
@@ -31,10 +33,122 @@ void set_diff_duty(sim::world::World& w, double duty) {
   w.apply(cmd);
 }
 
+#ifdef LOST_SIGNAL_WITH_MUJOCO
+void set_chassis_duty(sim::world::World& w, const std::string& kind,
+                      double duty) {
+  robot::iface::ActuatorMode mode = robot::iface::ActuatorMode::kDiffDuty;
+  if (kind == "ackermann") mode = robot::iface::ActuatorMode::kAckermannDuty;
+  if (kind == "mecanum") mode = robot::iface::ActuatorMode::kMecanumDuty;
+  if (kind == "swerve") mode = robot::iface::ActuatorMode::kSwerveDuty;
+  auto command = robot::iface::ActuatorCommand::SafeZero(0, mode);
+  command.stamp_ns = 0;
+  command.expiry_ns = 1'000'000'000;
+  const int drives = robot::iface::actuator_drive_count(mode);
+  for (int i = 0; i < drives; ++i) command.drive[i] = duty;
+  w.apply(command);
+}
+
+void assert_chassis_presentation_contract(const std::string& kind,
+                                          int expected_wheels,
+                                          int expected_steers) {
+  robot::platform::RobotConfig config;
+  std::string error;
+  const std::string path = std::string(TEST_CONFIG_DIR) + "/robot/" + kind +
+                           ".json";
+  assert(robot::platform::load_robot_config(path, config, &error));
+  sim::world::World world;
+  world.set_motor_params(sim::eval::motor_from_config(config));
+  set_chassis_duty(world, kind, 0.0);
+  world.prepare();
+  const auto& truth = world.truth();
+  assert(std::isfinite(truth.body_z_m));
+  assert(std::abs(truth.body_z_m - world.motor_params().wheel_radius_m) <
+         1e-9);
+
+  sim::world::WheelViz wheels[6];
+  const int count = world.wheels(wheels, 6);
+  assert(count == expected_wheels);
+  int steering_wheels = 0;
+  for (int i = 0; i < count; ++i) {
+    const auto& wheel = wheels[i];
+    assert(wheel.pose.valid && wheel.drive_joint.valid);
+    assert(std::isfinite(wheel.pose.x_m) && std::isfinite(wheel.pose.y_m) &&
+           std::isfinite(wheel.pose.z_m));
+    const double axis_norm = std::sqrt(
+        wheel.drive_joint.axis_x * wheel.drive_joint.axis_x +
+        wheel.drive_joint.axis_y * wheel.drive_joint.axis_y +
+        wheel.drive_joint.axis_z * wheel.drive_joint.axis_z);
+    assert(std::abs(axis_norm - 1.0) < 1e-9);
+    // All wheel spin joints use the axle axis; steering is a separate joint
+    // and can never be synthesized by rotating a differential wheel.
+    assert(std::abs(wheel.drive_joint.axis_y) > 1.0 - 1e-9);
+    if (wheel.steer_joint.valid) {
+      ++steering_wheels;
+      assert(wheel.steer_joint.valid);
+      assert(std::abs(wheel.steer_joint.axis_z) > 1.0 - 1e-9);
+    } else {
+      assert(std::abs(wheel.steer_rad) < 1e-12);
+    }
+  }
+  assert(steering_wheels == expected_steers);
+  sim::world::JointAxisViz axes[32];
+  assert(world.joint_axes(axes, 32) >= expected_steers + expected_wheels);
+  for (const auto& axis : axes) {
+    if (!axis.valid) continue;
+    const double norm = std::sqrt(axis.axis_x * axis.axis_x +
+                                  axis.axis_y * axis.axis_y +
+                                  axis.axis_z * axis.axis_z);
+    assert(std::abs(norm - 1.0) < 1e-9);
+  }
+  const int geom_count = world.collision_geom_count();
+  assert(geom_count > 0);
+  std::vector<sim::world::GeomViz> geoms(
+      static_cast<std::size_t>(geom_count));
+  assert(world.collision_geoms(geoms.data(), geom_count) == geom_count);
+  for (const auto& geom : geoms) {
+    assert(geom.valid && geom.size_x_m >= 0.0 && geom.size_y_m >= 0.0 &&
+           geom.size_z_m >= 0.0);
+    assert(geom.size_x_m > 0.0 || geom.size_y_m > 0.0 ||
+           geom.size_z_m > 0.0);
+    assert(std::isfinite(geom.x_m) && std::isfinite(geom.y_m) &&
+           std::isfinite(geom.z_m));
+  }
+  assert(std::isfinite(world.system_com_relative_x_m()));
+  assert(std::isfinite(world.system_com_relative_y_m()));
+  assert(std::isfinite(world.system_com_relative_z_m()));
+
+  // The engine's canonical 1 ms substep makes presentation/physics output
+  // insensitive to how a caller batches the same duration.
+  sim::world::World batched;
+  sim::world::World split;
+  const auto motor = sim::eval::motor_from_config(config);
+  batched.set_motor_params(motor);
+  split.set_motor_params(motor);
+  set_chassis_duty(batched, kind, 0.35);
+  set_chassis_duty(split, kind, 0.35);
+  for (int i = 0; i < 10; ++i) {
+    batched.step(0.02);
+    for (int q = 0; q < 20; ++q) split.step(0.001);
+  }
+  assert(batched.truth().body_x_m == split.truth().body_x_m);
+  assert(batched.truth().body_y_m == split.truth().body_y_m);
+  assert(batched.truth().body_z_m == split.truth().body_z_m);
+  assert(batched.truth().drive_angle_rad == split.truth().drive_angle_rad);
+}
+#endif
+
 }  // namespace
 
 int main() {
 #ifdef LOST_SIGNAL_WITH_MUJOCO
+  // Release gate: every supported chassis exposes engine-owned wheel pose,
+  // contact geometry, COM and joint axes, and has identical fixed-substep
+  // results when the public step is batched or split.
+  assert_chassis_presentation_contract("differential", 2, 0);
+  assert_chassis_presentation_contract("ackermann", 4, 2);
+  assert_chassis_presentation_contract("mecanum", 4, 0);
+  assert_chassis_presentation_contract("swerve", 4, 4);
+
  // Every public entry point resolves a duration into the same 1 ms plant
  // quanta. A 20 ms harness call must therefore match the Viewer/Session
  // form that executes twenty ticks inside one presentation transition.

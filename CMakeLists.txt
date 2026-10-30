@@ -210,6 +210,9 @@ if(LOST_SIGNAL_WITH_MUJOCO)
   add_executable(test_mujoco_backend
     tests/test_mujoco_backend.cpp
   )
+  target_compile_definitions(test_mujoco_backend PRIVATE
+    TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+  )
   target_link_libraries(test_mujoco_backend PRIVATE lost_signal_sim_scenario)
   add_test(NAME mujoco_backend COMMAND test_mujoco_backend)
 endif()

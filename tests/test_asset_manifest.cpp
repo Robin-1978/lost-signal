@@ -175,6 +175,8 @@ int main() {
  one_asset(R"("asset_id":"left.handed","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"-Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]})")));
   assert(rejected(test_manifest,
                   one_asset(R"("asset_id":"bad.bounds","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[0,-1,-1],"max":[0,1,1]})")));
+ assert(rejected(test_manifest,
+ one_asset(R"("asset_id":"bad.grounding","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"grounding_points_m":[[0,2,0]],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]})")));
   assert(rejected(test_manifest,
                   one_asset(R"("asset_id":"escape","version":1,"kind":"wheel","path":"../part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]})")));
   assert(rejected(test_manifest,

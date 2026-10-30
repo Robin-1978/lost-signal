@@ -26,8 +26,8 @@
 
 ### 当前软件收尾顺序
 
-1. **F4 传感器 realism profile**：完成版本化 `ideal`/`nominal`/`adverse` profile，统一 IMU、LiDAR、delivery 的配置入口；未知 profile、非法范围或部分应用必须 fail closed；同 seed/profile 重放必须确定性。ROBOT 只接收带时间戳的噪声、延迟和丢包后 observation。
-2. **F3 物理/渲染自动验收**：补 mesh-to-collision、轮心接地、joint axis、COM/contact 和 timestep-sensitivity gate，避免渲染层重新推导物理姿态。
+1. **F4 传感器 realism profile**：已完成，见下方阶段记录。
+2. **F3 物理/渲染自动验收**：已完成轮心接地、joint axis、COM/contact、collision geometry 和固定子步 timestep-sensitivity gate；资产 grounding point 现在必须落在声明 bounds 内。
 3. **D2–D4 视觉发布债务**：绑定 paved/gravel/mud/sand/water 地面材质，清理环境底噪并记录音频来源，清理 asset manifest 中的 `NOASSERTION` 来源项。
 4. **E1/E2/C4 教学内容**：把轮胎、LiDAR、算力等装配选择映射为 typed 配置；加入本地 profile、星级、知识卡、章节进度、成对 replay/report 导出和四底盘/算法差异课程。扩展 typed experiment registry 时不得把 SIM truth 暴露给 ROBOT。
 5. **动态 actor/机械臂课程扩展**：继续使用 MuJoCo body/joint/contact 驱动，新增工程视图所需的关节轴、碰撞体、COM 和真实接触效果。
@@ -111,7 +111,7 @@
 
 - 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
 - `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
-- 当前阶段：F4 传感器 realism profile 已完成，下一阶段为 F3 物理/渲染自动验收；第 1–9 项的主要软件交付已独立提交，不得重新实现或回退已经验收的边界。
+- 当前阶段：F3 物理/渲染自动验收已完成，下一阶段为 D2–D4 视觉发布债务；第 1–9 项的主要软件交付已独立提交，不得重新实现或回退已经验收的边界。
   `signal_town_big` 的地图目标安全契约已修复并在完整五目标回归中验收：
   `bb87c91`，5286 步、5/5、0 碰撞。直接使用 `sim_viewer --map` 会运行该地图
   的全部 named places，不再只验证首个目标。
@@ -940,5 +940,20 @@ ROBOT。
   参数；`test_realism`、`test_experience_mission`、`test_terrain_mission` 通过；Debug
   全量 CTest 为 **90/90**，包含 industrial 200k、signal_town、四底盘、truth-isolation
   和 robot-boundary。F4 阶段在本次变更中独立提交。
+
+### Physics/presentation contract gate（2026-10-30）
+
+- F3 已完成：`test_mujoco_backend` 现在按 differential、Ackermann、Mecanum、Swerve
+  四种底盘从正式 robot config 构建 MuJoCo plant，检查引擎 read-back 的轮子 pose、接地
+  高度、驱动/转向关节轴、collision geometry、COM 和 finite 状态；差速轮没有隐式
+  steering joint，Ackermann 只有前方 idler 的转向轴，不能由渲染器自行补姿态。
+- 同一测试对每种底盘比较 20 ms public step 与 20 个 1 ms fixed substep 的结果，验证
+  physics/render snapshot 不依赖调用方批处理方式。已有 arm、caster、actor link 和
+  terrain ramp 检查继续保留，所有姿态仍来自 MuJoCo body/joint/contact read-back。
+- Asset manifest loader 新增 grounding-point containment gate：每个视觉资产的接地点
+  必须落在 `expected_bounds_m` 内，越界声明 fail closed；这项元数据检查与 GLB hash、
+  frame/axis、scene collision binding 一起阻止视觉 mesh 被错误抬高或埋入碰撞体。
+- 验收：`test_asset_manifest`、`test_mujoco_backend` 通过；Debug/Release 的 F4 定向
+  回归继续通过，Debug 全量 CTest 基线为 90/90。F3 阶段在本次变更中独立提交。
 
 下一步从这里继续：先完成 F4 版本化传感器 realism profile 并单独提交；随后按“F3 → D2–D4 → E1/E2/C4 → 动态 actor/机械臂内容”的顺序推进。真实硬件 profile、急停、负载、传输延迟和 calibration artifact 仍按上面的外部验收队列执行，不用模拟数据冒充现场完成。
