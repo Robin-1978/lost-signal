@@ -2,7 +2,9 @@
 // no sim headers) — this is the native-deployability proof. The same
 // files feed SIM through sim/eval translation.
 #include <cassert>
+#include <cmath>
 #include <cstdio>
+#include <limits>
 #include <string>
 
 #include "robot/platform/chassis.hpp"
@@ -137,6 +139,19 @@ int main() {
  d.chassis_kind = "differential";
  d.plant.wheel_radius_m = 0.0;
  assert(platform::make_chassis(d) == nullptr);
+ }
+ // Direct hardware-package descriptions fail closed on non-finite limits,
+ // geometry and mounts even when they bypass the JSON loader.
+ {
+  platform::RobotDescription bad = platform::default_robot_description();
+  bad.limits.max_forward_mps = std::numeric_limits<double>::quiet_NaN();
+  assert(!platform::valid_robot_description(bad));
+  bad = platform::default_robot_description();
+  bad.plant.wheel_base_m = std::numeric_limits<double>::infinity();
+  assert(!platform::valid_robot_description(bad));
+  bad = platform::default_robot_description();
+  bad.links[1].xyz_m[2] = std::numeric_limits<double>::quiet_NaN();
+  assert(!platform::valid_robot_description(bad));
  }
  // Fail-closed: unknown kind, disagreement, bad numbers, bad JSON.
   {

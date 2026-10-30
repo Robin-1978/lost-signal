@@ -1,5 +1,6 @@
 #include "robot/platform/description.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace lost_signal::robot::platform {
@@ -10,9 +11,40 @@ bool valid_robot_description(const RobotDescription& desc) {
  desc.local_planner_kind != "teb") return false;
   if (desc.version == 0) return false;
   if (desc.links.empty()) return false;
+ auto finite_vec3 = [](const double values[3]) {
+  return std::all_of(values, values + 3,
+                     [](double value) { return std::isfinite(value); });
+ };
+ for (const auto& link : desc.links) {
+  if (link.link.empty() || link.parent.empty() ||
+      !finite_vec3(link.xyz_m) || !finite_vec3(link.rpy_rad)) {
+   return false;
+  }
+ }
+ for (const auto& sensor : desc.sensors) {
+  if (sensor.sensor_id.empty() || sensor.link.empty() ||
+      !finite_vec3(sensor.xyz_m) || !finite_vec3(sensor.rpy_rad)) {
+   return false;
+  }
+ }
   if (desc.limits.max_forward_mps <= 0.0) return false;
   if (desc.limits.max_yaw_rate_radps <= 0.0) return false;
   if (desc.limits.footprint_radius_m <= 0.0) return false;
+ if (!std::isfinite(desc.limits.max_forward_mps) ||
+     !std::isfinite(desc.limits.max_yaw_rate_radps) ||
+     !std::isfinite(desc.limits.footprint_radius_m) ||
+     !std::isfinite(desc.limits.max_steer_rad) ||
+     !std::isfinite(desc.limits.max_lateral_mps) ||
+     !std::isfinite(desc.limits.max_curvature_inv_m) ||
+     !std::isfinite(desc.limits.differential_track_m) ||
+     !std::isfinite(desc.limits.max_wheel_speed_mps) ||
+     desc.limits.max_steer_rad < 0.0 ||
+     desc.limits.max_lateral_mps < 0.0 ||
+     desc.limits.max_curvature_inv_m < 0.0 ||
+     desc.limits.differential_track_m < 0.0 ||
+     desc.limits.max_wheel_speed_mps < 0.0) {
+  return false;
+ }
  if (!std::isfinite(desc.navigation.clearance_margin_m) ||
  desc.navigation.clearance_margin_m < 0.0) return false;
  if (!std::isfinite(desc.navigation.soft_inflation_radius_m) ||
@@ -49,14 +81,29 @@ bool valid_robot_description(const RobotDescription& desc) {
  desc.motion.execution_fault_confirmation_s < 0.0) return false;
   if (desc.plant.track_width_m <= 0.0) return false;
   if (desc.plant.wheel_radius_m <= 0.0) return false;
+  if (desc.plant.wheel_base_m <= 0.0) return false;
+ if (!std::isfinite(desc.plant.track_width_m) ||
+     !std::isfinite(desc.plant.wheel_radius_m) ||
+     !std::isfinite(desc.plant.wheel_base_m)) {
+  return false;
+ }
  if (desc.plant.body_half_length_m <= 0.0 ||
   desc.plant.body_half_width_m <= 0.0 ||
   desc.plant.body_half_height_m <= 0.0) return false;
+ if (!std::isfinite(desc.plant.body_half_length_m) ||
+     !std::isfinite(desc.plant.body_half_width_m) ||
+     !std::isfinite(desc.plant.body_half_height_m)) {
+  return false;
+ }
  if (desc.limits.footprint_radius_m + 1e-12 <
   std::hypot(desc.plant.body_half_length_m,
   desc.plant.body_half_width_m)) return false;
   if (desc.plant.com_height_m <= 0.0) return false;
   if (desc.plant.total_mass_kg <= 0.0) return false;
+ if (!std::isfinite(desc.plant.com_height_m) ||
+     !std::isfinite(desc.plant.total_mass_kg)) {
+  return false;
+ }
   return true;
 }
 
