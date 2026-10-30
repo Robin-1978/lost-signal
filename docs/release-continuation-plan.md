@@ -991,3 +991,21 @@ ROBOT。
   回归继续通过，Debug 全量 CTest 基线为 90/90。F3 阶段在本次变更中独立提交。
 
 下一步从这里继续：先完成 F4 版本化传感器 realism profile 并单独提交；随后按“F3 → D2–D4 → E1/E2/C4 → 动态 actor/机械臂内容”的顺序推进。真实硬件 profile、急停、负载、传输延迟和 calibration artifact 仍按上面的外部验收队列执行，不用模拟数据冒充现场完成。
+
+### Viewer composition split（2026-10-30）
+
+- Viewer 的 composition root 已从渲染实现中拆开。`viewer_main.cpp` 现在只保留命令行、
+  ScenarioSession/ExperienceFlow 编排、输入、播放循环和 HUD 状态，约 2.2k 行；它不再
+  持有 GLB 资产加载、地面材质、阴影/bloom、2D/3D 场景绘制或 MuJoCo 姿态到显示坐标
+  的转换实现。
+- 新增 `scene_renderer.hpp/.cpp` 作为 SIM-side presentation 模块：统一管理
+  `VisualAssets` 生命周期、manifest grounding/axis 转换、物理 body/link/contact 的
+  绘制、LiDAR/估计/碰撞证据层、相机和场景后处理。它只消费 `Frame`、`World` 和已记录
+  的粒子/表面轨迹，不向 ROBOT 发布任何数据。
+- `experience_overlay` 与 `player_progress_ui` 继续独立于渲染模块；章节档案仍只读取本地
+  profile 和 authored manifest。这样后续加入机械臂关节、更多 GLB 和教学视图时，可以在
+  renderer/overlay 中扩展，不再把逻辑堆回启动循环。
+- 验收：`cmake --build build --target sim_viewer -j4` 通过，Debug CTest **93/93** 通过，
+  包含 industrial 200K、signal_town、terrain/ice、四底盘、SLAM/loop closure、
+  truth-isolation 与 robot-boundary。该阶段是 Viewer 结构提交点，后续算法/内容阶段继续
+  单独提交。

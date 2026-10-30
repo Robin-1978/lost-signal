@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -35,6 +36,8 @@ struct ChapterOutcome {
 // path is supplied.  This is presentation state only; it is never included in
 // a runtime invariant digest and never enters ROBOT/SIM decisions.
 std::string default_player_profile_path();
+std::string knowledge_card_id(const std::string& experience_id,
+                              std::size_t lesson_index);
 
 // Stars are public progression only: safety is the first gate, mission is the
 // second, and a complete controlled experiment is the third. No SIM truth,

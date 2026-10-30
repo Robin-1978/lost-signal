@@ -91,6 +91,11 @@ std::string default_player_profile_path() {
   return "player-profile.json";
 }
 
+std::string knowledge_card_id(const std::string& experience_id,
+                              std::size_t lesson_index) {
+  return experience_id + "/lesson/" + std::to_string(lesson_index);
+}
+
 std::uint8_t chapter_stars(const ChapterOutcome& outcome) {
   if (!outcome.safety_passed) return 0;
   if (!outcome.mission_passed) return 1;
