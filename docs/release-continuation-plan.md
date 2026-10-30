@@ -189,6 +189,10 @@
   link binding、材质角色和内容 hash 都经过 Blender 资产审计；上游 link 不再沿用竖直旧装饰
   mesh，而是从关节原点沿 MuJoCo 的局部 +X 延伸。`arm_lab` 的 `arm_experience` 测试覆盖
   四个 live link pose、joint axis、operator effort、clear/settle 和零碰撞终态。
+- Viewer 首屏章节标签不再硬编码为 `FIRST CONTACT`；它现在从已加载的
+  `ExperienceManifest.experience_id` 生成，直接打开 `arm_lab`、`signal_town` 或自定义
+  experience 时不会把玩家误导到第一章。Xvfb 3D `arm_lab --shot 40` 已确认标题、四个
+  arm GLB 加载和窗口正常退出。
 - 代码清理阶段消除了路线流水线中两个“成功后仍写无效状态”的死赋值，简化 DWA
  非完整分支的恒真条件，并让 JSON 对象查找不产生未使用结构化绑定。`cppcheck`
  对 `src/robot` 的剩余提示均为可读性层面的 `std::find_if/count_if` 建议或 Eigen

@@ -392,8 +392,10 @@ void draw_hero_overlay(const ExperienceManifest& experience,
  DrawRectangle(0, static_cast<int>(screen_height - bar_height),
  GetScreenWidth(), static_cast<int>(bar_height), Color{3, 8, 9, 238});
 
- draw_ui_text(tr("LOST SIGNAL / FIRST CONTACT",
- "失落信号 / 初次接触"), 28, 20, 14, kCyan);
+ const std::string chapter_label =
+     std::string(g_zh_cn ? "失落信号 / " : "LOST SIGNAL / ") +
+     experience.experience_id;
+ draw_ui_text(chapter_label.c_str(), 28, 20, 14, kCyan);
  draw_ui_text(tr("REAL PHYSICS / BODY + JOINT POSE",
  "真实物理 / 刚体与关节姿态"), 28,
  static_cast<int>(screen_height - bar_height + 18.0f), 13, kCyan);
