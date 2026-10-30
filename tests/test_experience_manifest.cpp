@@ -150,6 +150,16 @@ int main() {
  lost_signal::sim::viewer::ExperienceStartupMode::kSlamOnly);
 
  assert(lost_signal::sim::viewer::load_experience_manifest(
+     (root / "configs/experiences/zh-CN/arm_lab.json").string(),
+     experience, &error));
+ assert(experience.experience_id == "arm_lab");
+ assert(experience.title == "机械臂实验室：关节、力矩与接触");
+ assert(experience.objectives.size() == 1);
+ assert(experience.walkaround.size() == 4);
+ assert(experience.intro.size() == 4);
+ assert(experience.robot_path.find("ro6_arm.json") != std::string::npos);
+
+ assert(lost_signal::sim::viewer::load_experience_manifest(
      (root / "configs/experiences/chassis_lab.json").string(), experience,
      &error));
  assert(experience.experiments.size() == 1);

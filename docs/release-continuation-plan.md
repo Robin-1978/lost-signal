@@ -330,7 +330,7 @@
 - 现有机器人 drive wheel、steer knuckle 与 caster 已读取真实 MuJoCo link pose；wheel/knuckle GLB 绑定消费这些 pose，渲染端不再重建 steering/spin 姿态。Mecanum 左右 roller 由物理模块的 `y_m` 选择，不能由绘制序号猜测。
 - `asset_selection_for_robot()` 现在以 `chassis_kind` 为权威来源，覆盖 differential、Ackermann、tracked、swerve、mecanum；多个底盘共用 `robot_id = ro1` 时仍会加载正确的资产族。
 - 阶段 7 的首个子阶段已完成：backend 导出 drive/steer/idler/caster 的真实 joint axis、anchor、angle、rate、全部活动 contact 点/法向/normal load 和 base-link 相对 COM；这些字段通过 SIM-only `PresentationSnapshot` 进入 `FrameBody`，ROBOT observation/decision/actuation 没有新增真值入口。工程视图可显示 COM、joint axis 与 contact evidence。
-- forklift 与 pedestrian 已迁入 MuJoCo mocap body：碰撞几何参与引擎接触，pose/heading/ground height 由 engine read-back 驱动历史与实时 GLB；LiDAR 仍通过匿名 actor 观测路径消费，不把 actor identity 或真值穿透给 ROBOT。新增配置驱动的四关节 ArmParams、MuJoCo link/joint chain 和 SIM-only `ArmLinkViz`，RO-6 turret/upper_arm/forearm/tool 按 link pose 绑定；下一步继续补机械臂控制/接触验收和 Blender 场景资产。
+- forklift 与 pedestrian 已迁入 MuJoCo mocap body：碰撞几何参与引擎接触，pose/heading/ground height 由 engine read-back 驱动历史与实时 GLB；LiDAR 仍通过匿名 actor 观测路径消费，不把 actor identity 或真值穿透给 ROBOT。配置驱动的四关节 ArmParams、MuJoCo link/joint chain、SIM-only `ArmLinkViz`、RO-6 四个 link-frame GLB 以及 `arm_lab` 机械臂控制/接触验收均已完成；后续只增加真实抓取/负载内容，不回退到 draw-time 姿态。
 - 阶段 7 依次完成：按底盘能力加载模型和左右部件；建立统一 `link_binding`；加入显式 SIM debug 的 joint axis/collision geom/COM/contact force；把 forklift、pedestrian、机械臂根和关节迁入 MuJoCo；最后扩展 Blender 环境资产并保持碰撞代理诚实。
 - Blender 路径为 `/disk/blender-5.2.2-linux-x64/blender`。旧代码分支实际为 `main`，仓库没有 `master` 分支。
 
@@ -349,7 +349,7 @@
 - `53bd9cf feat: add articulated arm actuator feedback contract` 已把四关节 arm effort `[−1,1]` 通道加入 `ActuatorCommand`，把 encoder 角度/角速度加入 `MotionFeedback`/`ObservationFrame`，并贯穿 envelope、同步器、回放 v4 和 native boundary。MuJoCo 通过配置的每关节扭矩上限和阻尼施加真实 effort，反馈来自引擎 qpos/qvel；没有 draw-time 姿态或 SIM 真值入口。`mujoco_backend`、`replay`、`robot_config`、`robot_config_native`、`robot_cycle`、`truth_isolation`、`viewer_frame`、`actuation` 定向回归通过。
 - 去掉上述 arm 改动后，`industrial_200k_mission --steps=1000` 与当前短轨迹一致；该任务完整 71223 步在 fac57d0 基线也稳定复现第 5 个目标 SIM truth miss 2.820 m（4/5、零碰撞），归因尚未完成，不能以放宽到达条件掩盖。
 - 2026-10-27 的 Release 基线复测（当前 HEAD、无额外实验改动）为 71640 步、5/5、0 碰撞、最大定位误差 3.755 m；五个目标 truth miss 为 0.060/0.081/0.181/0.168/0.199 m，最终 `goal_hold/arrived/stop`。此前 71223 步的 4/5 结果没有在这次复测中重现，不能把一次通过当作算法证明；后续仍要保留重复长测和结构化定位证据。
-- 下一恢复点：先在当前干净工作区重复工业长测并保留定位候选/时序证据，再继续 worker 动画、forklift link 拆分、Blender 环境资产和碰撞验收；每个修复独立提交。
+- 下一恢复点：在当前干净工作区完成工业长测与 Release 门禁复测，并继续 E1/E2 的教学存档/章节差异课程；worker 动画、forklift link 拆分、Blender 环境资产和碰撞验收已经是历史完成项。每个新增内容仍必须独立提交。
 
 ### 持续恢复锚点（2026-10-27，`d9cebd6`）
 
@@ -357,13 +357,13 @@
   `git status --short --branch` 与 `git log -5 --oneline`，确认 HEAD 至少包含
  `d9cebd6 feat: drive worker animation from sim motion`。
 - 已完成的机械臂配置、MuJoCo link/joint pose、effort/encoder feedback、回放 v4、动态 actor mocap、GLB link binding、COM/contact/joint-axis overlay 和物理音频均视为已验收边界。恢复工作不得回退这些契约，也不得把 SIM-only 字段加入 `src/robot/`。
-- 第 7 阶段第一个未完成子任务是“模型与场景升级”：先让 worker 行人和 forklift 的分部件视觉绑定消费真实 MuJoCo body/joint pose，再补 Blender/GLB 场景资产 manifest；每个子任务都必须有对应的 backend/frame/viewer 单测或截图验收，并单独提交。
+- 第 7 阶段的 worker 行人、forklift 分部件和 Blender/GLB 场景资产 manifest 已完成；机械臂第一切也已完成。后续模型扩展必须继续通过同一 backend/frame/viewer 验收，且不得把 SIM-only pose 或 actor identity 加入 `src/robot/`。
 - 工业长测的 `4/5` 结果曾在干净工作区复测为 `5/5`，因此只能作为需重复的稳定性证据；后续长测必须保留定位候选、协方差、恢复动作和时序记录，不能用放宽到达条件、读取真值或关卡专用常量掩盖波动。
 
 ### 压缩后恢复协议（必须遵守）
 
 1. 读取本文件的“持续恢复锚点”和“最新恢复顺序”，再检查 `git status`/`git log`；不要从对话记忆猜测已完成内容。
-2. 从表格中第一个“进行中”阶段的第一个未完成子任务继续。当前入口是第 7 阶段的 worker/forklift link binding；完成后更新本文件、记录测试证据并单独提交。
+2. 从表格中第一个“进行中”阶段的第一个未完成子任务继续。当前入口是 E1/E2 教学存档与四底盘/算法差异课程；完成后更新本文件、记录测试证据并单独提交。
 3. 任何失败先记录可复现命令、输入 revision、SIM/ROBOT 边界和结构化证据，再修改代码。已撤销的动态回波过滤、无条件 prior-improvement、post-step velocity projection 等实验不得重新引入。
 4. 每次阶段性提交后立即更新本文件中的提交号、测试结果和剩余风险，确保下一次上下文压缩仍能从同一锚点恢复。
 
@@ -372,7 +372,7 @@
 - worker GLB 的 `WorkerWalk` clip 已接入 Viewer；动画相位由记录帧的 SIM 时间、MuJoCo mocap 根位姿对应的实际速度和 manifest `animation_stride_m` 推导。暂停、回放、Turbo 和多 worker 不共享墙钟相位，停下时回到站立帧。
 - `AssetDefinition`/manifest 现在显式声明动画步长；Blender `inspect_assets.py` 对带 clip 的资产强制检查有限的正步长。资产仍保持 `actor_root` 地面 pivot，根位姿直接来自 MuJoCo read-back。
 - 验收：`test_asset_manifest`、`test_viewer_frame`、`test_mujoco_backend`、`test_sim_actor` 通过；Blender 5.2.2 `inspect_assets.py` 报 `ASSET_MANIFEST_OK assets=44`；Xvfb 下 `sim_viewer --3d --map configs/worlds/industrial_200k.json --mute` 成功加载 `WorkerWalk (50 frames, 0.833333s)`。
-- 本子阶段不改变 ROBOT observation/decision/actuation，也未把 SIM actor identity 或真值加入 `src/robot/`。下一子阶段：forklift 的车体、驱动轮、转向轮、门架、carriage 和货叉 link 绑定真实 MuJoCo body/joint pose。
+- 本子阶段不改变 ROBOT observation/decision/actuation，也未把 SIM actor identity 或真值加入 `src/robot/`。forklift 的车体、驱动轮、转向轮、门架、carriage 和货叉 link 已绑定真实 MuJoCo body/joint pose；后续只补模型细节和内容，不改变边界。
 
 ### 阶段 1 回环修订检查点（2026-10-27）
 

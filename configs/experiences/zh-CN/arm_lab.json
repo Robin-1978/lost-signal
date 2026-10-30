@@ -1,0 +1,51 @@
+{
+  "format": "lost-signal-experience/1",
+  "experience_id": "arm_lab",
+  "title": "机械臂实验室：关节、力矩与接触",
+  "subtitle": "驶入标定门，再观察由物理系统驱动的四关节机械臂。",
+  "files": {
+    "map": "../../worlds/arm_lab.json",
+    "scene": "../../worlds/arm_lab.scene.json",
+    "robot": "../../robot/ro6_arm.json",
+    "sim": "../../sim/default.json"
+  },
+  "objectives": ["arm_calibration_gate"],
+  "time_limit_steps": 1400,
+  "briefing": [
+    "任务：零碰撞抵达标定门，并让底盘稳定停下。",
+    "检查：四个机械臂连杆是独立的 MuJoCo body，每个 mesh 都绑定到实时关节坐标系。",
+    "证明：关节轴、力矩、编码器反馈、质心和接触都是工程证据，不是渲染捷径。"
+  ],
+  "intro": {
+    "shots": [
+      {"component_id":"arm_joint_1","title":"基座承载机械臂根部","caption":"机械臂基座由机器人 profile 装配。第一关节的原点和轴与驱动轮使用同一物理模型。","duration_s":1.7},
+      {"component_id":"arm_joint_1","title":"每一节连杆都有真实关节","caption":"上臂跟随 MuJoCo body 和 joint pose；查看器不会用墙钟时间重新计算装饰角度。","duration_s":1.7},
+      {"component_id":"arm_joint_4","title":"末端执行器响应力矩","caption":"操作力矩先经过限幅和 watchdog，再在编码器反馈有效时进入物理系统。","duration_s":1.7},
+      {"component_id":"mission","title":"到达由两套证据独立判定","caption":"ROBOT 根据测量和估计做决定，SIM 另行核验物理净空、接触和稳定停车。","duration_s":1.7}
+    ]
+  },
+  "walkaround": [
+    {"component_id":"arm_joint_1","title":"肩部关节 / 轴","lesson":"第一节连杆从配置的机械臂基座开始，轴和姿态直接来自 MuJoCo。","required":false},
+    {"component_id":"arm_joint_2","title":"肘部关节 / 负载","lesson":"关节阻尼和力矩限制属于物理系统参数，视觉连杆不能绕过关节响应自行移动。","required":false},
+    {"component_id":"arm_joint_4","title":"末端工具 / 编码器反馈","lesson":"工具是第四节连杆。真实硬件使用同一类型的机械臂编码器和力矩契约。","required":false},
+    {"component_id":"com","title":"质心与接触","lesson":"工程视图可以显示质心、碰撞几何、关节轴和接触法向；这些内容只属于 SIM 证据。","required":false}
+  ],
+  "prediction": {
+    "question":"机械臂运动时撤去力矩，会发生什么？",
+    "choices":[
+      {"choice_id":"settle","label":"连杆在阻尼和重力下滑行并稳定","explanation":"物理系统应用配置的力矩限制、阻尼、重力和接触；渲染器只读取引擎输出的关节姿态。","evidence_rule":"independent_acceptance"},
+      {"choice_id":"teleport","label":"查看器把每节连杆瞬移到目标角度","explanation":"绘制阶段动画会违反 MuJoCo 姿态契约，不能作为通过结果。","evidence_rule":"sim_rejected"},
+      {"choice_id":"incomplete","label":"课程没有物理证据","explanation":"没有终态任务或有效反馈的运行不能构成完整证据。","evidence_rule":"incomplete"}
+    ]
+  },
+  "running_prompt":"使用工程视图检查关节轴、质心、接触和编码器反馈。沙盒按 H 启用底盘/机械臂操作输入：I/K、O/L、P/;、[/’。",
+  "debrief": {
+    "success_title":"机械臂物理证据已记录",
+    "failure_title":"机械臂安全门未通过",
+    "lessons":[
+      "机械臂是完整的关节物理系统：连杆几何、关节轴、力矩、阻尼、质心和接触共同决定运动。",
+      "渲染器读取 MuJoCo body 和 joint 回读，不另造第二套机械臂状态。",
+      "ROBOT 接收编码器测量和已接受命令，永远不会收到仿真接触真值或 score。"
+    ]
+  }
+}
