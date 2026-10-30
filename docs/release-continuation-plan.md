@@ -598,10 +598,10 @@
 
 ### 发布目录与代码整理阶段（工作区，待提交）
 
-- `test_experience_catalog` 现在严格检查全部 12 个发布章节：每个章节的
+- `test_experience_catalog` 现在严格检查全部 14 个发布章节：每个章节的
   world、authored scene、asset manifest 和首个 ROBOT/SIM transition 都必须可加载；
   不再使用 `>= 11` 这种会掩盖章节丢失的下限。
-- `test_scene_manifest` 严格检查全部 12 个物理 world 都有同名 authored scene；
+- `test_scene_manifest` 严格检查全部 13 个有配对场景的物理 world 都有同名 authored scene；
   `lab_default.scene.json` 仍只作为显式的开发 fallback，不会替代已发布 world 的
   reviewed scene。
 - 局部匹配、SLAM 和全局搜索共用 `kMaximumScanMatchHypotheses` 的实现容量；
@@ -614,7 +614,7 @@
   typed MCU setpoint）、`test_multichassis_mission`（differential/Ackermann/
   Mecanum/swerve）、`test_experience_catalog`、`test_scene_manifest`、
   `test_asset_manifest` 和 `test_truth_isolation`；`python3 tests/check_boundary.py`
-  通过。Xvfb 已对全部 12 个物理 world 完成 `--3d --shot` smoke，且每个 world 的
+  通过。Xvfb 已对全部 13 个有配对场景的物理 world 完成 `--3d --shot` smoke，且每个 world 的
   40-step headless smoke 均能推进。
 - Release Viewer 对主战役 7 章和 5 个工程课程逐章执行 `--chapter ... --3d
   --shot 8` smoke，全部成功退出并生成截图；这覆盖了第二章入口的 Enter/briefing
@@ -1000,6 +1000,10 @@ ROBOT。
   解析结果并负责 ScenarioSession/ExperienceFlow 生命周期、输入、播放循环和 HUD 编排，
   不再持有 GLB 资产加载、地面材质、阴影/bloom、2D/3D 场景绘制或 MuJoCo 姿态到显示
   坐标的转换实现。
+- 直接 `--map` 启动在没有 `--robot/--sim` 时补用默认 differential 与 nominal SIM
+  profile，再进入同一个 runtime hash/scene 流程；不会因空的必需输入路径失败。没有
+  X11/Wayland 显示时 Viewer 在创建 GLFW 前 fail closed 并提示 `xvfb-run`，避免 raylib
+  初始化阶段崩溃。
 - 新增 `scene_renderer.hpp/.cpp` 作为 SIM-side presentation 模块：统一管理
   `VisualAssets` 生命周期、manifest grounding/axis 转换、物理 body/link/contact 的
   绘制、LiDAR/估计/碰撞证据层、相机和场景后处理。它只消费 `Frame`、`World` 和已记录

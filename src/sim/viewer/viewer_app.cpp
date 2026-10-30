@@ -666,6 +666,14 @@ int lost_signal::sim::viewer::run_viewer(int argc, char** argv) {
  if (assets_path.empty() && std::filesystem::is_directory("assets")) {
  assets_path = "assets";
  }
+ // A direct map launch is still a complete SIM runtime. When the operator
+ // does not select a robot or SIM profile, use the same nominal defaults as
+ // the sandbox instead of passing empty required inputs to the invariant
+ // digest builder.
+ if (!experience_loaded && !map_path.empty()) {
+   if (robot_path.empty()) robot_path = "configs/robot/differential.json";
+   if (sim_path.empty()) sim_path = "configs/sim/default.json";
+ }
  std::optional<robot::platform::RobotConfig> robot_config;
  std::optional<sim::eval::SimConfig> sim_config;
   std::unique_ptr<sim::scenario::ScenarioSession> session;
@@ -764,6 +772,18 @@ int lost_signal::sim::viewer::run_viewer(int argc, char** argv) {
  std::fprintf(stderr,
  "viewer history: recent %.1f sim seconds (%zu records); full score retained\n",
  sandbox_history_seconds, history_steps);
+ }
+
+ // Raylib cannot create a window without a display backend and may fail
+ // inside GLFW before returning a useful error. Fail at the application
+ // boundary so headless users get an actionable message instead of a crash;
+ // deterministic headless simulation remains available through lost_signal_sim.
+ if (std::getenv("DISPLAY") == nullptr &&
+     std::getenv("WAYLAND_DISPLAY") == nullptr) {
+   std::fprintf(stderr,
+                "sim_viewer needs DISPLAY or WAYLAND_DISPLAY; use xvfb-run "
+                "for a headless 3D smoke test\n");
+   return 1;
  }
 
  unsigned int window_flags = FLAG_WINDOW_RESIZABLE;

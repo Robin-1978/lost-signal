@@ -197,7 +197,7 @@ int main() {
  // Every published world now owns an authored scene. Keep this exact so a
  // new physical test map cannot silently fall back to an unreviewed visual
  // composition in the release catalog.
- assert(checked == 12);
+ assert(checked == 13);
  }
  return 0;
 }
