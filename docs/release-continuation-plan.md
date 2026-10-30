@@ -1067,3 +1067,14 @@ ROBOT。
   和 `test_mujoco_backend` 通过。
 - 这项只改变 SIM presentation asset，不改变 ROBOT、碰撞几何、轮半径、底盘参数或
   传感器输入；MuJoCo 物理模型仍是姿态、接触和粒子/音频证据的唯一来源。
+
+### Chassis-specific local planner projection（2026-10-31）
+
+- DWA 与 TEB 继续共享感知、局部地图、预测、Validator 和制动尾迹，但不再把第一条
+  body twist 当成所有底盘都可直接执行。TEB 的时间缩放候选现在也经过已测左右轮速、
+  differential track 和轮速上限的可达窗口；Ackermann 继续在速度相关曲率区间内采样，
+  Mecanum/Swerve 只有在声明的横向能力存在时才允许横移。执行器不会再把“已验证命令”
+  隐式改成另一条命令。
+- `test_local_planner_compare` 新增高初速、高偏航差速回归，逐候选检查左右轮的一周期
+  加速度窗口与轮速上限；原有 DWA Ackermann 曲率、TEB Ackermann 零速不可原地转向和
+  四底盘任务回归继续通过。该变化只使用 ROBOT 配置和反馈，不读取 SIM 真值。

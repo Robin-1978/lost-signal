@@ -20,8 +20,10 @@ namespace lost_signal::robot::autonomy {
 //   until a sensor ray or ROBOT-side SLAM replay marks them free;
 // - dynamic checks consume predicted DynamicTrack frames;
 // - output is one LocalCandidate, never a trajectory object;
-// - wheel-space windows and actuator identification stay out: the IChassis
-// wrapper owns feasibility against the real base.
+// - chassis-specific limits are explicit in ChassisLimits: Ackermann
+//   curvature, holonomic lateral motion, and differential wheel-space
+//   windows are applied before a candidate is exposed to validation. The
+//   IChassis wrapper still owns actuator conversion and closed-loop feedback.
 struct DwaWeights {
   double w_goal = 1.0;
   double w_clear = 2.0;

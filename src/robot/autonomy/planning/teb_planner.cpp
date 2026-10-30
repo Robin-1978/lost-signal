@@ -411,6 +411,44 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  } else {
  lateral = 0.0;
  }
+
+ // TEB's geometric band is chassis agnostic, but its first command is not:
+ // a differential base can only realise a (v, w) pair through two wheel
+ // speeds. Project the command through the same measured wheel window used by
+ // DWA and the decision recovery path before exposing it to the validator.
+ // This keeps the validator, controller and plant on one executable command,
+ // even when a warm band asks for a sharp simultaneous turn and launch.
+ const auto project_differential_command = [&](double& body_forward,
+                                                double& body_yaw) {
+   if (!(limits.differential_track_m > 0.0) ||
+       limits.max_lateral_mps > 0.0 || limits.max_curvature_inv_m > 0.0) {
+     return;
+   }
+   const double half_track = 0.5 * limits.differential_track_m;
+   const double measured_left =
+       est.forward_mps - est.yaw_rate_radps * half_track;
+   const double measured_right =
+       est.forward_mps + est.yaw_rate_radps * half_track;
+   const double wheel_rate = std::max(0.0, config_.accel_mps2) +
+                             std::max(0.0, config_.yaw_accel_radps2) *
+                                 half_track;
+   const double wheel_delta = wheel_rate * config_.control_dt_s;
+   double left = std::clamp(body_forward - body_yaw * half_track,
+                            measured_left - wheel_delta,
+                            measured_left + wheel_delta);
+   double right = std::clamp(body_forward + body_yaw * half_track,
+                             measured_right - wheel_delta,
+                             measured_right + wheel_delta);
+   if (limits.max_wheel_speed_mps > 0.0) {
+     left = std::clamp(left, -limits.max_wheel_speed_mps,
+                       limits.max_wheel_speed_mps);
+     right = std::clamp(right, -limits.max_wheel_speed_mps,
+                        limits.max_wheel_speed_mps);
+   }
+   body_forward = 0.5 * (left + right);
+   body_yaw = (right - left) / limits.differential_track_m;
+ };
+ project_differential_command(forward, yaw);
  LocalCandidate candidate;
  candidate.forward_mps = forward;
  candidate.lateral_mps = lateral;
@@ -443,6 +481,8 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  candidate.lateral_mps * scale, previous_lateral_mps_,
  config_.lateral_accel_mps2, config_.lateral_accel_mps2,
  config_.control_dt_s);
+ project_differential_command(proposal.forward_mps,
+                              proposal.yaw_rate_radps);
  proposal.cost = candidate.cost + (1.0 - scale);
  append_unique(proposal);
  }

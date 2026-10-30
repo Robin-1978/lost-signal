@@ -53,6 +53,21 @@ result against raw scan evidence and the same continuous-time prediction;
 `DirectController` emits canonical `kStop`/command, and the safety gate has the
 last word. Unknown planner names fail configuration.
 
+The planner shell is shared, but the dynamic window is chassis-specific:
+
+| Chassis | Local command envelope | Planner consequence |
+| --- | --- | --- |
+| Differential | measured left/right wheel speeds, track width and wheel-speed cap | `v,w` candidates are projected through the reachable wheel window; no hidden instantaneous pivot |
+| Ackermann | signed speed, curvature/steer limit and gear cusp | `w=v·κ`, so zero speed cannot turn in place and forward/reverse changes require a settled stop |
+| Mecanum/Swerve | forward/lateral/yaw limits and module reachability | lateral samples are enabled only when the declared holonomic envelope allows them |
+| Tracked | forward/yaw envelope with the configured track model | skid-steer motion stays in the declared body envelope; it is not treated as holonomic |
+
+Both DWA and TEB apply the relevant chassis projection before returning a
+candidate. The common validator then checks the projected command and its full
+braking tail; the actuator layer does not silently change the command that was
+validated. `test_local_planner_compare` pins this for Ackermann curvature and
+differential wheel-space reachability.
+
 ## Ownership rules
 
 - Estimation consumes odometry/IMU prediction + scan/map correction only.

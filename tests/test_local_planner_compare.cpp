@@ -152,6 +152,42 @@ int main() {
  assert(std::abs(ack.best.yaw_rate_radps) <=
  std::abs(ack.best.forward_mps) * ackermann.max_curvature_inv_m + 1e-9);
 
+ // The same chassis-specific contract applies to TEB's scaled candidates:
+ // differential commands are projected through the measured left/right wheel
+ // window, so a band cannot produce an executable body twist that the
+ // controller would later clamp differently.
+ platform::ChassisLimits differential = limits;
+ differential.differential_track_m = 0.5;
+ differential.max_wheel_speed_mps = 0.9;
+ EstimatedState differential_est = est;
+ differential_est.forward_mps = 0.75;
+ differential_est.yaw_rate_radps = 0.5;
+ TebPlannerConfig teb_differential_config;
+ TebPlanner teb_differential(teb_differential_config);
+ const LocalPlan differential_plan = teb_differential.plan(
+     differential_est, perception, empty_prediction, map, route,
+     differential);
+ assert(differential_plan.has_plan);
+ const double half_track = 0.5 * differential.differential_track_m;
+ const double measured_left = differential_est.forward_mps -
+                              differential_est.yaw_rate_radps * half_track;
+ const double measured_right = differential_est.forward_mps +
+                               differential_est.yaw_rate_radps * half_track;
+ const double wheel_delta =
+     (teb_differential_config.accel_mps2 +
+      teb_differential_config.yaw_accel_radps2 * half_track) *
+     teb_differential_config.control_dt_s;
+ for (const auto& candidate : differential_plan.candidates) {
+   const double left = candidate.forward_mps -
+                       candidate.yaw_rate_radps * half_track;
+   const double right = candidate.forward_mps +
+                        candidate.yaw_rate_radps * half_track;
+   assert(std::abs(left - measured_left) <= wheel_delta + 1e-9);
+   assert(std::abs(right - measured_right) <= wheel_delta + 1e-9);
+   assert(std::abs(left) <= differential.max_wheel_speed_mps + 1e-9);
+   assert(std::abs(right) <= differential.max_wheel_speed_mps + 1e-9);
+ }
+
  // Position and heading are separate terminal constraints. A differential
  // base already at the final point rotates toward the requested final yaw;
  // an Ackermann base still cannot manufacture in-place steering.
