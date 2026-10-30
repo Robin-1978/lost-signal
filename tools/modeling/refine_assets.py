@@ -188,11 +188,11 @@ def refine_chassis():
               "service_latch_right"):
         assign(n, mint)
     assign("rear_status", amber)
-    for n in ("lower_skirt", "lower_hull", "upper_hull", "top_deck",
-              "front_bumper", "shoulder_left", "shoulder_right"):
-        bevel(n, 0.0045)
-    cube("ro1_front_skid", (0.407, -0.055, 0.0), (0.016, 0.032, 0.34), slate, 0.006)
-    cube("ro1_front_pinstripe", (0.392, -0.094, 0.0), (0.008, 0.006, 0.255), mint, 0.002)
+    # Keep the cosmetic skid inside the authored chassis envelope; the
+    # manifest bounds describe render geometry and are also used by the
+    # grounding gate.
+    cube("ro1_front_skid", (0.404, -0.055, 0.0), (0.016, 0.032, 0.34), slate, 0.0)
+    cube("ro1_front_pinstripe", (0.392, -0.094, 0.0), (0.008, 0.006, 0.255), mint, 0.0)
     export_glb(path)
 
 def refine_caster():
@@ -200,10 +200,43 @@ def refine_caster():
     import_glb(path)
     rubber = mat("ro1_caster_rubber", (0.035, 0.040, 0.045), 0.0, 0.58)
     steel = mat("ro1_caster_steel", (0.48, 0.56, 0.54), 0.72, 0.22)
-    assign("caster_tire", rubber); assign("caster_rim", steel); assign("caster_axle", steel)
-    bevel("caster_tire", 0.004)
-    cylinder("caster_crown_highlight", (0.0, 0.0, 0.0), 0.0405, 0.025, "Y", rubber)
-    cylinder("caster_hub_cap", (0.0, -0.039, 0.0), 0.016, 0.008, "Y", steel, 24)
+    # Keep the visual tire congruent with the MuJoCo caster compound: a
+    # nominal-radius centre rib carries the normal load and two smaller
+    # shoulders engage only under lean/side load.  The old flat cylinder was
+    # visually wider than the physical contact patch and made a caster look
+    # embedded when the wheel was viewed from the side.
+    old_tire = bpy.data.objects.get("caster_tire")
+    if old_tire is not None:
+        bpy.data.objects.remove(old_tire, do_unlink=True)
+    reference_radius = 0.055
+    reference_half_width = 0.048
+    crown_half_width = reference_half_width * 0.5
+    shoulder_half_width = reference_half_width * 0.25
+    shoulder_offset = crown_half_width + shoulder_half_width
+    shoulder_radius = reference_radius * 0.90
+    cylinder("caster_tire", (0.0, 0.0, 0.0), reference_radius,
+             2.0 * crown_half_width, "Y", rubber, 12)
+    cylinder("caster_tire_shoulder_left", (0.0, shoulder_offset, 0.0),
+             shoulder_radius, 2.0 * shoulder_half_width, "Y", rubber, 12)
+    cylinder("caster_tire_shoulder_right", (0.0, -shoulder_offset, 0.0),
+             shoulder_radius, 2.0 * shoulder_half_width, "Y", rubber, 12)
+    # The 24-sided cylinders are already smooth enough at the caster's
+    # presentation scale.  Avoid a bevel modifier here: it multiplies the
+    # tiny tire mesh beyond the manifest's close-up triangle budget without
+    # improving the silhouette.
+    for old_name in ("caster_rim", "caster_axle"):
+        old = bpy.data.objects.get(old_name)
+        if old is not None:
+            bpy.data.objects.remove(old, do_unlink=True)
+    # Low-poly metal inserts keep the caster readable at gameplay distance
+    # while leaving room in the strict wheel mesh budget for the crown.
+    cylinder("caster_rim", (0.0, 0.0, 0.0), reference_radius * 0.65,
+             reference_half_width * 1.08, "Y", steel, 12)
+    cylinder("caster_axle", (0.0, 0.0, 0.0), reference_radius * 0.24,
+             reference_half_width * 1.25, "Y", steel, 12)
+    cylinder("caster_hub_cap", (0.0, -reference_half_width * 0.8125, 0.0),
+             reference_radius * 0.29, reference_half_width / 6.0,
+             "Y", steel, 12)
     export_glb(path)
 
 def refine_lidar():
@@ -213,7 +246,9 @@ def refine_lidar():
     glass = mat("ro1_lidar_glass", (0.025, 0.10, 0.12), 0.25, 0.08)
     mint = mat("ro1_lidar_mint", (0.26, 0.90, 0.73), 0.0, 0.20, (0.10, 0.55, 0.38))
     assign("base", graphite); assign("scanner", glass); assign("scan_bar", mint)
-    cylinder("lidar_status_ring", (0.0, -0.071, 0.0), 0.073, 0.007, "Y", mint, 40)
+    # A compact 16-sided ring is sufficient at the sensor's scale and keeps
+    # the close-up asset within its declared triangle budget.
+    cylinder("lidar_status_ring", (0.0, -0.071, 0.0), 0.073, 0.007, "Y", mint, 16)
     export_glb(path)
 
 def main():

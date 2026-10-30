@@ -1528,7 +1528,7 @@
       },
       "reference_radius_m": 0.055,
       "reference_half_width_m": 0.048,
-      "content_hash": "fnv1a64:acb46af493b8ca13",
+      "content_hash": "fnv1a64:27b5f7e127d368e7",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/caster_wheel.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "wheel_roll_joint",
@@ -1593,7 +1593,7 @@
           0.2075
         ]
       },
-      "content_hash": "fnv1a64:56272edb34f57131",
+      "content_hash": "fnv1a64:8d64a8eea3d712ee",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/chassis.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "base_link",
@@ -1898,7 +1898,7 @@
           0.105
         ]
       },
-      "content_hash": "fnv1a64:6becd05253201c54",
+      "content_hash": "fnv1a64:e97ed1d08ee29a6b",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/lidar_standard.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "sensor_frame",

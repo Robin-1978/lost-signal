@@ -30,7 +30,7 @@
 2. **F3 物理/渲染自动验收**：已完成轮心接地、joint axis、COM/contact、collision geometry 和固定子步 timestep-sensitivity gate；资产 grounding point 现在必须落在声明 bounds 内。
 3. **D2–D4 视觉发布债务**：D2 地面材质、D3 音频清理/登记与 D4 模型来源审计已完成；继续进入 E1/E2 教学内容。
 4. **E1/E2/C4 教学内容**：E1 的轮胎、LiDAR、算力装配 registry 已完成并接入 assembly_lab；E2 本地 profile/星级/知识卡存储第一切已完成，继续接 Viewer 的章节进度和知识卡界面以及四底盘/算法差异课程。成对 replay/report 导出基础已存在，后续补教学存档界面；扩展 typed experiment registry 时不得把 SIM truth 暴露给 ROBOT。
-5. **动态 actor/机械臂课程扩展**：继续使用 MuJoCo body/joint/contact 驱动，新增工程视图所需的关节轴、碰撞体、COM 和真实接触效果。
+5. **动态 actor/机械臂课程扩展**：动态 actor 横穿教学章及其匿名 track/预测/让行回归已完成；下一子项是继续使用 MuJoCo body/joint/contact 驱动机械臂课程，补关节轴、碰撞体、COM 和真实接触效果的工程验收。
 
 ### 实机外部验收队列
 
@@ -598,10 +598,10 @@
 
 ### 发布目录与代码整理阶段（工作区，待提交）
 
-- `test_experience_catalog` 现在严格检查全部 14 个发布章节：每个章节的
+- `test_experience_catalog` 现在严格检查全部 15 个发布章节：每个章节的
   world、authored scene、asset manifest 和首个 ROBOT/SIM transition 都必须可加载；
   不再使用 `>= 11` 这种会掩盖章节丢失的下限。
-- `test_scene_manifest` 严格检查全部 13 个有配对场景的物理 world 都有同名 authored scene；
+- `test_scene_manifest` 严格检查全部 14 个有配对场景的物理 world 都有同名 authored scene；
   `lab_default.scene.json` 仍只作为显式的开发 fallback，不会替代已发布 world 的
   reviewed scene。
 - 局部匹配、SLAM 和全局搜索共用 `kMaximumScanMatchHypotheses` 的实现容量；
@@ -614,9 +614,9 @@
   typed MCU setpoint）、`test_multichassis_mission`（differential/Ackermann/
   Mecanum/swerve）、`test_experience_catalog`、`test_scene_manifest`、
   `test_asset_manifest` 和 `test_truth_isolation`；`python3 tests/check_boundary.py`
-  通过。Xvfb 已对全部 13 个有配对场景的物理 world 完成 `--3d --shot` smoke，且每个 world 的
+  通过。Xvfb 已对全部 14 个有配对场景的物理 world 完成 `--3d --shot` smoke，且每个 world 的
   40-step headless smoke 均能推进。
-- Release Viewer 对主战役 7 章和 5 个工程课程逐章执行 `--chapter ... --3d
+- Release Viewer 对主战役 7 章和 6 个工程课程逐章执行 `--chapter ... --3d
   --shot 8` smoke，全部成功退出并生成截图；这覆盖了第二章入口的 Enter/briefing
   状态、无图 SLAM、连续坡面、冰面、复杂场、交通场和工业长图，避免把 UI 暂停误报
   为仿真卡死。
@@ -990,7 +990,7 @@ ROBOT。
 - 验收：`test_asset_manifest`、`test_mujoco_backend` 通过；Debug/Release 的 F4 定向
   回归继续通过，Debug 全量 CTest 基线为 90/90。F3 阶段在本次变更中独立提交。
 
-下一步从这里继续：先完成 F4 版本化传感器 realism profile 并单独提交；随后按“F3 → D2–D4 → E1/E2/C4 → 动态 actor/机械臂内容”的顺序推进。真实硬件 profile、急停、负载、传输延迟和 calibration artifact 仍按上面的外部验收队列执行，不用模拟数据冒充现场完成。
+上一段记录的是 F4/F3/D2–D4 的历史收尾顺序；当前恢复点从 E1/E2 教学存档和机械臂课程验收继续。动态 actor 教学章已完成并保留在下方阶段记录；真实硬件 profile、急停、负载、传输延迟和 calibration artifact 仍按上面的外部验收队列执行，不用模拟数据冒充现场完成。
 
 ### Viewer composition split（2026-10-30）
 
@@ -1035,3 +1035,35 @@ ROBOT。
 - `test_experience_manifest`、`test_experience_runtime` 和 `test_experience_catalog` 覆盖
   分类域、variant profile、不同 chassis plant、digest 不变性、pair label 和同一路线双
   运行完成；本阶段定向回归（含 `truth_isolation`、`robot_boundary`）通过。
+
+### Dynamic actor teaching lab and chassis entry points（2026-10-31）
+
+- 动态 actor 教学章不再借用 Signal Town 的远处交通作为“动态避障”证据，新增连续的
+  `dynamic_safety_lab` world、scene 和 actor sidecar：匿名叉车从走廊外侧横穿机器人
+  的路线，ROBOT 只能从带 acquisition timestamp 的 LiDAR 观测建立 anonymous
+  `DynamicTrack`，预测、Validator 和 Safety 共同产生让行/恢复动作；actor id、未来
+  waypoint、MuJoCo pose 和物理接触仍只在 SIM/Viewer 侧存在。
+- 新增 `test_dynamic_safety_experience_mission`：从 manifest/runtime 真实加载 sidecar，
+  检查 anonymous track、预测响应、恢复前进、零碰撞和独立物理到达；`dynamic_crossing_mission`
+  继续覆盖不同横穿时相。章节首帧、scene binding、catalog 和 Xvfb 3D smoke 均通过。
+- Viewer 新增 `--chassis differential|ackermann|tracked|mecanum|swerve` 标准 profile
+  快捷入口，直接解析到 `configs/robot/*.json`；`--robot FILE` 保留给自定义 profile，
+  两者互斥。`--chapter chassis_lab` 仍在 baseline 完成后通过 `A` 或复盘按钮运行
+  Ackermann variant。底盘选择只改变 ROBOT/物理配置契约，不改变场景真值或注入任何
+  SIM 观测。
+- 定向回归：`viewer_options`、`dynamic_crossing_mission`、
+  `dynamic_safety_experience_mission`、`experience_manifest`、`experience_catalog`、
+  `scene_manifest` 六项通过；`check_boundary.py` 通过。
+
+### Grounded visual asset refinement（2026-10-31）
+
+- RO-1 被动万向轮的视觉 GLB 现在与 MuJoCo 的三段冠状胎面同构：中心名义半径胎面
+  承载，左右肩部半径降低，轮毂和旋转见证仍在同一 `wheel_roll_link` 坐标系中。
+  渲染器继续只读取 MuJoCo 的 caster fork/wheel body pose 和 roll/swivel joint；GLB
+  不再添加第二个解析轮胎或独立动画，因此坡面、打滑和转向时视觉与物理接触保持一致。
+- 同一轮胎 mesh、RO-1 车体前部防擦件和 LiDAR 状态环由 Blender 生成脚本重新导出，
+  保持 manifest 的米制 bounds、grounding point、材质和 triangle budget；资产 hash 已
+  更新。`inspect_assets.py` 完整 53 项通过，`test_asset_manifest`、`test_viewer_frame`
+  和 `test_mujoco_backend` 通过。
+- 这项只改变 SIM presentation asset，不改变 ROBOT、碰撞几何、轮半径、底盘参数或
+  传感器输入；MuJoCo 物理模型仍是姿态、接触和粒子/音频证据的唯一来源。
