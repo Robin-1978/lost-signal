@@ -236,6 +236,7 @@ endif()
 if(LOST_SIGNAL_WITH_VIEWER)
   add_executable(sim_viewer
     src/sim/viewer/viewer_main.cpp
+    src/sim/viewer/viewer_app.cpp
     src/sim/viewer/scene_renderer.cpp
     src/sim/viewer/player_progress_ui.cpp
     src/sim/viewer/experience_overlay.cpp
