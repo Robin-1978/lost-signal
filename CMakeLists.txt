@@ -237,6 +237,7 @@ if(LOST_SIGNAL_WITH_VIEWER)
   add_executable(sim_viewer
     src/sim/viewer/viewer_main.cpp
     src/sim/viewer/viewer_app.cpp
+    src/sim/viewer/viewer_options.cpp
     src/sim/viewer/scene_renderer.cpp
     src/sim/viewer/player_progress_ui.cpp
     src/sim/viewer/experience_overlay.cpp
@@ -250,6 +251,13 @@ if(LOST_SIGNAL_WITH_VIEWER)
  src/sim/viewer/viewer_audio.cpp
  )
  target_link_libraries(test_viewer_audio PRIVATE lost_signal_sim_viewer raylib)
+
+ add_executable(test_viewer_options
+   tests/test_viewer_options.cpp
+   src/sim/viewer/viewer_options.cpp
+ )
+ target_link_libraries(test_viewer_options PRIVATE lost_signal_sim_viewer raylib)
+ add_test(NAME viewer_options COMMAND test_viewer_options)
 endif()
 
 add_library(lost_signal_sim_world STATIC

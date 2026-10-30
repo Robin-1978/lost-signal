@@ -51,6 +51,7 @@
 #include "sim/viewer/view_transform.hpp"
 #include "sim/viewer/viewer_audio.hpp"
 #include "sim/viewer/viewer_app.hpp"
+#include "sim/viewer/viewer_options.hpp"
 #include "sim/world/actor_behavior.hpp"
 #include "sim/world/mujoco_backend.hpp"
 #include "sim/world/terrain.hpp"
@@ -126,8 +127,6 @@ constexpr float kMinimumUiTextScale = 1.15f;
 constexpr float kMaximumUiTextScale = 1.45f;
 // Open-ended sandbox runs retain a local replay window. Authored experiences
 // keep their complete, independently scored episode for debrief and A/B.
-constexpr double kDefaultSandboxHistorySeconds = 120.0;
-
 Font g_ui_font{};
 bool g_owns_ui_font = false;
 bool g_zh_cn = false;
@@ -488,131 +487,41 @@ static HeroSequence hero_sequence_for(const ExperienceManifest& experience) {
 
 int lost_signal::sim::viewer::run_viewer(int argc, char** argv) {
   using namespace lost_signal;
- // Optional single-source configuration: --robot <config> builds the
- // session from one RobotConfig file (ROBOT description + SIM motor
- // numbers), --map <world file> replaces the demo geometry. `--assets`
- // enables optional SIM-only GLB presentation models from the old content
- // tree; procedural parts remain the deterministic fallback.
-std::string robot_path, sim_path, map_path, assets_path, scene_path,
- experience_path, experiment_output_path, chapter_id, profile_path;
- std::string requested_locale = "auto";
- double initial_playback_rate = 1.0;
- double sandbox_history_seconds = kDefaultSandboxHistorySeconds;
- bool initial_turbo = false;
- bool initial_maximized = false;
- RenderQuality render_quality = RenderQuality::kHigh;
- bool sandbox_requested = false;
- bool play_requested = false;
- bool source_requested = false;
- bool mute_audio = false;
- bool initial_show_lidar = false;
- bool initial_show_robot_evidence = false;
- bool list_worlds = false;
- bool list_experiences = false;
- bool catalog_requested = false;
- // Reproducible engineering overlay for screenshots: COM, joint axes,
- // contact evidence and collision-proxy wireframes. It shares the SIM
- // debug gate with the K toggle and is refused during experience runs.
- bool initial_physics_overlay = false;
-  for (int i = 1; i < argc; ++i) {
-    const std::string a = argv[i];
- if (a == "--help" || a == "-h") {
- std::puts(
- "usage: sim_viewer [--play | --sandbox | --experience FILE]\n"
- " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
- " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
- " [--lidar] [--robot-evidence] [--shot N FILE]\n"
-" [--physics-overlay]\n"
- " [--maximized]\n"
- " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
- " [--experiment-out REPORT.json]\n"
- " [--profile FILE]\n"
- " [--chapter ID | --catalog | --list-worlds | --list-experiences]\n"
- "\n"
- "No arguments starts the First Contact field lab. --sandbox keeps the\n"
- "open engineering demo. During a run: Space pause, N step, F follow,\n"
- "Q quality, +/- rate, T turbo, F10 maximize, F11 fullscreen, V 2D/3D,\n"
- "right-drag orbit, wheel zoom. Sandbox: H manual, WASD/arrows drive.");
- return 0;
+ sim::viewer::ViewerOptions options;
+ std::string option_error;
+ if (!sim::viewer::parse_viewer_options(argc, argv, options, &option_error)) {
+   std::fprintf(stderr, "%s\n", option_error.c_str());
+   return 1;
  }
- if (a == "--play") play_requested = true;
- if (a == "--sandbox") sandbox_requested = true;
- if (a == "--mute") mute_audio = true;
- if (a == "--lidar") initial_show_lidar = true;
- if (a == "--robot-evidence") initial_show_robot_evidence = true;
- if (a == "--physics-overlay") initial_physics_overlay = true;
- if (a == "--list-worlds") list_worlds = true;
- if (a == "--list-experiences") list_experiences = true;
- if (a == "--catalog") {
- catalog_requested = true;
- list_worlds = true;
- list_experiences = true;
+ if (options.help_requested) {
+   sim::viewer::print_viewer_usage();
+   return 0;
  }
- if (a == "--chapter" && i + 1 < argc) {
- chapter_id = argv[++i];
- source_requested = true;
- }
- if (a == "--robot" && i + 1 < argc) {
- robot_path = argv[++i];
- source_requested = true;
- }
- if (a == "--sim" && i + 1 < argc) {
- sim_path = argv[++i];
- source_requested = true;
- }
- if (a == "--map" && i + 1 < argc) {
- map_path = argv[++i];
- source_requested = true;
- }
- if (a == "--assets" && i + 1 < argc) assets_path = argv[++i];
- if (a == "--scene" && i + 1 < argc) {
- scene_path = argv[++i];
- source_requested = true;
- }
- if (a == "--experience" && i + 1 < argc) {
- experience_path = argv[++i];
- source_requested = true;
- }
- if (a == "--experiment-out" && i + 1 < argc) {
- experiment_output_path = argv[++i];
- }
- if (a == "--profile" && i + 1 < argc) {
- profile_path = argv[++i];
- }
- if (a == "--locale" && i + 1 < argc) requested_locale = argv[++i];
- if (a == "--history-seconds" && i + 1 < argc) {
- char* end = nullptr;
- const double parsed = std::strtod(argv[++i], &end);
- if (end == argv[i] || *end != '\0' || !std::isfinite(parsed) ||
- parsed < 0.0) {
- std::fprintf(stderr,
- "bad --history-seconds: expected a finite non-negative value\n");
- return 1;
- }
- sandbox_history_seconds = parsed;
- }
- if (a == "--turbo") initial_turbo = true;
- if (a == "--maximized") initial_maximized = true;
- if (a == "--quality" && i + 1 < argc) {
- const std::string quality = argv[++i];
- if (quality == "fast") render_quality = RenderQuality::kFast;
- else if (quality == "high") render_quality = RenderQuality::kHigh;
- else {
- std::fprintf(stderr, "bad --quality: expected fast or high\n");
- return 1;
- }
- }
- if (a == "--rate" && i + 1 < argc) {
- char* end = nullptr;
- const double parsed = std::strtod(argv[++i], &end);
- if (end == argv[i] || *end != '\0' || !std::isfinite(parsed) ||
- parsed < 0.05 || parsed > 64.0) {
- std::fprintf(stderr, "bad --rate: expected a value in [0.05, 64]\n");
- return 1;
- }
- initial_playback_rate = parsed;
- }
-  }
+ std::string robot_path = options.robot_path;
+ std::string sim_path = options.sim_path;
+ std::string map_path = options.map_path;
+ std::string assets_path = options.assets_path;
+ std::string scene_path = options.scene_path;
+ std::string experience_path = options.experience_path;
+ std::string experiment_output_path = options.experiment_output_path;
+ std::string chapter_id = options.chapter_id;
+ std::string profile_path = options.profile_path;
+ const std::string requested_locale = options.requested_locale;
+ const double initial_playback_rate = options.initial_playback_rate;
+ const double sandbox_history_seconds = options.sandbox_history_seconds;
+ const bool initial_turbo = options.initial_turbo;
+ const bool initial_maximized = options.initial_maximized;
+ RenderQuality render_quality = options.render_quality;
+ const bool sandbox_requested = options.sandbox_requested;
+ const bool play_requested = options.play_requested;
+ const bool source_requested = options.source_requested;
+ const bool mute_audio = options.mute_audio;
+ const bool initial_show_lidar = options.initial_show_lidar;
+ const bool initial_show_robot_evidence = options.initial_show_robot_evidence;
+ const bool list_worlds = options.list_worlds;
+ const bool list_experiences = options.list_experiences;
+ const bool catalog_requested = options.catalog_requested;
+ const bool initial_physics_overlay = options.initial_physics_overlay;
  if (!chapter_id.empty()) {
  std::filesystem::path chapter_path(chapter_id);
  // The short form is deliberately resolved against the authored catalog;
@@ -953,40 +862,18 @@ bool show_estimate = initial_show_robot_evidence;
   sim::viewer::MapEditor editor;
   bool edit_mode = false;
   std::string edit_msg;
-  // 3D orbit camera over the same frame (V toggles 2D/3D, --3d starts in 3D).
- bool view3d = experience_loaded;
-  // --shot N path: render N frames, screenshot, exit (visual smoke check).
-  int shot_frames = -1;
-  std::string shot_path;
- float camera_dist = 0.0f;
- float camera_yaw = 0.0f, camera_pitch = 0.0f;
- bool camera_angle_set = false;
- bool camera_target_set = false;
- double camera_target_x = 0.0, camera_target_y = 0.0;
-  for (int i = 1; i < argc; ++i) {
-    const std::string a = argv[i];
-    if (a == "--3d") view3d = true;
- if (a == "--camera-dist" && i + 1 < argc) {
- camera_dist = std::max(0.6f, static_cast<float>(std::atof(argv[++i])));
- }
- if (a == "--camera-target" && i + 2 < argc) {
- camera_target_set = true;
- camera_target_x = std::atof(argv[++i]);
- camera_target_y = std::atof(argv[++i]);
- }
- if (a == "--camera-yaw" && i + 1 < argc) {
-  camera_yaw = static_cast<float>(std::atof(argv[++i]));
-  camera_angle_set = true;
- }
- if (a == "--camera-pitch" && i + 1 < argc) {
-  camera_pitch = static_cast<float>(std::atof(argv[++i]));
-  camera_angle_set = true;
- }
-    if (a == "--shot" && i + 2 < argc) {
-      shot_frames = std::atoi(argv[++i]);
-      shot_path = argv[++i];
-    }
-  }
+ // 3D orbit camera over the same frame (V toggles 2D/3D, --3d starts in 3D).
+ bool view3d = experience_loaded || options.view3d;
+ // --shot N path: render N frames, screenshot, exit (visual smoke check).
+ int shot_frames = options.shot_frames;
+ std::string shot_path = options.shot_path;
+ float camera_dist = options.camera_dist;
+ float camera_yaw = options.camera_yaw;
+ float camera_pitch = options.camera_pitch;
+ bool camera_angle_set = options.camera_angle_set;
+ bool camera_target_set = options.camera_target_set;
+ double camera_target_x = options.camera_target_x;
+ double camera_target_y = options.camera_target_y;
   CameraState cam_st;
   if (!map_path.empty()) {
     // Frame the authored map instead of the demo window.

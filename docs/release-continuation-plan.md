@@ -995,10 +995,11 @@ ROBOT。
 ### Viewer composition split（2026-10-30）
 
 - Viewer 的进程入口已经收敛为 `viewer_main.cpp` 的 5 行转发函数；完整应用编排移到
-  `viewer_app.cpp`，避免 `main()` 同时承担进程边界和运行时实现。`viewer_app.cpp` 仍只
-  负责参数、ScenarioSession/ExperienceFlow 生命周期、输入、播放循环和 HUD 编排，不再
-  持有 GLB 资产加载、地面材质、阴影/bloom、2D/3D 场景绘制或 MuJoCo 姿态到显示坐标
-  的转换实现。
+  `viewer_app.cpp`，避免 `main()` 同时承担进程边界和运行时实现。命令行、章节、镜头和
+  性能选项继续由独立的 `viewer_options.*` typed parser 负责，`viewer_app.cpp` 只消费
+  解析结果并负责 ScenarioSession/ExperienceFlow 生命周期、输入、播放循环和 HUD 编排，
+  不再持有 GLB 资产加载、地面材质、阴影/bloom、2D/3D 场景绘制或 MuJoCo 姿态到显示
+  坐标的转换实现。
 - 新增 `scene_renderer.hpp/.cpp` 作为 SIM-side presentation 模块：统一管理
   `VisualAssets` 生命周期、manifest grounding/axis 转换、物理 body/link/contact 的
   绘制、LiDAR/估计/碰撞证据层、相机和场景后处理。它只消费 `Frame`、`World` 和已记录
@@ -1006,8 +1007,8 @@ ROBOT。
 - `experience_overlay` 与 `player_progress_ui` 继续独立于渲染模块；章节档案仍只读取本地
   profile 和 authored manifest。这样后续加入机械臂关节、更多 GLB 和教学视图时，可以在
   renderer/overlay 中扩展，不再把逻辑堆回启动循环。
-- 验收：`cmake --build build --target sim_viewer -j4` 通过，入口/应用拆分后的 Debug
-  定向回归通过，
+- 验收：`cmake --build build --target sim_viewer -j4` 通过，入口/选项/应用拆分后的
+  Debug 定向回归 6/6 通过（含 `viewer_options`），
   包含 industrial 200K、signal_town、terrain/ice、四底盘、SLAM/loop closure、
   truth-isolation 与 robot-boundary。该阶段是 Viewer 结构提交点，后续算法/内容阶段继续
   单独提交。
