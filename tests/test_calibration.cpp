@@ -135,6 +135,19 @@ int main() {
  nominal_requirements.allow_nominal_commissioning = true;
  assert(validate_native_hardware_profile(nominal, nominal_requirements,
                                          &error));
+ CalibrationArtifact nominal_with_samples = nominal.calibration;
+ nominal_with_samples.sample_count = 1;
+ assert(!nominal_with_samples.valid(&error));
+ // Provenance is bidirectional: an explicit commissioning switch cannot
+ // relabel measured evidence, and a nominal source cannot carry samples.
+ NativeHardwareProfile relabeled = nominal;
+ relabeled.source = NativeHardwareProfileSource::kMeasured;
+ assert(!validate_native_hardware_profile(relabeled, nominal_requirements,
+                                          &error));
+ relabeled = nominal;
+ relabeled.calibration = fitted.artifact;
+ assert(!validate_native_hardware_profile(relabeled, nominal_requirements,
+                                          &error));
 
  CalibrationArtifact accepted_profile;
  assert(load_calibration_profile(artifact_path.string(), requirements,

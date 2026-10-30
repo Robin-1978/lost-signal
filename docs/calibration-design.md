@@ -74,3 +74,23 @@ capability handshake. Its wheel and track scales are the declared values
 that artifact unless the adapter sets `allow_nominal_commissioning`; this
 keeps a typical starting profile convenient without allowing it to masquerade
 as measured calibration in production.
+
+## First-use path
+
+The first run does not require a user to invent wheel, track or IMU numbers.
+The adapter performs the typed board handshake, passes the active
+`RobotDescription` and returned capabilities to
+`make_nominal_native_hardware_profile()`, and validates it with
+`allow_nominal_commissioning = true` for a bench-only session. The generated
+profile uses the declared geometry as its nominal prior and contains no
+simulator pose, actor identity or score. The source tag, `nominal:` digest and
+zero sample count are checked together, so the commissioning switch cannot
+turn measured evidence into a nominal artifact or the reverse.
+
+After the first safe bench run, the operator records the short straight-line
+and stationary IMU CSV described above, runs `calibrate_offline()`, persists
+the measured artifact atomically, and removes the commissioning flag. A
+production adapter accepts only that measured artifact; a missing, stale or
+incompatible file remains in safe hold. This keeps the easy path to three
+steps—handshake, nominal bench profile, measured CSV—without weakening the
+deployment gate.

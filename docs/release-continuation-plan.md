@@ -890,7 +890,9 @@ ROBOT。
   `make_nominal_native_hardware_profile()` 可由 RobotDescription 与板卡 capability
   自动生成 `nominal:` commissioning artifact，比例使用声明几何的 1.0。该 profile 默认
   仍被 measured gate 拒绝，只有 adapter 明确设置 `allow_nominal_commissioning` 才能通过；
-  生产部署仍必须替换为真实记录并关闭该开关。
+  生产部署仍必须替换为真实记录并关闭该开关。来源标签、`nominal:` digest 和零样本数
+  现在要求彼此一致，不能把 measured artifact 重新标成 commissioning。首次使用路径已
+  收敛为：板卡握手 → 自动生成 nominal bench profile → 采集 CSV 并生成 measured artifact。
 
 下一步从这里继续：完成真实硬件 profile/HIL 记录导入与验收，再将 Blender 资产检查、四底盘和手动 sandbox 纳入同一 Release
 发布门禁，再补齐可复用环境 GLB kit 与关节/碰撞/COM 视图验收；随后扩展主战役的

@@ -142,6 +142,7 @@ bool CalibrationArtifact::valid(std::string* error) const {
  !finite_array(imu_accel_bias_mps2) || !finite_array(imu_gyro_bias_radps) ||
  !finite(lidar_time_offset_s) || !finite(residual_rms) || residual_rms < 0.0 ||
  (sample_count == 0 && !nominal_digest(input_digest)) ||
+ (sample_count != 0 && nominal_digest(input_digest)) ||
  !finite(valid_temperature_min_c) ||
  !finite(valid_temperature_max_c) ||
  valid_temperature_min_c >= valid_temperature_max_c ||
@@ -467,14 +468,26 @@ bool validate_native_hardware_profile(
   fail(error, "native hardware steer layout does not match the profile");
   return false;
  }
- if (profile.source == NativeHardwareProfileSource::kNominalCommissioning &&
-     !req.allow_nominal_commissioning) {
-  fail(error, "nominal hardware profile requires explicit commissioning mode");
-  return false;
- }
- if (profile.source == NativeHardwareProfileSource::kMeasured &&
-     nominal_digest(profile.calibration.input_digest)) {
-  fail(error, "nominal calibration cannot be presented as measured hardware");
+ const bool nominal = nominal_digest(profile.calibration.input_digest);
+ if (profile.source == NativeHardwareProfileSource::kNominalCommissioning) {
+  if (!req.allow_nominal_commissioning) {
+   fail(error, "nominal hardware profile requires explicit commissioning mode");
+   return false;
+  }
+  // The source tag and artifact are one provenance contract. A caller may
+  // opt into commissioning, but may not relabel a measured artifact as a
+  // nominal one (or vice versa) to bypass the measured gate.
+  if (!nominal || profile.calibration.sample_count != 0) {
+   fail(error, "commissioning profile must contain a nominal artifact");
+   return false;
+  }
+ } else if (profile.source == NativeHardwareProfileSource::kMeasured) {
+  if (nominal) {
+   fail(error, "nominal calibration cannot be presented as measured hardware");
+   return false;
+  }
+ } else {
+  fail(error, "native hardware profile source is invalid");
   return false;
  }
  CalibrationProfileRequirements calibration_requirements = req.calibration;
