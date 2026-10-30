@@ -289,7 +289,9 @@
 
 - 新增 `sim/viewer/player_profile.*`：本地 JSON profile 只保存章节完成次数、独立 verdict 产生的 0–3 星、公开耗时/净空最佳值和已获得知识卡。星级顺序为 safety → mission → experiment，不能用速度或 SIM truth 越过安全失败。
 - profile 首次不存在时从空档案开始；损坏、版本不匹配、重复知识卡或非法数值 fail closed 并回退空档案；保存使用同目录临时文件原子 rename。`test_player_profile` 覆盖星级、去重、round-trip 和损坏回退。
-- 该阶段尚未把 profile 路径写入 ROBOT 或任务判定；下一切只在 Viewer 复盘/章节目录显示，仍使用不可变 Episode 证据。
+- Viewer 已接入 profile：章节简报显示当前章节星级、完成次数、最佳耗时/净空和知识卡进度；复盘显示已发布的知识卡内容。默认路径遵循 `XDG_STATE_HOME/lost-signal/player-profile.json`（无该变量时为 `~/.local/state/lost-signal/player-profile.json`），也可用 `--profile FILE` 指定。
+- profile 只在不可变 artifact 通过独立 progression gate 后发布；A/B 章节必须等 baseline+variant 完成且 Experiment verdict 通过才记一次。profile 路径、星级和知识卡从未进入 ROBOT、SIM 配置、Episode digest 或任务判定。
+- 损坏/版本不匹配仍回退空档案并提示；保存继续使用同目录临时文件原子 rename。Viewer 的当前章节进度和知识卡 UI 已接入，完整跨章节目录仍按内容批次继续扩展。
 - 同场景 headless 1200 步为 6.40×/320.2 steps/s，ROBOT tick p99/max 9.249/18.929 ms。发布配置 `signal_town` 在 5901 步完成 5/5、0 碰撞，RTF 6.34×，ROBOT tick p99/max 6.432/14.146 ms。
 - 详细方法、环境与复现命令见 `docs/release-performance-2026-10-27.md`。
 - 阶段 4 已提交为 `fba2d87 test: verify accelerated simulation consistency`；当前 HEAD 为 `fba2d87`，分支相对远端领先 5 个提交。

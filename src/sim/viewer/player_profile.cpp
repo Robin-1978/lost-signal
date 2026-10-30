@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -67,6 +68,29 @@ bool decode_chapter(const Json& value, ChapterProgress& output) {
 }
 }  // namespace
 
+std::string default_player_profile_path() {
+  // An explicit environment override is useful for portable installs and CI;
+  // otherwise follow the XDG state convention on Unix-like systems.  The
+  // fallback remains local to the working directory when no home directory is
+  // available (for example, a sandboxed test process).
+  if (const char* override_path = std::getenv("LOST_SIGNAL_PROFILE_PATH");
+      override_path != nullptr && *override_path != '\0') {
+    return override_path;
+  }
+  if (const char* state_home = std::getenv("XDG_STATE_HOME");
+      state_home != nullptr && *state_home != '\0') {
+    return (std::filesystem::path(state_home) / "lost-signal" /
+            "player-profile.json")
+        .string();
+  }
+  if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0') {
+    return (std::filesystem::path(home) / ".local" / "state" /
+            "lost-signal" / "player-profile.json")
+        .string();
+  }
+  return "player-profile.json";
+}
+
 std::uint8_t chapter_stars(const ChapterOutcome& outcome) {
   if (!outcome.safety_passed) return 0;
   if (!outcome.mission_passed) return 1;
@@ -116,19 +140,28 @@ bool load_player_profile(const std::string& path, PlayerProfile& profile,
     return false;
   }
   const Json* version = field(*root, "version");
+  const Json* format = field(*root, "format");
   const Json* chapters = field(*root, "chapters");
-  if (version == nullptr || !version->is_num() || version->as_num() != 1.0 ||
+  if (format == nullptr || !format->is_str() ||
+      format->as_str() != "lost-signal-player-profile/1" ||
+      version == nullptr || !version->is_num() || version->as_num() != 1.0 ||
       chapters == nullptr || !chapters->is_array()) {
     profile = {};
     if (error != nullptr) *error = "profile schema mismatch";
     return false;
   }
   PlayerProfile decoded;
+  std::set<std::string> chapter_ids;
   for (const auto& chapter : chapters->as_array()) {
     ChapterProgress progress;
     if (!decode_chapter(chapter, progress)) {
       profile = {};
       if (error != nullptr) *error = "invalid profile chapter";
+      return false;
+    }
+    if (!chapter_ids.insert(progress.experience_id).second) {
+      profile = {};
+      if (error != nullptr) *error = "duplicate profile chapter";
       return false;
     }
     decoded.chapters.push_back(std::move(progress));

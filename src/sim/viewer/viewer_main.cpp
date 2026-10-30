@@ -43,6 +43,7 @@
 #include "sim/viewer/map_editor.hpp"
 #include "sim/viewer/particle_system.hpp"
 #include "sim/viewer/playback_controller.hpp"
+#include "sim/viewer/player_profile.hpp"
 #include "sim/viewer/scene_manifest.hpp"
 #include "sim/viewer/view_transform.hpp"
 #include "sim/viewer/viewer_audio.hpp"
@@ -74,6 +75,8 @@ using lost_signal::sim::viewer::ExperienceRunKind;
 using lost_signal::sim::viewer::ExperienceViewLayer;
 using lost_signal::sim::viewer::ExperienceViewPolicy;
 using lost_signal::sim::viewer::PredictionAssessment;
+using lost_signal::sim::viewer::PlayerProfile;
+using lost_signal::sim::viewer::ChapterProgress;
 using lost_signal::sim::viewer::ParticleKind;
 using lost_signal::sim::viewer::ParticleSystem;
 using lost_signal::sim::viewer::SurfaceTraceKind;
@@ -1649,6 +1652,107 @@ float draw_wrapped_text(const std::string& text, float x, float y,
  return y;
 }
 
+const ChapterProgress* chapter_progress(const PlayerProfile* profile,
+                                        const std::string& experience_id) {
+  if (profile == nullptr) return nullptr;
+  const auto it = std::find_if(
+      profile->chapters.begin(), profile->chapters.end(),
+      [&](const ChapterProgress& chapter) {
+        return chapter.experience_id == experience_id;
+      });
+  return it == profile->chapters.end() ? nullptr : &*it;
+}
+
+std::string knowledge_card_id(const ExperienceManifest& experience,
+                              std::size_t index) {
+  return experience.experience_id + "/lesson/" + std::to_string(index);
+}
+
+bool knowledge_card_unlocked(const ExperienceManifest& experience,
+                             const ChapterProgress* progress,
+                             std::size_t index) {
+  if (progress == nullptr || index >= experience.lessons.size()) return false;
+  const std::string id = knowledge_card_id(experience, index);
+  return std::find(progress->knowledge_cards.begin(),
+                   progress->knowledge_cards.end(), id) !=
+         progress->knowledge_cards.end();
+}
+
+void draw_player_profile_panel(const ExperienceManifest& experience,
+                               const PlayerProfile* profile,
+                               bool detailed) {
+  if (profile == nullptr) return;
+  constexpr Color kPanel{13, 21, 22, 238};
+  constexpr Color kText{226, 235, 230, 255};
+  constexpr Color kMuted{157, 177, 169, 255};
+  constexpr Color kCyan{55, 218, 202, 255};
+  constexpr Color kAmber{246, 169, 61, 255};
+  const ChapterProgress* progress =
+      chapter_progress(profile, experience.experience_id);
+  const float screen_width = static_cast<float>(GetScreenWidth());
+  const float width = std::min(292.0f, screen_width - 36.0f);
+  const float height = detailed ? 242.0f : 128.0f;
+  const float x = detailed ? 18.0f : screen_width - width - 18.0f;
+  const float y = detailed ? 18.0f : 24.0f;
+  DrawRectangleRounded({x, y, width, height}, 0.04f, 8, kPanel);
+  DrawRectangleRoundedLinesEx({x, y, width, height}, 0.04f, 8, 1.5f,
+                              detailed ? kAmber : kCyan);
+  draw_ui_text(tr("CHAPTER PROGRESS", "章节进度"), static_cast<int>(x + 16),
+               static_cast<int>(y + 14), 13, detailed ? kAmber : kCyan);
+  draw_ui_text(experience.title.c_str(), static_cast<int>(x + 16),
+               static_cast<int>(y + 37), 14, kText);
+
+  const std::uint8_t stars = progress == nullptr ? 0 : progress->stars;
+  std::string star_line = "STARS ";
+  for (int index = 0; index < 3; ++index) {
+    star_line += index < static_cast<int>(stars) ? "*" : "-";
+  }
+  char stats[128];
+  std::snprintf(stats, sizeof(stats), "%s   RUNS %u", star_line.c_str(),
+                progress == nullptr ? 0U : progress->completions);
+  draw_ui_text(stats, static_cast<int>(x + 16), static_cast<int>(y + 60), 12,
+               stars > 0 ? kAmber : kMuted);
+  char best[160];
+  if (progress != nullptr && progress->best_elapsed_s > 0.0) {
+    std::snprintf(best, sizeof(best),
+                  g_zh_cn ? "最佳耗时 %.2f s　最佳净空 %.2f m"
+                          : "BEST %.2f s   CLEARANCE %.2f m",
+                  progress->best_elapsed_s, progress->best_clearance_m);
+  } else {
+    std::snprintf(best, sizeof(best), "%s",
+                  tr("NO PUBLISHED RUN YET", "尚无已发布成绩"));
+  }
+  draw_ui_text(best, static_cast<int>(x + 16), static_cast<int>(y + 82), 11,
+               kMuted);
+  std::size_t unlocked = 0;
+  for (std::size_t index = 0; index < experience.lessons.size(); ++index) {
+    if (knowledge_card_unlocked(experience, progress, index)) ++unlocked;
+  }
+  char cards[96];
+  std::snprintf(cards, sizeof(cards),
+                g_zh_cn ? "知识卡 %zu / %zu　按 U 查看教学"
+                        : "KNOWLEDGE CARDS %zu / %zu   U: LEARNING VIEW",
+                unlocked, experience.lessons.size());
+  draw_ui_text(cards, static_cast<int>(x + 16), static_cast<int>(y + 104), 11,
+               kCyan);
+
+  if (!detailed || experience.lessons.empty()) return;
+  float card_y = y + 128.0f;
+  const float card_width = width - 24.0f;
+  for (std::size_t index = 0; index < experience.lessons.size(); ++index) {
+    if (!knowledge_card_unlocked(experience, progress, index)) continue;
+    const Rectangle card{x + 12.0f, card_y, card_width, 32.0f};
+    DrawRectangleRounded(card, 0.06f, 6, Color{25, 43, 43, 255});
+    draw_ui_text(tr("CARD", "知识卡"), static_cast<int>(card.x + 8),
+                 static_cast<int>(card.y + 8), 10, kCyan);
+    draw_wrapped_text(experience.lessons[index], card.x + 58.0f,
+                      card.y + 7.0f, card.width - 68.0f, 10.0f, 1.0f,
+                      kText);
+    card_y += 37.0f;
+    if (card_y > y + height - 26.0f) break;
+  }
+}
+
 void draw_hero_overlay(const ExperienceManifest& experience,
  const ExperienceHeroShot& shot, const HeroSequence& sequence) {
  constexpr Color kText{236, 244, 240, 255};
@@ -1721,7 +1825,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  bool objectives_done,
  bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score,
  const Frame* frame,
- const ExperimentUiState* experiment_ui, bool timed_out,
+ const ExperimentUiState* experiment_ui, const PlayerProfile* player_profile,
+ bool timed_out,
  PredictionAssessment prediction_assessment,
  const lost_signal::sim::experiment::ExperienceGateVerdict* gate_verdict,
  const std::string& action_error, bool actions_enabled,
@@ -1734,6 +1839,9 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  constexpr Color kAmber{246, 169, 61, 255};
  constexpr Color kRed{236, 82, 72, 255};
  if (hit_regions != nullptr) hit_regions->clear();
+ if (phase == ExperiencePhase::kBriefing) {
+   draw_player_profile_panel(experience, player_profile, false);
+ }
  if (phase == ExperiencePhase::kDebrief) {
  const float screen_width = static_cast<float>(GetScreenWidth());
  const float screen_height = static_cast<float>(GetScreenHeight());
@@ -1995,6 +2103,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  "机器人从未收到仿真真值。"),
  static_cast<int>(x + 22), static_cast<int>(y0 + drawer_height - 17.0f),
  11, kAmber);
+ draw_player_profile_panel(experience, player_profile, true);
  return;
  }
  if (phase == ExperiencePhase::kRunning) {
@@ -4484,7 +4593,7 @@ int main(int argc, char** argv) {
  // enables optional SIM-only GLB presentation models from the old content
  // tree; procedural parts remain the deterministic fallback.
 std::string robot_path, sim_path, map_path, assets_path, scene_path,
- experience_path, experiment_output_path, chapter_id;
+ experience_path, experiment_output_path, chapter_id, profile_path;
  std::string requested_locale = "auto";
  double initial_playback_rate = 1.0;
  double sandbox_history_seconds = kDefaultSandboxHistorySeconds;
@@ -4516,6 +4625,7 @@ std::string robot_path, sim_path, map_path, assets_path, scene_path,
  " [--maximized]\n"
  " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
  " [--experiment-out REPORT.json]\n"
+ " [--profile FILE]\n"
  " [--chapter ID | --catalog | --list-worlds | --list-experiences]\n"
  "\n"
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
@@ -4564,6 +4674,9 @@ std::string robot_path, sim_path, map_path, assets_path, scene_path,
  }
  if (a == "--experiment-out" && i + 1 < argc) {
  experiment_output_path = argv[++i];
+ }
+ if (a == "--profile" && i + 1 < argc) {
+ profile_path = argv[++i];
  }
  if (a == "--locale" && i + 1 < argc) requested_locale = argv[++i];
  if (a == "--history-seconds" && i + 1 < argc) {
@@ -4720,6 +4833,21 @@ std::string robot_path, sim_path, map_path, assets_path, scene_path,
  if (map_path.empty()) map_path = experience.map_path;
  if (scene_path.empty()) scene_path = experience.scene_path;
  std::fprintf(stderr, "experience: %s\n", experience.experience_id.c_str());
+ }
+ PlayerProfile player_profile;
+ std::string player_profile_error;
+ if (experience_loaded) {
+   if (profile_path.empty()) {
+     profile_path = lost_signal::sim::viewer::default_player_profile_path();
+   }
+   if (!lost_signal::sim::viewer::load_player_profile(
+           profile_path, player_profile, &player_profile_error)) {
+     // A corrupt profile is deliberately non-fatal: load_player_profile has
+     // already returned an empty profile, so the player can continue and the
+     // next published verdict can replace it atomically.
+     std::fprintf(stderr, "player profile reset: %s (%s)\n",
+                  profile_path.c_str(), player_profile_error.c_str());
+   }
  }
  if (assets_path.empty() && std::filesystem::is_directory("assets")) {
  assets_path = "assets";
@@ -5653,6 +5781,44 @@ bool show_estimate = initial_show_robot_evidence;
  }
  }
  }
+ // Publish teaching progress only after the immutable artifact has passed the
+ // chapter's independent gate.  In an A/B chapter this waits for both runs;
+ // the baseline is never mistaken for a completed lesson.  The profile is a
+ // Viewer-side record and is intentionally absent from the ROBOT runtime.
+ const sim::experiment::EpisodeArtifact* published_artifact = nullptr;
+ if (experience.progression.require_experiment) {
+   if (experiment_ui.episodes.variant.has_value() &&
+       experiment_ui.episodes.complete()) {
+     published_artifact = &*experiment_ui.episodes.variant;
+   }
+ } else if (experiment_ui.standalone.has_value()) {
+   published_artifact = &*experiment_ui.standalone;
+ }
+ if (published_artifact != nullptr) {
+   const auto published_gate = sim::experiment::evaluate_experience_gate(
+       experience.progression, *published_artifact, experiment_ui.episodes);
+   if (published_gate.can_advance) {
+     lost_signal::sim::viewer::ChapterOutcome outcome;
+     outcome.experience_id = experience.experience_id;
+     outcome.robot_passed = published_gate.robot_passed;
+     outcome.safety_passed = published_gate.sim_safety_passed;
+     outcome.mission_passed = published_gate.mission_passed;
+     outcome.experiment_passed = published_gate.experiment_passed;
+     outcome.elapsed_s = published_artifact->score.elapsed_s;
+     outcome.minimum_clearance_m = published_artifact->score.min_clearance_m;
+     outcome.knowledge_cards.reserve(experience.lessons.size());
+     for (std::size_t index = 0; index < experience.lessons.size(); ++index) {
+       outcome.knowledge_cards.push_back(knowledge_card_id(experience, index));
+     }
+     lost_signal::sim::viewer::record_chapter(player_profile, outcome);
+     std::string profile_save_error;
+     if (!lost_signal::sim::viewer::save_player_profile(
+             profile_path, player_profile, &profile_save_error)) {
+       std::fprintf(stderr, "cannot save player profile: %s\n",
+                    profile_save_error.c_str());
+     }
+   }
+ }
  if (!session->episode().steps().empty()) {
  const auto terminal_frame = sim::viewer::build_frame(
  session->setup_world(), session->episode().steps().back(), {}, {}, {},
@@ -5764,7 +5930,8 @@ bool show_estimate = initial_show_robot_evidence;
  experience_flow->required_walkaround_count(),
  experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, false, false, {}, &preview, &experiment_ui,
- false, PredictionAssessment::kPending, nullptr, experience_action_error,
+ &player_profile, false, PredictionAssessment::kPending, nullptr,
+ experience_action_error,
  true,
  &experience_hit_regions);
 
@@ -6098,7 +6265,7 @@ playback.turbo() || paused || !live_audio);
  experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, session->objectives_done(),
  session->objectives_passed(), session->score(), &frame, &experiment_ui,
- experience_flow->timed_out(), prediction_assessment,
+ &player_profile, experience_flow->timed_out(), prediction_assessment,
  gate_verdict.has_value() ? &*gate_verdict : nullptr,
  experience_action_error,
  true,

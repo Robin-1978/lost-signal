@@ -175,6 +175,8 @@ pose graph 与回环；serialized pose graph 保存/加载、已有地图 locali
 
 运行界面现分成三层，并由同一帧证据生成。`Player` 默认只显示当前任务、目标距离和移动/制动状态，让第一次玩的用户看清机器人和环境；`Learning` 自动展示 LiDAR、局部代价、验证包络与 Safety 包络，并用“测量 → 估计 → 规划 → 验证 → 安全锁”解释因果；`Engineering` 展开 source、sequence、stamp、协方差、候选数、planner/validator verdict、性能和完整图例。`U` 在三层间循环，新章节从 Player 开始，重试和 A/B 变量运行保留用户选择。三层只改变展示，不改变 measurement、ROBOT tick、command 或物理结果；Player 和 Learning 的运行阶段都不开放 SIM 真值。
 
+Viewer 还维护一份独立的本地教学档案。章节简报和复盘显示由已发布的 ROBOT/SIM Safety/Mission/Experiment verdict 产生的星级、最佳公开指标和知识卡；A/B 章节只有成对 artifact 通过实验 gate 后才发布一次。档案可以通过 `--profile` 指定，默认写入用户状态目录。它不参与 runtime digest、任务判定或 ROBOT 输入，损坏时回退为空档案。
+
 ## 6. 失败解释与评分
 
 失败必须由结构化原因产生，不能只显示 `FAILED`：

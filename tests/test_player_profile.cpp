@@ -40,5 +40,19 @@ int main() {
  assert(!load_player_profile(path.string(), loaded, &error));
  assert(loaded.chapters.empty());
  std::filesystem::remove(path);
+ std::ofstream wrong_format(path);
+ wrong_format << R"({"format":"wrong/1","version":1,"chapters":[]})";
+ wrong_format.close();
+ assert(!load_player_profile(path.string(), loaded, &error));
+ assert(loaded.chapters.empty());
+ std::filesystem::remove(path);
+ std::ofstream duplicate(path);
+ duplicate << R"({"format":"lost-signal-player-profile/1","version":1,"chapters":[)"
+              R"({"experience_id":"same","completions":1,"stars":1,"best_elapsed_s":1,"best_clearance_m":1,"knowledge_cards":[]},)"
+              R"({"experience_id":"same","completions":1,"stars":1,"best_elapsed_s":1,"best_clearance_m":1,"knowledge_cards":[]}]})";
+ duplicate.close();
+ assert(!load_player_profile(path.string(), loaded, &error));
+ assert(loaded.chapters.empty());
+ std::filesystem::remove(path);
  return 0;
 }

@@ -31,6 +31,11 @@ struct ChapterOutcome {
   std::vector<std::string> knowledge_cards;
 };
 
+// Returns the user-local profile location used by the Viewer when no explicit
+// path is supplied.  This is presentation state only; it is never included in
+// a runtime invariant digest and never enters ROBOT/SIM decisions.
+std::string default_player_profile_path();
+
 // Stars are public progression only: safety is the first gate, mission is the
 // second, and a complete controlled experiment is the third. No SIM truth,
 // actor identity, future script, or score shortcut enters this calculation.

@@ -209,7 +209,7 @@
 
 - **依据**：设计文档 `:15`、`:200`、`:430` 承诺星级、知识卡、可分享回放；`src/sim/viewer` 与 `configs/experiences` 中 `star`、`knowledge card`、`share`、`achievement` 无命中；`ExperienceProgressionPolicy` 仅做解析（`experience_manifest.cpp:506-517`）；`next_experience` 是章节链指针；成对 replay 的 v2 bundle 已有（`sim-game-design.md:531`）。
 - **方案**：最小版为本地 profile JSON（章节完成、最佳净空与耗时、已看知识卡）；星级只映射 `:200` 规定的公开维度；分享先做成导出成对 replay 与实验报告。
-- **验收**：`player_profile` 存取有单测，文件损坏/版本不匹配时回退为空 profile 并返回提示；星级不抵消安全失败；进度数据不进入 ROBOT 与 SIM 判定。Viewer 章节目录和知识卡可视化仍待接入。
+- **验收**：`player_profile` 存取有单测，文件损坏/版本不匹配时回退为空 profile 并返回提示；星级不抵消安全失败；进度数据不进入 ROBOT 与 SIM 判定。Viewer 简报和复盘已显示当前章节星级、最佳成绩与已发布知识卡；profile 默认使用 XDG 用户状态目录，也支持 `--profile FILE`。跨章节目录和更多卡片交互仍属于后续内容批次。
 - **范围与依赖**：Viewer 与存档；建议排在 C1、C2 之后。
 
 ### F. ROBOT/SIM 核心依赖项
