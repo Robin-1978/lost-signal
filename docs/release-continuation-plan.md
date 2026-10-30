@@ -189,6 +189,8 @@
   link binding、材质角色和内容 hash 都经过 Blender 资产审计；上游 link 不再沿用竖直旧装饰
   mesh，而是从关节原点沿 MuJoCo 的局部 +X 延伸。`arm_lab` 的 `arm_experience` 测试覆盖
   四个 live link pose、joint axis、operator effort、clear/settle 和零碰撞终态。
+- 场景清单回归随 `arm_lab.scene.json` 扩展到 15 个已配对 authored scene；测试按目录
+  枚举并检查每个 world/scene，而不是允许新场景遗漏在固定旧数量之外。
 - Viewer 首屏章节标签不再硬编码为 `FIRST CONTACT`；它现在从已加载的
   `ExperienceManifest.experience_id` 生成，直接打开 `arm_lab`、`signal_town` 或自定义
   experience 时不会把玩家误导到第一章。Xvfb 3D `arm_lab --shot 40` 已确认标题、四个
