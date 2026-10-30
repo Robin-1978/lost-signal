@@ -70,7 +70,9 @@ stale, out-of-range or incompatible artifact enters safe hold.
 For a first bench bring-up, `make_nominal_native_hardware_profile()` derives a
 deterministic commissioning artifact from the robot description and the board
 capability handshake. Its wheel and track scales are the declared values
-(1.0), and its digest is explicitly prefixed `nominal:`. The validator rejects
+(1.0), IMU bias and LiDAR time offset start at zero, and its digest is explicitly
+prefixed `nominal:`. The default temperature applicability is `-40…85 °C`; a
+`0/0` load range means that no payload applicability has been declared. The validator rejects
 that artifact unless the adapter sets `allow_nominal_commissioning`; this
 keeps a typical starting profile convenient without allowing it to masquerade
 as measured calibration in production.
