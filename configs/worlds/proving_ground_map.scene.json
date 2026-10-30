@@ -4,7 +4,7 @@
   "surface_only_max_height_m":0.10,
   "camera":{"distance_m":7.0,"yaw_deg":36.0,"pitch_deg":29.0,"target_height_m":0.28,"follow_smoothing_s":0.30,"lookahead_s":0.82,"speed_distance_gain_s":0.66,"minimum_distance_m":3.0,"maximum_distance_m":18.0},
   "lighting":{"direction_xyz":[-0.46,0.28,-1.0],"directional_rgba":[255,226,190,255],"ambient_rgba":[66,78,76,255],"fog_rgba":[19,30,31,255],"directional_intensity":1.12,"ambient_intensity":0.84,"fog_start_m":20.0,"fog_end_m":52.0,"exposure":0.99,"bloom_threshold":0.80,"bloom_strength":0.22,"vignette_strength":0.10,"shadow_map_resolution":2048,"shadow_extent_m":32.0,"shadow_strength":0.60},
-  "floor":{"base_rgba":[52,62,61,255],"grid_rgba":[101,121,113,100],"grid_spacing_m":2.0},
+  "floor":{"material_id":"paved","base_rgba":[52,62,61,255],"grid_rgba":[101,121,113,100],"grid_spacing_m":2.0},
   "instances":[
     {"instance_id":"assembly_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[2.0,2.0,0.004],"scale":[1.2,1.2,1.0],"yaw_deg":0.0},
     {"instance_id":"braking_strip","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[12.0,2.0,0.004],"scale":[1.5,1.0,1.0],"yaw_deg":0.0}

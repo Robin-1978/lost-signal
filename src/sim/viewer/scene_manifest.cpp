@@ -100,6 +100,18 @@ bool take_optional_number(const Json& object, const char* key, double& value,
  return true;
 }
 
+bool take_optional_string(const Json& object, const char* key,
+                         std::string& value, std::string& error) {
+ const Json* node = object.find(key);
+ if (node == nullptr) return true;
+ if (!node->is_str() || node->as_str().empty()) {
+   error = std::string("scene '") + key + "' must be a non-empty string";
+   return false;
+ }
+ value = node->as_str();
+ return true;
+}
+
 bool take_optional_int(const Json& object, const char* key, int& value,
  std::string& error) {
  const Json* node = object.find(key);
@@ -276,6 +288,8 @@ bool load_scene_manifest(const std::string& path,
  !take_rgba(*floor, "grid_rgba", parsed.floor.grid_rgba,
  out_error) ||
  !take_number(*floor, "grid_spacing_m", parsed.floor.grid_spacing_m,
+ out_error) ||
+ !take_optional_string(*floor, "material_id", parsed.floor.material_id,
  out_error)) {
  return false;
  }

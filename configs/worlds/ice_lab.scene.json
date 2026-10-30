@@ -31,6 +31,7 @@
  "shadow_strength": 0.58
  },
  "floor": {
+ "material_id": "ice",
  "base_rgba": [112, 158, 178, 255],
  "grid_rgba": [182, 224, 238, 128],
  "grid_spacing_m": 1.0

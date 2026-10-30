@@ -243,6 +243,11 @@ struct VisualAssets {
  Model model{};
  const AssetDefinition* definition = nullptr;
  };
+ struct FloorSurface {
+  std::string material_id;
+  Texture2D texture{};
+  Model model{};
+ };
  Texture2D dust{};
  Shader lighting{};
  Shader bloom_extract{};
@@ -266,6 +271,7 @@ struct VisualAssets {
  int shadow_map_loc = -1;
  int shadow_strength_loc = -1;
  int shadow_resolution_loc = -1;
+ int floor_texture_tiling_loc = -1;
  AssetManifest manifest;
  Model chassis{};
  const AssetDefinition* chassis_definition = nullptr;
@@ -312,6 +318,7 @@ struct VisualAssets {
  ModelAnimation* worker_animations = nullptr;
  int worker_animation_count = 0;
  std::vector<EnvironmentModel> environment;
+ std::vector<FloorSurface> floor_surfaces;
  bool loaded = false;
 };
 
@@ -707,6 +714,32 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  if (assets.dust.id > 0) {
  SetTextureFilter(assets.dust, TEXTURE_FILTER_BILINEAR);
  }
+ // Ground materials use a real textured XZ plane in the 3D renderer.  The
+ // world still owns friction/contact truth; these surfaces are presentation
+ // only and are selected by the scene floor material or a zone overlay.
+ const std::array<std::pair<const char*, const char*>, 5> floor_texture_files{{
+     {"paved", "concrete_floor.png"},
+     {"gravel", "gravel_floor.png"},
+     {"mud", "mud_floor.png"},
+     {"sand", "sand_floor.png"},
+     {"standing_water", "water_floor.png"},
+ }};
+ for (const auto& entry : floor_texture_files) {
+   const auto path = texture_dir / entry.second;
+   if (!std::filesystem::is_regular_file(path)) continue;
+   Texture2D texture = LoadTexture(path.string().c_str());
+   if (texture.id == 0) continue;
+   SetTextureFilter(texture, TEXTURE_FILTER_BILINEAR);
+   SetTextureWrap(texture, TEXTURE_WRAP_REPEAT);
+   Model model = LoadModelFromMesh(GenMeshPlane(1.0f, 1.0f, 1, 1));
+   if (!model_ready(model) || model.materialCount <= 0) {
+     if (model_ready(model)) UnloadModel(model);
+     UnloadTexture(texture);
+     continue;
+   }
+   model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texture;
+   assets.floor_surfaces.push_back({entry.first, texture, model});
+ }
  }
  log_model_bounds("chassis", assets.chassis);
  log_model_bounds("wheel", assets.wheel);
@@ -775,6 +808,8 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  assets.lighting, "shadowStrength");
  assets.shadow_resolution_loc = GetShaderLocation(
  assets.lighting, "shadowMapResolution");
+ assets.floor_texture_tiling_loc = GetShaderLocation(
+ assets.lighting, "floorTextureTiling");
  const Vector3 light_dir{-0.48f, -1.0f, -0.32f};
  const Vector3 light_color{1.08f, 0.98f, 0.82f};
  const Vector3 ambient{0.24f, 0.29f, 0.28f};
@@ -847,6 +882,9 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  for (auto& environment : assets.environment) {
  bind_lighting(environment.model, assets.lighting);
  }
+ for (auto& floor : assets.floor_surfaces) {
+   bind_lighting(floor.model, assets.lighting);
+ }
  }
  assets.loaded = model_ready(assets.chassis) || model_ready(assets.wheel) ||
  model_ready(assets.wheel_right) || model_ready(assets.knuckle_left) ||
@@ -862,7 +900,8 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  model_ready(assets.forklift_mast) ||
  model_ready(assets.forklift_carriage) ||
  model_ready(assets.forklift_fork) ||
- model_ready(assets.worker) || !assets.environment.empty();
+ model_ready(assets.worker) || !assets.environment.empty() ||
+ !assets.floor_surfaces.empty();
 }
 
 void unload_visual_assets(VisualAssets& assets) {
@@ -899,6 +938,10 @@ void unload_visual_assets(VisualAssets& assets) {
  }
  for (auto& environment : assets.environment) {
  if (model_ready(environment.model)) UnloadModel(environment.model);
+ }
+ for (auto& floor : assets.floor_surfaces) {
+   if (model_ready(floor.model)) UnloadModel(floor.model);
+   if (floor.texture.id > 0) UnloadTexture(floor.texture);
  }
  if (IsShaderValid(assets.lighting)) UnloadShader(assets.lighting);
  if (IsShaderValid(assets.bloom_extract)) UnloadShader(assets.bloom_extract);
@@ -989,6 +1032,28 @@ Color material_color(const std::string& id, unsigned char alpha = 255) {
   if (id == "ice") return {0xC4, 0xE8, 0xF2, alpha};
   if (id == "asphalt") return {0x52, 0x64, 0x6A, alpha};
   return {0x52, 0x64, 0x6A, alpha};  // weathered_asphalt fallback
+}
+
+const VisualAssets::FloorSurface* floor_surface_for(
+    const VisualAssets* assets, const std::string& material_id) {
+  if (assets == nullptr) return nullptr;
+  std::string canonical = material_id;
+  if (material_id == "industrial_gravel") canonical = "gravel";
+  else if (material_id == "loading_wet" || material_id == "standing_water" ||
+           material_id == "ice") canonical = "standing_water";
+  else if (material_id == "dry_asphalt" ||
+           material_id == "weathered_asphalt" || material_id == "asphalt") {
+    canonical = "paved";
+  }
+  auto find = [&](const std::string& id) -> const VisualAssets::FloorSurface* {
+    for (const auto& surface : assets->floor_surfaces) {
+      if (surface.material_id == id) return &surface;
+    }
+    return nullptr;
+  };
+  if (const auto* exact = find(canonical); exact != nullptr) return exact;
+  if (const auto* paved = find("paved"); paved != nullptr) return paved;
+  return find("standing_water");
 }
 
 Vector3 shader_rgb(const std::array<int, 4>& rgba, double intensity) {
@@ -3091,10 +3156,34 @@ void draw_frame_3d(const Frame& f,
     const float h = static_cast<float>(gy1 - gy0 + 8.0);
  const auto& rgba = scene != nullptr ? scene->floor.base_rgba
  : std::array<int, 4>{198, 203, 196, 255};
- DrawPlane(to_raylib((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5, -0.001),
- {w, h}, {static_cast<unsigned char>(rgba[0]),
- static_cast<unsigned char>(rgba[1]), static_cast<unsigned char>(rgba[2]),
- static_cast<unsigned char>(rgba[3])});
+ const std::string floor_material =
+     scene != nullptr ? scene->floor.material_id : "paved";
+ const auto* floor_surface = floor_surface_for(assets, floor_material);
+ if (floor_surface != nullptr && model_ready(floor_surface->model)) {
+   // The floor mesh is deliberately unit-sized and scaled to the authored
+   // map.  Drive UVs from world position so a 200 km-class map keeps the
+   // same readable material grain as a small teaching scene.
+   const float floor_texture_tiling[2] = {0.5f, 0.5f};
+   if (assets != nullptr && assets->floor_texture_tiling_loc >= 0) {
+     SetShaderValue(assets->lighting, assets->floor_texture_tiling_loc,
+                    floor_texture_tiling, SHADER_UNIFORM_VEC2);
+   }
+   DrawModelEx(
+       floor_surface->model,
+       to_raylib((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5, -0.001),
+       {0.0f, 1.0f, 0.0f}, 0.0f, {w, 1.0f, h}, WHITE);
+   if (assets != nullptr && assets->floor_texture_tiling_loc >= 0) {
+     const float authored_uvs[2] = {0.0f, 0.0f};
+     SetShaderValue(assets->lighting, assets->floor_texture_tiling_loc,
+                    authored_uvs, SHADER_UNIFORM_VEC2);
+   }
+ } else {
+   DrawPlane(to_raylib((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5, -0.001),
+             {w, h}, {static_cast<unsigned char>(rgba[0]),
+                      static_cast<unsigned char>(rgba[1]),
+                      static_cast<unsigned char>(rgba[2]),
+                      static_cast<unsigned char>(rgba[3])});
+ }
   }
  if (presentation_effects && scene == nullptr) {
  DrawGrid(static_cast<int>(std::max(gx1 - gx0, gy1 - gy0) + 8.0), 1.0f);

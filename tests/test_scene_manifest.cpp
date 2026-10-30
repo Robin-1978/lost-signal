@@ -61,6 +61,19 @@ int main() {
  assert(scene.lighting.bloom_strength == 0.20);
  assert(scene.lighting.shadow_map_resolution == 2048);
  assert(scene.lighting.shadow_strength == 0.62);
+ assert(scene.floor.material_id == "paved");
+
+ // Material identifiers are optional for backward compatibility, but an
+ // authored value must be a non-empty string so the presentation layer cannot
+ // silently select a different surface.
+ const auto empty_material = std::filesystem::temp_directory_path() /
+     "lost_signal_empty_floor_material.json";
+ write_text(empty_material,
+     R"({"format":"lost-signal-scene/1","scene_id":"empty_material","camera":{"distance_m":4,"yaw_deg":0,"pitch_deg":30,"target_height_m":0.2},"floor":{"material_id":"","base_rgba":[1,2,3,255],"grid_rgba":[1,2,3,255],"grid_spacing_m":1},"instances":[]})");
+ assert(!lost_signal::sim::viewer::load_scene_manifest(
+     empty_material.string(), assets, world.boxes, scene, &error));
+ assert(error.find("material_id") != std::string::npos);
+ std::filesystem::remove(empty_material);
  assert(scene.instances.size() == 38);
  assert(scene.visual_for_box("north_wall_01") != nullptr);
  assert(scene.visual_for_box("west_shelf") != nullptr);
@@ -90,6 +103,7 @@ int main() {
  (root / "configs/worlds/slam_loop_lab.scene.json").string(), assets,
  slam_world.boxes, scene, &error));
  assert(scene.scene_id == "slam_loop_lab");
+ assert(scene.floor.material_id == "paved");
  assert(scene.instances.size() == 12);
  assert(scene.visual_for_box("east_landmark") != nullptr);
  assert(scene.visual_for_box("lab_south_wall") != nullptr);

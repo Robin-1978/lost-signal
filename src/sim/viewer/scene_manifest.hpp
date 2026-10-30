@@ -44,6 +44,9 @@ struct SceneFloor {
  std::array<int, 4> base_rgba{47, 53, 52, 255};
  std::array<int, 4> grid_rgba{77, 88, 85, 120};
  double grid_spacing_m = 1.0;
+ // SIM presentation material used for the unzoned floor.  Zones still
+ // override this visually and are resolved from the world material table.
+ std::string material_id = "paved";
 };
 
 struct SceneInstance {

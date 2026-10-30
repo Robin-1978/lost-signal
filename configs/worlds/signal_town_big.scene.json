@@ -31,6 +31,7 @@
     "shadow_strength": 0.60
   },
   "floor": {
+    "material_id": "paved",
     "base_rgba": [43, 54, 57, 255],
     "grid_rgba": [86, 108, 109, 96],
     "grid_spacing_m": 2.0

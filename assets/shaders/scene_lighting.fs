@@ -23,6 +23,9 @@ uniform mat4 lightVP;
 uniform sampler2D shadowMap;
 uniform int shadowMapResolution;
 uniform float shadowStrength;
+// A non-zero value selects world-space tiled sampling for SIM floor
+// materials.  Regular GLB assets continue to use their authored UVs.
+uniform vec2 floorTextureTiling;
 
 out vec4 finalColor;
 
@@ -50,7 +53,11 @@ void main() {
  float point1Diffuse = 0.25 + 0.75 * max(dot(normal, normalize(point1Vector)), 0.0);
  vec3 localLight = pointLight0Color * point0Attenuation * point0Diffuse
  + pointLight1Color * point1Attenuation * point1Diffuse;
- vec4 texel = texture(texture0, fragTexCoord) * colDiffuse * fragColor;
+ vec2 sampleTexCoord = fragTexCoord;
+ if (floorTextureTiling.x > 0.0 && floorTextureTiling.y > 0.0) {
+  sampleTexCoord = fract(fragPosition.xz * floorTextureTiling);
+ }
+ vec4 texel = texture(texture0, sampleTexCoord) * colDiffuse * fragColor;
  vec4 fragPosLightSpace = lightVP * vec4(fragPosition, 1.0);
  vec3 shadowCoords = fragPosLightSpace.xyz / max(fragPosLightSpace.w, 0.0001);
  shadowCoords = shadowCoords * 0.5 + 0.5;
