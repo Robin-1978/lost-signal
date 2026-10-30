@@ -381,7 +381,21 @@
 | 6. 物理证据可视化与效果 | 已完成 | `cdea986` | 算法/物理与 Viewer/音频完成；Debug 全量 78/78；Release 定向 9/9；物理音频单测覆盖暂停、回退、Turbo、接触、打滑、制动和冲击 |
 | 7. 模型与场景升级 | 已完成 | `525116c`, `53bd9cf`, `d9cebd6`, `f2e3a5b`, `e6e17fd`, `904f0cb`, `4e3a75a`, `8fa94cb`, `62d741a` | 机械臂配置、MuJoCo effort/feedback、worker `WorkerWalk`、叉车六分部件 link 绑定、Blender 环境资产、碰撞几何/COM/joint/contact 工程视图和姿态回归均已完成；当前只保留发布后的场景体验扩展 |
 | 8. MCU 确定性控制域与真机适配 | native HIL 契约已完成，实板待验 | `b235727` + 既有提交 | UART/CAN/SPI/USB transport、虚拟 MCU、STM32 reference、typed chassis ownership、native profile startup handshake、ROBOT 执行反馈故障闭环和固定时间 HIL replay 已接入；仍需按具体板卡实测 profile/急停/负载验收 |
-| 9. 自动标定与 hardware profile | 记录质量门禁已完成，实板 profile 待验 | `d3cbd12` + 既有 calibration 提交 | 离线 median wheel-scale/IMU bias、artifact digest/JSON、在线有界更新、rollback、温度/载荷/过期 gate、CSV 记录导入和乱序/NaN/负残差拒绝已通过单测；具体硬件 profile 仍需真实记录验收 |
+| 9. 自动标定与 hardware profile | 记录质量/commissioning 门禁已完成，实板 profile 待验 | `0760aa5` + 既有 calibration 提交 | 离线 median wheel-scale/IMU bias、artifact digest/JSON、在线有界更新、rollback、温度/载荷/过期 gate、CSV 记录导入、乱序/NaN/负残差拒绝和 nominal commissioning profile 已通过单测；具体硬件 profile 仍需真实记录验收 |
+
+### 大目标校对（2026-10-30）
+
+| 目标 | 当前结论 | 证据/边界 |
+|---|---|---|
+| 1. 无图 SLAM 回环可信度 | 已完成 | 跨历史候选统一比较、同一 causal submap 时序确认；首次回环在 east/north/west 完成后的真实重访；`loop_closure`、`slam_experience_mission` 通过 |
+| 2. SLAM 教学体验与文档 | 已完成 | 2.5 m 无先验地图路线 4/4、零碰撞；SLAM Toolbox/REP-105/map-odom 文档已更新 |
+| 3. 算法与系统回归 | 已完成 | 当前 Debug 全量 CTest `90/90`，含 signal_town、20 万平方米、四底盘、坡面/冰面、DWA/TEB、定位、回环和 truth isolation |
+| 4. Release 性能与一致性 | 已完成 | Release 基线已记录 1×/8×/64×/Turbo/headless 的 RTF、tick p99 和结果 digest；当前新增 platform API 的 Release 定向回归通过 |
+| 5. SIM 游戏体验 | 已完成 | EpisodePair、ROBOT/SIM/Mission/Experiment 独立 verdict、教学/工程视图和首屏流程已落地 |
+| 6. 物理证据可视化与效果 | 已完成 | LiDAR 时序、Safety swept envelope、costmap/safety 证据层、物理粒子/声音已由真实 contact/slip/load/brake/impact 驱动 |
+| 7. 模型与场景升级 | 已完成基线 | GLB/Blender 资产、MuJoCo body/joint/contact/COM 驱动和环境场景已接入；后续新增资产属于内容扩展，不改变 ROBOT 边界 |
+| 8. MCU 确定性控制域与真机适配 | 软件契约完成，实板待验 | typed ownership、VirtualMcu、UART/CAN/SPI/USB、STM32 reference、NativeRuntime watchdog、native HIL replay 已完成；仍需具体板卡 profile、急停、负载和传输延迟实测 |
+| 9. 自动标定与 hardware profile | 软件契约完成，实板待验 | measured artifact、CSV 质量门禁、online rollback、profile 聚合验证和 nominal commissioning 已完成；nominal 只能显式用于 bench，生产仍需实测 artifact |
 
 ### 阶段 7 叉车 link 子阶段（已完成，`f2e3a5b`）
 
