@@ -4,6 +4,7 @@
 #include <iostream>
 #include <set>
 #include <string>
+#include <unistd.h>
 
 #include "sim/viewer/asset_manifest.hpp"
 
@@ -89,7 +90,9 @@ int main() {
   }
   assert(declared == inventory);
 
-  const fs::path temp = fs::temp_directory_path() / "lost_signal_asset_test";
+  const fs::path temp = fs::temp_directory_path() /
+                        ("lost_signal_asset_test_" +
+                         std::to_string(static_cast<long long>(::getpid())));
   fs::remove_all(temp);
   fs::create_directories(temp);
   write_text(temp / "part.glb", "test fixture");
