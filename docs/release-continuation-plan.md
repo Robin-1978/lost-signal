@@ -1089,3 +1089,16 @@ ROBOT。
 - `test_local_planner_compare` 新增高初速、高偏航差速回归，逐候选检查左右轮的一周期
   加速度窗口与轮速上限；原有 DWA Ackermann 曲率、TEB Ackermann 零速不可原地转向和
   四底盘任务回归继续通过。该变化只使用 ROBOT 配置和反馈，不读取 SIM 真值。
+
+### Terminal route and loop closure recovery（2026-10-31）
+
+- A* 增加了真实起始位姿的保留：当估计起点和语义目标落在同一个栅格时，仍输出至少两
+  个世界坐标位姿，局部规划器可以完成终端航向，路线管线不会把可达目标误报为
+  `global-plan-failed`。新增 `test_astar` 覆盖同栅格、不同终端航向。
+- DWA 的终端航向机动可以在声明的原始位置合同内开始；`GoalArrivalPolicy` 仍要求
+  confidence-bounded 位置/航向和连续停稳证据才会报告到达，因而没有放宽完成条件或把
+  SIM 真值传入 ROBOT。回环测试现在用固定仿真步覆盖闭环修正后的真实收敛尾段，首次
+  回环仍发生在 east/north/west 三个目标完成后的重访阶段，`astar` 与 `loop_closure`
+  定向回归通过。
+- 路线管线保留结构化 planner diagnostic 并在 ROBOT evidence reason 中呈现，便于长图
+  失败区分 endpoint、地图快照和搜索耗尽；该诊断不含真值、actor identity 或 score。

@@ -38,6 +38,7 @@ MotionDecisionResult DecisionCyclePipeline::run(
  } else if (!active_route.valid && route_.failed()) {
  result.constraint = "route_hold";
  result.reason = "global-plan-failed";
+ result.route_diagnostic = route_.diagnostic();
  }
  return result;
 }

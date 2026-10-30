@@ -144,6 +144,22 @@ int main() {
     assert(r.valid && r.points.size() >= 2);
   }
 
+  // A start and goal that fall in the same raster cell still need a route
+  // segment: the local planner must be able to settle the terminal heading
+  // instead of treating a reachable pose as a global-plan failure.
+  {
+    auto map = make_map(8, 8, 1.0, -4.0, -4.0);
+    for (auto& cell : map.occupancy) cell = 0;
+    const Route r = planner.plan(at(0.10, 0.10), {0.20, 0.20, 1.0}, map);
+    assert(r.valid);
+    assert(r.points.size() >= 2);
+    assert(std::abs(r.points.front().x_m - 0.10) < 1e-12);
+    assert(std::abs(r.points.front().y_m - 0.10) < 1e-12);
+    assert(std::abs(r.points.back().x_m - 0.20) < 1e-12);
+    assert(std::abs(r.points.back().y_m - 0.20) < 1e-12);
+    assert(std::abs(r.points.back().yaw_rad - 1.0) < 1e-12);
+  }
+
  // Route refresh policy is module-owned: an explicit replan calls the
  // planner even when an existing route is still valid.
  {

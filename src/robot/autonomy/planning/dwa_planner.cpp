@@ -539,7 +539,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // map- or mission-specific threshold.
  // A confidence radius wider than the terminal envelope must not claim
  // arrival, but it must not remove the controller's ability to settle the
- // requested heading either.  Once the ROBOT estimate is inside the raw
+ // requested heading either. Once the ROBOT estimate is inside the raw
  // terminal position contract, let the same terminal manoeuvre run while
  // GoalArrivalPolicy continues to require confidence-bounded pose evidence.
  // This keeps the manoeuvre tied to the declared position tolerance rather
@@ -556,8 +556,10 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  terminal_position_latched_ = false;
  terminal_heading_settled_ = false;
  }
- } else if (terminal_distance_m <= terminal_position_tolerance_m ||
- high_uncertainty_terminal_capture) {
+ } else if (terminal_distance_m <=
+                std::max(terminal_position_tolerance_m,
+                         terminal_position_reset_tolerance_m) ||
+            high_uncertainty_terminal_capture) {
  terminal_position_latched_ = true;
  terminal_heading_settled_ = false;
  }
@@ -688,7 +690,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  : std::isfinite(terminal.yaw_rad)
  ? terminal.yaw_rad
  : goal_bearing;
-  const double goal_directed_yaw_rate = core::clamp(
+ const double goal_directed_yaw_rate = core::clamp(
       core::wrap_angle(heading_target - est.yaw_rad) /
           std::max(dt, predict_T),
       -w_max, w_max);

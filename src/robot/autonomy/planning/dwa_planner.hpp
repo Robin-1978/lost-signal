@@ -129,10 +129,11 @@ class DwaPlanner : public ILocalPlanner {
  bool cusp_braking_armed_ = false;
  std::size_t cusp_segment_ = 0;
  int terminal_mismatch_settle_count_ = 0;
- // Stateful terminal-heading mode. Entry uses the confidence-bounded XY
- // tolerance and the raw tolerance releases it. The live bounded check still
- // owns translational authority, so stale capture cannot claim arrival or
- // strand the base when localization moves outside the evidence envelope.
+ // Stateful terminal-heading mode. Entry uses the declared raw XY envelope
+ // so a differential base can begin the final-yaw manoeuvre while its
+ // confidence region is still being tightened. GoalArrivalPolicy retains the
+ // confidence-bounded completion claim; leaving the raw envelope releases
+ // the latch and restores ordinary route tracking.
  bool terminal_position_latched_ = false;
  // Becomes true after a captured terminal position has completed its first
  // final-yaw settle. If XY then drifts, position reacquisition keeps

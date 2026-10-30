@@ -429,6 +429,9 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  decision_ = motion.behavior;
  iface::MotionCommand decided = motion.command;
  std::string reason = motion.reason;
+ if (!motion.route_diagnostic.empty()) {
+   reason += ":" + motion.route_diagnostic;
+ }
  std::string constraint = motion.constraint;
  if (operator_command_active_) {
  decided.space = iface::CommandSpace::kYawRate;

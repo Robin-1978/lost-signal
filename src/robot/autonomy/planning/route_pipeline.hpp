@@ -1,6 +1,7 @@
 #pragma once
 
 #include <limits>
+#include <string>
 
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
@@ -17,9 +18,11 @@ class RoutePlanningPipeline {
  pending_ = false;
  failed_ = false;
  has_request_ = false;
+ diagnostic_.clear();
  }
  bool pending() const { return pending_; }
  bool failed() const { return failed_; }
+ const std::string& diagnostic() const { return diagnostic_; }
  bool advance(IGlobalPlanner& planner, const EstimatedState& start,
  const RoutePoint& goal, bool has_goal,
  const iface::MapSnapshot& map, bool force_replan,
@@ -45,6 +48,7 @@ class RoutePlanningPipeline {
  double failed_start_x_m_ = 0.0;
  double failed_start_y_m_ = 0.0;
  bool failed_start_valid_ = false;
+ std::string diagnostic_;
 };
 
 }  // namespace lost_signal::robot::autonomy

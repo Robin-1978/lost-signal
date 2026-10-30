@@ -108,6 +108,7 @@ bool RoutePlanningPipeline::advance(
  requested_map_revision_ = map.revision;
  has_request_ = true;
  failed_ = false;
+ diagnostic_.clear();
  // A changed goal/map or a complete route-tube departure invalidates the
  // old route immediately. A same-request local replan keeps the last
  // validated route until a replacement succeeds: global planning is an
@@ -118,12 +119,14 @@ bool RoutePlanningPipeline::advance(
  Route replacement = planner.plan(start, goal, map);
  if (!replacement.valid) {
  failed_ = true;
+ diagnostic_ = "global planner returned invalid route";
  failed_start_valid_ = start.valid && std::isfinite(start.x_m) &&
  std::isfinite(start.y_m);
  failed_start_x_m_ = start.x_m;
  failed_start_y_m_ = start.y_m;
  } else {
  active_route = std::move(replacement);
+ diagnostic_.clear();
  }
  return route_state_changed || !active_route.valid;
  }
@@ -143,10 +146,13 @@ bool RoutePlanningPipeline::advance(
  progress.route.valid) {
  active_route = std::move(progress.route);
  failed_ = false;
+ diagnostic_.clear();
  return true;
  }
 
  failed_ = true;
+ diagnostic_ = progress.diagnostic.empty()
+ ? "global planner failed" : progress.diagnostic;
  failed_start_valid_ = start.valid && std::isfinite(start.x_m) &&
  std::isfinite(start.y_m);
  failed_start_x_m_ = start.x_m;

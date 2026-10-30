@@ -92,6 +92,9 @@ struct AStarPlanner::SearchState {
  int height = 0;
  int start_x = 0;
  int start_y = 0;
+ double start_world_x_m = 0.0;
+ double start_world_y_m = 0.0;
+ double start_world_yaw_rad = 0.0;
  int goal_x = 0;
  int goal_y = 0;
  double resolution_m = 0.0;
@@ -217,6 +220,9 @@ void AStarPlanner::begin_plan(const EstimatedState& start,
  state->width = static_cast<int>(map.width);
  state->height = static_cast<int>(map.height);
  state->resolution_m = map.resolution_m;
+ state->start_world_x_m = start.x_m;
+ state->start_world_y_m = start.y_m;
+ state->start_world_yaw_rad = start.yaw_rad;
  const auto to_grid = [&](double wx, double wy, int& x, int& y) {
  x = static_cast<int>(std::floor(
  (wx - map.origin_x_m) / map.resolution_m));
@@ -691,6 +697,16 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  current = state.parent[current];
  }
  std::reverse(route.points.begin(), route.points.end());
+ // A raster can place the estimated start and semantic goal in one cell.
+ // Preserve a two-pose route in that case so the local planner can still
+ // settle the requested terminal heading. Returning an invalid one-point
+ // route would make the route pipeline latch `global-plan-failed` even though
+ // the position is reachable and only orientation remains.
+ if (route.points.size() == 1) {
+   route.points.insert(route.points.begin(),
+                       {state.start_world_x_m, state.start_world_y_m,
+                        state.start_world_yaw_rad});
+ }
  const RoutePoint cell_goal = route.points.back();
  if (std::hypot(cell_goal.x_m - state.goal.x_m,
  cell_goal.y_m - state.goal.y_m) > 1e-9) {
