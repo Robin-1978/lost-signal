@@ -1,6 +1,13 @@
 # Model provenance audit
 
-Audit date: 2026-10-30
+Audit date: 2026-10-31
+
+The RO-6 articulated-link set (`robots/ro6/*.glb`) is authored in Blender by
+`tools/modeling/build_arm_assets.py`.  Its four link frames use the same
+contract as `MotorParams::ArmParams`: the joint pivot is at x=0 and the link
+extends along local +X for the configured link length.  The meshes are
+presentation-only and are licensed CC0-1.0 for this repository; MuJoCo body,
+joint, contact and encoder read-back remain the sole pose authority.
 
 The 39 entries that previously used `NOASSERTION` are the legacy-main
 migration set. Each file is present in the repository history and its first

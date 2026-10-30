@@ -3130,7 +3130,7 @@
       "version": 1,
       "kind": "arm_link",
       "path": "robots/ro6/forearm.glb",
-      "source": "legacy main asset",
+      "source": "original RO-6 link asset authored by tools/modeling/build_arm_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Z",
       "forward_axis": "+X",
@@ -3146,20 +3146,12 @@
         0
       ],
       "expected_bounds_m": {
-        "min": [
-          -0.048,
-          -0.05,
-          -0.168
-        ],
-        "max": [
-          0.048,
-          0.05,
-          0.12
-        ]
+        "min": [0.0, -0.05, -0.05],
+        "max": [0.18, 0.05, 0.05]
       },
-      "content_hash": "fnv1a64:6f9ad2f2ffa2598e",
-      "license": "Apache-2.0",
-      "source_artifact": "legacy-main:robots/ro6/forearm.glb",
+      "content_hash": "fnv1a64:ba625dd77d2f763f",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_arm_assets.py:build_forearm",
       "pivot_semantic": "arm_joint",
       "asset_to_link_translation_m": [
         0,
@@ -3180,8 +3172,8 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 200,
-      "material_budget": 3,
+      "triangle_budget": 400,
+      "material_budget": 4,
       "animation_clips": []
     },
     {
@@ -3189,7 +3181,7 @@
       "version": 1,
       "kind": "arm_link",
       "path": "robots/ro6/tool.glb",
-      "source": "legacy main asset",
+      "source": "original RO-6 link asset authored by tools/modeling/build_arm_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Z",
       "forward_axis": "+X",
@@ -3205,20 +3197,12 @@
         0
       ],
       "expected_bounds_m": {
-        "min": [
-          -0.05,
-          -0.0605,
-          -0.072
-        ],
-        "max": [
-          0.05,
-          0.0605,
-          0.1575
-        ]
+        "min": [0.0, -0.0605, -0.072],
+        "max": [0.12, 0.0605, 0.072]
       },
-      "content_hash": "fnv1a64:1d278850d36da9c0",
-      "license": "Apache-2.0",
-      "source_artifact": "legacy-main:robots/ro6/tool.glb",
+      "content_hash": "fnv1a64:7557a6aafcce229d",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_arm_assets.py:build_tool",
       "pivot_semantic": "arm_joint",
       "asset_to_link_translation_m": [
         0,
@@ -3239,7 +3223,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 200,
+      "triangle_budget": 600,
       "material_budget": 5,
       "animation_clips": []
     },
@@ -3248,7 +3232,7 @@
       "version": 1,
       "kind": "arm_link",
       "path": "robots/ro6/turret.glb",
-      "source": "legacy main asset",
+      "source": "original RO-6 link asset authored by tools/modeling/build_arm_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Z",
       "forward_axis": "+X",
@@ -3264,20 +3248,12 @@
         0
       ],
       "expected_bounds_m": {
-        "min": [
-          -0.105,
-          -0.105,
-          -0.05
-        ],
-        "max": [
-          0.105,
-          0.105,
-          0.1
-        ]
+        "min": [-0.105, -0.105, -0.068],
+        "max": [0.3, 0.105, 0.068]
       },
-      "content_hash": "fnv1a64:fd173275c446f2cd",
-      "license": "Apache-2.0",
-      "source_artifact": "legacy-main:robots/ro6/turret.glb",
+      "content_hash": "fnv1a64:7cfcd3c35de9640c",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_arm_assets.py:build_turret",
       "pivot_semantic": "arm_joint",
       "asset_to_link_translation_m": [
         0,
@@ -3298,8 +3274,8 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 200,
-      "material_budget": 3,
+      "triangle_budget": 600,
+      "material_budget": 5,
       "animation_clips": []
     },
     {
@@ -3307,7 +3283,7 @@
       "version": 1,
       "kind": "arm_link",
       "path": "robots/ro6/upper_arm.glb",
-      "source": "legacy main asset",
+      "source": "original RO-6 link asset authored by tools/modeling/build_arm_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Z",
       "forward_axis": "+X",
@@ -3323,20 +3299,12 @@
         0
       ],
       "expected_bounds_m": {
-        "min": [
-          -0.055,
-          -0.055,
-          -0.195
-        ],
-        "max": [
-          0.055,
-          0.055,
-          0.14
-        ]
+        "min": [0.0, -0.055, -0.055],
+        "max": [0.25, 0.055, 0.055]
       },
-      "content_hash": "fnv1a64:28a550801db73cd2",
-      "license": "Apache-2.0",
-      "source_artifact": "legacy-main:robots/ro6/upper_arm.glb",
+      "content_hash": "fnv1a64:85db915585889ce4",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_arm_assets.py:build_upper_arm",
       "pivot_semantic": "arm_joint",
       "asset_to_link_translation_m": [
         0,
@@ -3357,7 +3325,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 200,
+      "triangle_budget": 400,
       "material_budget": 4,
       "animation_clips": []
     }
