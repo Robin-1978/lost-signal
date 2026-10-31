@@ -188,6 +188,18 @@ int main() {
  assert(std::abs(stats.tick_max_ms - 1.49) < 1e-9);
   assert(!stats.throttled);
 
+  // Presentation phase advances between fixed steps and resets after the
+  // newest completed step; it is separate from the deterministic schedule.
+  PlaybackController presentation_phase;
+  presentation_phase.begin_frame(0.01);
+  assert(std::abs(presentation_phase.presentation_alpha() - 0.5) < 1e-12);
+  presentation_phase.end_frame();
+  presentation_phase.begin_frame(0.01);
+  assert(presentation_phase.step_due(0.0));
+  presentation_phase.on_step(0.0);
+  assert(std::abs(presentation_phase.presentation_alpha()) < 1e-12);
+  presentation_phase.end_frame();
+
  // High requested rates keep the full current-frame demand. Backlog limits
  // scale in wall time and therefore cannot silently turn 64x into ~30x.
  const auto scheduled_steps = [](double rate) {

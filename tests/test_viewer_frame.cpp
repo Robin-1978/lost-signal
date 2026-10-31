@@ -469,6 +469,39 @@ int main() {
  assert(std::abs(f.lidar_hits[1].first - 2.0 * std::cos(0.5)) < 1e-6);
  }
 
+ // Live 3D presentation interpolates only adjacent visible poses. Discrete
+ // evidence remains sourced from the latest recorded physics frame.
+ {
+   sim::viewer::Frame previous;
+   sim::viewer::Frame latest;
+   previous.body.x_m = 1.0;
+   previous.body.y_m = 2.0;
+   previous.body.yaw_rad = 3.10;
+   previous.body.forward_mps = 0.5;
+   previous.body.wheels.resize(1);
+   previous.body.wheels[0].steer_rad = 3.10;
+   latest = previous;
+   latest.step = 8;
+   latest.static_collision = true;
+   latest.body.x_m = 2.0;
+   latest.body.y_m = 4.0;
+   latest.body.yaw_rad = -3.10;
+   latest.body.forward_mps = 1.5;
+   latest.body.wheels[0].steer_rad = -3.10;
+   const auto blended = sim::viewer::interpolate_presentation_frame(
+       previous, latest, 0.5);
+   assert(blended.step == latest.step);
+   assert(blended.static_collision);
+   assert(std::abs(blended.body.x_m - 1.5) < 1e-12);
+   assert(std::abs(blended.body.y_m - 3.0) < 1e-12);
+   assert(std::abs(blended.body.forward_mps - 1.0) < 1e-12);
+   // Shortest-arc interpolation crosses pi, rather than rotating through 0.
+   assert(std::abs(std::abs(blended.body.yaw_rad) - 3.141592653589793) <
+          0.05);
+   assert(std::abs(std::abs(blended.body.wheels[0].steer_rad) -
+                   3.141592653589793) < 0.05);
+ }
+
  std::printf("viewer_frame ok\n");
  return 0;
 }

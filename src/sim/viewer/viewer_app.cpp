@@ -1853,7 +1853,30 @@ bool show_estimate = initial_show_robot_evidence;
                   : sim::viewer::EditorSelection{},
         session_lidar_mount);
  if (!historical_frame.has_value()) continue;
- const sim::viewer::Frame& frame = *historical_frame;
+ sim::viewer::Frame frame = *historical_frame;
+ // The physics log is intentionally sampled at fixed 20 ms boundaries while
+ // the window is drawn at the display cadence. In a live 3D view, render one
+ // presentation frame behind the newest completed step and interpolate only
+ // between those two recorded MuJoCo snapshots. This removes the visible
+ // 50 Hz hold/jump pattern without inventing state for ROBOT, scoring, or
+ // collision evidence. Debrief and explicit frame review stay exact.
+ if (view3d && !paused && !playback.turbo() && presented_index > 0 &&
+     presented_index + 1 == steps.size() &&
+     (!experience_loaded ||
+      experience_flow->phase() == ExperiencePhase::kRunning)) {
+   const auto previous_frame = sim::viewer::build_episode_frame(
+       session->setup_world(), session->episode(), presented_index - 1,
+       reached, edit_mode
+           ? sim::viewer::EditorSelection{editor.selected_box(),
+                                          editor.selected_corner(),
+                                          editor.selected_place()}
+           : sim::viewer::EditorSelection{},
+       session_lidar_mount);
+   if (previous_frame.has_value()) {
+     frame = sim::viewer::interpolate_presentation_frame(
+         *previous_frame, frame, playback.presentation_alpha());
+   }
+ }
  std::optional<sim::viewer::Frame> baseline_comparison_frame;
  bool baseline_event_aligned = false;
  if (experience_loaded &&
@@ -1929,23 +1952,21 @@ playback.turbo() || paused || !live_audio);
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.
-      const auto cur =
- view.world_to_screen(presented.truth_after.body_x_m,
- presented.truth_after.body_y_m);
+      const auto cur = view.world_to_screen(frame.body.x_m, frame.body.y_m);
       view.pan_px(GetScreenWidth() * 0.5f - cur.x_px,
                   GetScreenHeight() * 0.5f - cur.y_px);
  const auto& camera_config = scene_loaded
  ? visual_scene.camera : lost_signal::sim::viewer::SceneCamera{};
- const double speed_mps = std::hypot(
- presented.truth_after.forward_mps, presented.truth_after.lateral_mps);
+ const double speed_mps = std::hypot(frame.body.forward_mps,
+                                     frame.body.lateral_mps);
  const double lookahead_m =
- std::abs(presented.truth_after.forward_mps) * camera_config.lookahead_s;
+ std::abs(frame.body.forward_mps) * camera_config.lookahead_s;
  const double direction =
- presented.truth_after.forward_mps < 0.0 ? -1.0 : 1.0;
- const double desired_x = presented.truth_after.body_x_m +
- direction * lookahead_m * std::cos(presented.truth_after.body_yaw_rad);
- const double desired_y = presented.truth_after.body_y_m +
- direction * lookahead_m * std::sin(presented.truth_after.body_yaw_rad);
+ frame.body.forward_mps < 0.0 ? -1.0 : 1.0;
+ const double desired_x = frame.body.x_m +
+ direction * lookahead_m * std::cos(frame.body.yaw_rad);
+ const double desired_y = frame.body.y_m +
+ direction * lookahead_m * std::sin(frame.body.yaw_rad);
  const double blend = camera_config.follow_smoothing_s > 0.0
  ? 1.0 - std::exp(
  presentation_wall_dt_s / -camera_config.follow_smoothing_s)

@@ -1190,3 +1190,27 @@ ROBOT。
   但 map-frame estimator 没有收到 relative correction。完整 Debug/Release
   `test_localization` 与 Release `test_terrain_mission`（2/2、0 碰撞）通过；没有改变
   到达阈值、底盘半径或 SIM/ROBOT 边界。
+
+### 3D follow presentation cadence（2026-10-31）
+
+- 3D 跟随视角的抖动来自显示频率与固定 20 ms physics cadence 不整除：窗口在 60 Hz
+  绘制时会重复一个离散 MuJoCo frame 后突然跳到下一个 frame；原有相机 target 平滑
+  不能平滑车体本身。Viewer 现在保留一个已完成的真实 physics frame 作为 presentation
+  前帧，在 live 3D follow 期间按 PlaybackController 的固定步 debt 做相邻帧插值。
+- 插值只作用于 body/caster/wheel/steering/link/actor 的可见位置、姿态和运动字段；最新
+  frame 仍提供 observation、decision、collision、contact、costmap、LiDAR、粒子和音频
+  证据。不会把插值结果写回 Episode、ScenarioSession、ROBOT 或 MuJoCo，也不会对关节
+  使用墙钟积分；debrief、历史 review、Turbo 和 2D 路径保持原始记录帧。
+- `test_viewer_frame` 覆盖相邻姿态的平移、短弧 yaw/steer 插值和最新离散证据保留；
+  `test_playback_controller` 覆盖 presentation phase 在固定步之间推进并在 step 后归零。
+  Release `test_viewer_frame`、`test_playback_controller` 和 Xvfb 3D `--sandbox --3d
+  --shot 30` smoke 通过，渲染器正常加载 GLB、创建阴影/bloom framebuffer 并退出。
+
+### Ackermann occupied-prefix experiment（2026-10-31，未提交）
+
+- 对“已处于局部硬膨胀层时允许单调脱困前缀”的临时 DWA 方案做了 Release 编译和
+  `test_dwa` 回归。完整 Ackermann `signal_town` 14000 步没有通过（卡在
+  `market_gate`，出现 265 次碰撞，`done=no/passed=no`），说明该方案绕过了过多的
+  局部硬安全约束；改动已撤回，未提交，也没有改变底盘半径、footprint 或到达条件。
+- 第五目标右侧墙洞仍需基于局部 costmap/Validator 的真实证据继续定位，后续先补诊断和
+  可重复的最小回归，再提交任何规划修改。

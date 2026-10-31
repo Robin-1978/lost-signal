@@ -12,6 +12,102 @@
 namespace lost_signal::sim::viewer {
 namespace {
 
+double lerp(double a, double b, double alpha) {
+  return a + (b - a) * alpha;
+}
+
+double lerp_angle(double a, double b, double alpha) {
+  return a + robot::core::wrap_angle(b - a) * alpha;
+}
+
+FrameLinkPose interpolate_pose(const FrameLinkPose& previous,
+                               const FrameLinkPose& latest, double alpha) {
+  if (!previous.valid || !latest.valid) {
+    return latest.valid ? latest : previous;
+  }
+  FrameLinkPose out = latest;
+  out.x_m = lerp(previous.x_m, latest.x_m, alpha);
+  out.y_m = lerp(previous.y_m, latest.y_m, alpha);
+  out.z_m = lerp(previous.z_m, latest.z_m, alpha);
+  // Normalized shortest-arc quaternion lerp is sufficient for adjacent
+  // 20 ms poses and avoids pulling a wheel through the long arc at +/-pi.
+  double dot = previous.qw * latest.qw + previous.qx * latest.qx +
+               previous.qy * latest.qy + previous.qz * latest.qz;
+  double qw = latest.qw;
+  double qx = latest.qx;
+  double qy = latest.qy;
+  double qz = latest.qz;
+  if (dot < 0.0) {
+    dot = -dot;
+    qw = -qw;
+    qx = -qx;
+    qy = -qy;
+    qz = -qz;
+  }
+  out.qw = lerp(previous.qw, qw, alpha);
+  out.qx = lerp(previous.qx, qx, alpha);
+  out.qy = lerp(previous.qy, qy, alpha);
+  out.qz = lerp(previous.qz, qz, alpha);
+  const double norm = std::sqrt(out.qw * out.qw + out.qx * out.qx +
+                                out.qy * out.qy + out.qz * out.qz);
+  if (norm > 1e-12) {
+    out.qw /= norm;
+    out.qx /= norm;
+    out.qy /= norm;
+    out.qz /= norm;
+  }
+  return out;
+}
+
+void interpolate_wheel(FrameWheel& out, const FrameWheel& previous,
+                       const FrameWheel& latest, double alpha) {
+  out = latest;
+  out.x_m = lerp(previous.x_m, latest.x_m, alpha);
+  out.y_m = lerp(previous.y_m, latest.y_m, alpha);
+  out.steer_rad = lerp_angle(previous.steer_rad, latest.steer_rad, alpha);
+  out.spin_rad = lerp(previous.spin_rad, latest.spin_rad, alpha);
+  out.spin_rate_radps = lerp(previous.spin_rate_radps,
+                              latest.spin_rate_radps, alpha);
+  out.steer_rate_radps = lerp(previous.steer_rate_radps,
+                               latest.steer_rate_radps, alpha);
+  out.pose = interpolate_pose(previous.pose, latest.pose, alpha);
+  out.steering_pose = interpolate_pose(previous.steering_pose,
+                                        latest.steering_pose, alpha);
+}
+
+void interpolate_caster(FrameCaster& out, const FrameCaster& previous,
+                        const FrameCaster& latest, double alpha) {
+  out = latest;
+  out.pivot_x_m = lerp(previous.pivot_x_m, latest.pivot_x_m, alpha);
+  out.pivot_y_m = lerp(previous.pivot_y_m, latest.pivot_y_m, alpha);
+  out.x_m = lerp(previous.x_m, latest.x_m, alpha);
+  out.y_m = lerp(previous.y_m, latest.y_m, alpha);
+  out.yaw_rad = lerp_angle(previous.yaw_rad, latest.yaw_rad, alpha);
+  out.spin_rad = lerp(previous.spin_rad, latest.spin_rad, alpha);
+  out.fork_pose = interpolate_pose(previous.fork_pose, latest.fork_pose,
+                                    alpha);
+  out.wheel_pose = interpolate_pose(previous.wheel_pose, latest.wheel_pose,
+                                     alpha);
+}
+
+void interpolate_actor(FrameActor& out, const FrameActor& previous,
+                       const FrameActor& latest, double alpha) {
+  out = latest;
+  out.x_m = lerp(previous.x_m, latest.x_m, alpha);
+  out.y_m = lerp(previous.y_m, latest.y_m, alpha);
+  out.vx_mps = lerp(previous.vx_mps, latest.vx_mps, alpha);
+  out.vy_mps = lerp(previous.vy_mps, latest.vy_mps, alpha);
+  out.heading_rad = lerp_angle(previous.heading_rad, latest.heading_rad,
+                                alpha);
+  out.world_pose = interpolate_pose(previous.world_pose, latest.world_pose,
+                                    alpha);
+  const std::size_t count = std::min(previous.links.size(), out.links.size());
+  for (std::size_t i = 0; i < count; ++i) {
+    out.links[i].pose = interpolate_pose(previous.links[i].pose,
+                                          latest.links[i].pose, alpha);
+  }
+}
+
 const char* safety_state_name(robot::autonomy::SafetyState state) {
  switch (state) {
  case robot::autonomy::SafetyState::kNominal: return "NOMINAL";
@@ -801,6 +897,74 @@ std::optional<Frame> build_episode_frame(
  }
  }
  return frame;
+}
+
+Frame interpolate_presentation_frame(const Frame& previous,
+                                     const Frame& latest, double alpha) {
+  alpha = std::clamp(alpha, 0.0, 1.0);
+  Frame out = latest;
+  out.sim_time_s = lerp(previous.sim_time_s, latest.sim_time_s, alpha);
+  out.body.forward_mps = lerp(previous.body.forward_mps,
+                               latest.body.forward_mps, alpha);
+  out.body.lateral_mps = lerp(previous.body.lateral_mps,
+                              latest.body.lateral_mps, alpha);
+  out.body.yaw_rate_radps = lerp(previous.body.yaw_rate_radps,
+                                  latest.body.yaw_rate_radps, alpha);
+  out.body.x_m = lerp(previous.body.x_m, latest.body.x_m, alpha);
+  out.body.y_m = lerp(previous.body.y_m, latest.body.y_m, alpha);
+  out.body.yaw_rad = lerp_angle(previous.body.yaw_rad, latest.body.yaw_rad,
+                                alpha);
+  out.body.z_m = lerp(previous.body.z_m, latest.body.z_m, alpha);
+  out.body.roll_rad = lerp_angle(previous.body.roll_rad, latest.body.roll_rad,
+                                 alpha);
+  out.body.pitch_rad = lerp_angle(previous.body.pitch_rad,
+                                  latest.body.pitch_rad, alpha);
+  out.body.sens_x_m = lerp(previous.body.sens_x_m, latest.body.sens_x_m,
+                           alpha);
+  out.body.sens_y_m = lerp(previous.body.sens_y_m, latest.body.sens_y_m,
+                           alpha);
+  out.body.sens_z_m = lerp(previous.body.sens_z_m, latest.body.sens_z_m,
+                           alpha);
+  out.body.est_x_m = lerp(previous.body.est_x_m, latest.body.est_x_m, alpha);
+  out.body.est_y_m = lerp(previous.body.est_y_m, latest.body.est_y_m, alpha);
+  out.body.est_yaw_rad = lerp_angle(previous.body.est_yaw_rad,
+                                    latest.body.est_yaw_rad, alpha);
+  const std::size_t wheel_count =
+      std::min(previous.body.wheels.size(), out.body.wheels.size());
+  for (std::size_t i = 0; i < wheel_count; ++i) {
+    interpolate_wheel(out.body.wheels[i], previous.body.wheels[i],
+                      latest.body.wheels[i], alpha);
+  }
+  const std::size_t caster_count =
+      std::min(previous.body.casters.size(), out.body.casters.size());
+  for (std::size_t i = 0; i < caster_count; ++i) {
+    interpolate_caster(out.body.casters[i], previous.body.casters[i],
+                       latest.body.casters[i], alpha);
+  }
+  const std::size_t arm_count =
+      std::min(previous.body.arm_links.size(), out.body.arm_links.size());
+  for (std::size_t i = 0; i < arm_count; ++i) {
+    out.body.arm_links[i] = latest.body.arm_links[i];
+    out.body.arm_links[i].pose = interpolate_pose(
+        previous.body.arm_links[i].pose, latest.body.arm_links[i].pose,
+        alpha);
+    out.body.arm_links[i].joint.link_pose = interpolate_pose(
+        previous.body.arm_links[i].joint.link_pose,
+        latest.body.arm_links[i].joint.link_pose, alpha);
+    out.body.arm_links[i].joint.angle_rad = lerp_angle(
+        previous.body.arm_links[i].joint.angle_rad,
+        latest.body.arm_links[i].joint.angle_rad, alpha);
+    out.body.arm_links[i].joint.rate_radps = lerp(
+        previous.body.arm_links[i].joint.rate_radps,
+        latest.body.arm_links[i].joint.rate_radps, alpha);
+  }
+  const std::size_t actor_count = std::min(previous.actors.size(),
+                                            out.actors.size());
+  for (std::size_t i = 0; i < actor_count; ++i) {
+    interpolate_actor(out.actors[i], previous.actors[i], latest.actors[i],
+                      alpha);
+  }
+  return out;
 }
 
 }  // namespace lost_signal::sim::viewer

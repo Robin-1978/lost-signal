@@ -99,6 +99,12 @@ void PlaybackController::discard_debt() {
   frame_throttled_ = false;
 }
 
+double PlaybackController::presentation_alpha() const {
+  if (turbo_) return 1.0;
+  if (!positive_finite(config_.step_s)) return 1.0;
+  return std::clamp(debt_s_ / config_.step_s, 0.0, 1.0);
+}
+
 void PlaybackController::trim_window() {
   const double cutoff = wall_s_ - config_.statistics_window_s;
   while (!frames_.empty() && frames_.front().end_wall_s < cutoff) {

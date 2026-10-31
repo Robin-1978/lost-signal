@@ -57,6 +57,11 @@ class PlaybackController {
   void end_frame();
   void discard_debt();
 
+  // Fraction between the previous and latest completed fixed-step frame used
+  // by the presentation layer. This is a display-only interpolation phase;
+  // it never changes the fixed-step schedule or any recorded SIM state.
+  double presentation_alpha() const;
+
   Statistics statistics() const;
   int steps_this_frame() const { return frame_steps_; }
 

@@ -51,6 +51,14 @@ std::optional<Frame> build_episode_frame(
  const LidarMount& mount = LidarMount{},
  std::size_t maximum_trail_points = 600);
 
+// Blend two adjacent recorded frames for the viewer's presentation only.
+// The latest frame remains the authority for observations, decisions,
+// collisions, contacts, and other discrete evidence; only visible pose and
+// motion fields are interpolated. No synthetic state is fed back to SIM or
+// ROBOT.
+Frame interpolate_presentation_frame(const Frame& previous,
+                                     const Frame& latest, double alpha);
+
 // Project recorded ranges from an explicitly supplied pose. Callers choose
 // the authority: ROBOT estimate for live overlays, SIM truth only for a
 // labeled evaluation view. Planar projection does not deproject pitch.
