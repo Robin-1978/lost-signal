@@ -38,6 +38,10 @@ struct GlobalSearchConfig {
  double coarse_score_sigma_m = 0.45;
   std::size_t coarse_beams = 24;       // downsampled subset per coarse pose
   std::size_t coarse_hypotheses = 16;  // survivors sent to refinement
+  // A large bounded recovery ellipse needs a wider spatial beam than a
+  // normal whole-map/startup search. Small bounded unit tests and tight
+  // local recoveries retain the ordinary budget.
+  std::size_t bounded_recovery_hypotheses = 48;
  // Non-maximum suppression keeps the bounded survivor set distributed over
  // distinct places instead of filling it with adjacent samples of one peak.
  double coarse_hypothesis_distance_m = 1.5;

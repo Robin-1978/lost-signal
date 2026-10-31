@@ -1247,3 +1247,53 @@ ROBOT。
   偏好；它仍受 Ackermann 曲率、加速度、制动尾和 Validator/Safety 约束，GoalArrival
   仍是唯一完成判定。新增回归确认该状态生成正向修正；Release `test_dwa`、
   `test_multichassis_mission`（diff/ackermann/mecanum/swerve 全部完成）通过。
+
+### Recovery/PNC/SLAM audit checkpoint（2026-10-31，当前检查点）
+
+- 外部静态审查确认当前定位链路的边界：它是轮速/IMU 辅助的 2D LiDAR surveyed-map
+  localization + SE(2) SLAM，不是紧耦合 3D LiDAR-Inertial odometry。若要启用 3D 点云，
+  必须另做 IMU bias、预积分、点云去畸变和观测时间同步，不能用现有 2D 栅格匹配对外
+  宣称完成 LIO。
+- 完整 Hessian 交叉项、Place Recognition、回环边缘化、观测 freshness 和
+  Safety/Validator 运动模型一致性列为后续能力审计；先以可复现回归验证，再逐项实现，
+  不把静态建议直接混入当前 release 修复。
+- PNC 评估保留现有分层：Executive/Goal、Coordinator、Global/Local Planner、Behavior、
+  Validator、Safety、Controller、Chassis ownership 的边界方向正确。`make_local_planner()`
+  已把 DWA/DWB 归到同一套 chassis-aware dynamic-window 生成器，把 TEB 保持为独立的
+  band 优化器；两者都通过 `ChassisLimits` 约束运动学，最终仍由 Validator 和独立 Safety
+  门复核。这符合行业常见的“规划算法 + 运动学/能力策略 + 统一安全门”组合，不应为每个
+  底盘复制一套 DWA/DWB/TEB 类。需要保留的底盘差异是 rollout、可达窗口、曲率/倒车和
+  执行器投影，构造入口继续使用 factory/registry；Coordinator 不应继续承载这些算法细节。
+- 已确认两项 PNC 待修复语义：空 `place_id` 的 Hold 会清除 Coordinator route 但
+  Executive 仍保留旧 Active goal；Manual watchdog 清除后也可能回到旧 autonomous goal。
+  后续以 typed `MotionAuthority`、一致的 Goal 状态机和直接回归修复；Hold 必须明确是
+  pause/resume 还是 cancel-and-stop，Manual 超时先进入安全停车，不能未经授权恢复旧任务。
+- Coordinator 的长期收敛目标是保留调度入口、下沉四个有状态运行时：ObservationRuntime、
+  NavigationRuntime、MotionRuntime、SafetyRuntime，并把 Autonomous/Manual/Safety 命令仲裁
+  独立出来。拆分以状态所有权和可测试边界为准，不为了形式上的小类数量继续切碎流程。
+- 4→5 工业长测的可观测性证据：失败帧的实际 ROBOT LiDAR 在真实 SIM 位姿对 surveyed map
+  的 expected-range score/overlap 均为 1.0，说明地图与传感器有能力恢复，问题不是“硬件必然
+  救不回”。旧实现因大范围重复结构只保留 16 个 coarse survivor，正确地点可能未进入
+  raycast 验证；最佳候选被 covariance gate 拒绝时也丢弃了同批已验证 runner-up。
+- 当前 recovery 修复已通过 Release `test_localization`：大 covariance bounded recovery 使用
+  更宽的候选束；runner-up 仍必须通过同一个 joint innovation gate 和后续 temporal promotion，
+  不反馈被拒候选残差、不放宽到达条件、不读取 SIM truth。完整 `industrial_200k_mission`
+  的长测需继续用独立的 Release 进程完成；本轮 shell 重跑受会话资源限制中止，不能把
+  中止当作任务失败或成功。
+- 已记录的最新 70,000 步回归为 3/5、0 碰撞，已经跨过旧版本第三目标恢复死锁并进入
+  `east_terminal`；直接从 `central_gate → east_terminal` 的段落和 Viewer 中的
+  `4 → 5` 运行也能顺利通过。它们证明后段局部规划/底盘并非普遍失效，但还不能替代
+  完整序列的 100,000/200,000 步自动化验收；完整序列仍需保留定位事件、候选束、创新门
+  和路线状态证据，区分“前序累计误差导致错误 recovery basin”与“第 4→5 段本身不可达”。
+- footprint 约束继续按底盘声明的**半径**解释；地图栅格化硬膨胀另外叠加 clearance/soft
+  层，不能把直径再次当半径。墙边仍可能因栅格边界、unknown 或制动尾而提前拒绝，后续
+  用源地图净空、栅格层和 swept envelope 的同帧诊断判断，不能简单放大或缩小 footprint。
+- 硬件 4→5 是否能救回取决于 LiDAR 对 surveyed map 的可观测性、时间同步和候选是否
+  通过门控；当前失败证据中的真实 LiDAR expected-range/overlap 为 1.0，说明这类案例
+  算法有恢复能力，不是硬件必然不可救。传感器中断、地图变化或重复结构无唯一峰值时，
+  系统必须保持 safe hold，不能用真值或放宽到达条件强行完成。
+- 本阶段执行顺序更新为：先提交本 recovery 修复和本检查点；随后补 100,000/200,000
+  步 Release 长测、`signal_town` 与四底盘/直接 3→4、4→5 回归；再修 Hold/Manual
+  authority 并加状态机回归；最后按 freshness、完整 3×3 Hessian（含平移-航向交叉项）、
+  回环历史约束/边缘化和 Place Recognition 的证据优先级推进能力项。3D LIO 仍单列为
+  后续工程，不把当前 2D 栅格链路宣称为紧耦合 3D LiDAR-Inertial SLAM。

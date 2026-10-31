@@ -52,6 +52,14 @@ struct LocalizationSupervisorConfig {
  double local_innovation_sigma_factor = 4.0;
  double local_innovation_floor_m = 0.35;
  double local_innovation_floor_rad = 0.20;
+ // Once a bounded global recovery owns a fresh scan, the local matcher may
+ // search a wider, still finite neighborhood around the fused prior. This
+ // avoids repeatedly rescoring a 0.75 m window after odometry drift has
+ // already crossed it; expected-range and the same innovation gate remain
+ // the acceptance authority.
+ double recovery_local_window_m = 8.0;
+ double recovery_local_heading_window_rad = 0.60;
+ double recovery_local_translation_step_m = 0.50;
  // A localized trajectory may search and accept a wider global correction
  // only after covariance crosses the loss threshold. This probability is
  // converted to the radial quantile of an isotropic 2-D Gaussian instead of

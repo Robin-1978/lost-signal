@@ -103,12 +103,24 @@ out.local_plan_reset_requested = true;
 out.local_plan_reset_requested = true;
   }
  out.motion_authorized = supervisor_.localized();
- // Observation-speed limiting belongs to an active cooperative search or
- // temporal recovery belief. A sparse frame by itself must not turn a long
- // valid route into a crawl; the next informative scan can start recovery
- // while ordinary route/safety planning remains in charge between attempts.
+ // Observation-speed limiting belongs to an active cooperative search,
+ // temporal recovery belief, or an already lost covariance envelope. Once
+ // the fused ROBOT belief is outside the supervisor's trusted range, keeping
+ // cruise speed would grow odometry error while every global retry is still
+ // bounded around the same prior. Sparse frames remain diagnostic; they do
+ // not by themselves inflate covariance or authorize a map correction.
+ const EstimatedState& motion_estimate = estimator.estimate();
+ const auto& localization_config = supervisor_.config();
+ const bool covariance_recovery =
+     !std::isfinite(motion_estimate.position_sigma_m) ||
+     !std::isfinite(motion_estimate.heading_sigma_rad) ||
+     motion_estimate.position_sigma_m >=
+         localization_config.lost_position_sigma_m ||
+     motion_estimate.heading_sigma_rad >=
+         localization_config.lost_heading_sigma_rad;
  out.observation_motion_requested = supervisor_.localized() &&
-     (global_search_.active() || !recovery_hyps_.empty());
+     (global_search_.active() || !recovery_hyps_.empty() ||
+      covariance_recovery);
   return out;
 }
 
@@ -557,6 +569,14 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  global_origin_valid_ = false;
  bool accept_global = global.accepted;
  bool require_temporal_confirmation = false;
+ bool used_covariance_admissible_runner_up = false;
+ const double prior_sigma_m = std::isfinite(est.position_sigma_m)
+     ? std::max(0.0, est.position_sigma_m)
+     : supervisor_.config().lost_position_sigma_m;
+ const double prior_heading_sigma_rad =
+     std::isfinite(est.heading_sigma_rad)
+         ? std::max(0.0, est.heading_sigma_rad)
+         : supervisor_.config().lost_heading_sigma_rad;
  if (global.accepted && !supervisor_.localized()) {
  const double jump_m = std::hypot(global.x_m - est.x_m,
  global.y_m - est.y_m);
@@ -580,13 +600,6 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  global.y_m - est.y_m);
  const double heading_jump_rad = std::abs(
  core::wrap_angle(global.yaw_rad - est.yaw_rad));
- const double prior_sigma_m = std::isfinite(est.position_sigma_m)
- ? std::max(0.0, est.position_sigma_m)
- : supervisor_.config().lost_position_sigma_m;
- const double prior_heading_sigma_rad =
- std::isfinite(est.heading_sigma_rad)
- ? std::max(0.0, est.heading_sigma_rad)
- : supervisor_.config().lost_heading_sigma_rad;
  if (!supervisor_.accept_global_innovation(
  jump_m, heading_jump_rad, prior_sigma_m,
  prior_heading_sigma_rad)) {
@@ -594,6 +607,33 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  global.rejection_reason =
  "global pose correction exceeds trusted covariance";
  }
+ }
+ // A repetitive-map search can produce a geometrically valid best candidate
+ // outside the current covariance ellipsoid while retaining a validated
+ // runner-up inside it. The runner-up is still an independent raycast-
+ // checked map hypothesis; retrying it through the same innovation gate is
+ // safer than discarding every candidate and restarting the identical search.
+ // This never widens covariance or bypasses temporal promotion.
+ if (!accept_global && global.accepted && supervisor_.localized()) {
+   for (const auto& runner_up : global.runner_ups) {
+     const double runner_position_innovation_m = std::hypot(
+         runner_up.x_m - est.x_m, runner_up.y_m - est.y_m);
+     const double runner_heading_innovation_rad = std::abs(
+         core::wrap_angle(runner_up.yaw_rad - est.yaw_rad));
+     if (!supervisor_.accept_global_innovation(
+             runner_position_innovation_m, runner_heading_innovation_rad,
+             prior_sigma_m, prior_heading_sigma_rad)) {
+       continue;
+     }
+     global.x_m = runner_up.x_m;
+     global.y_m = runner_up.y_m;
+     global.yaw_rad = runner_up.yaw_rad;
+     global.score = runner_up.score;
+     global.rejection_reason = "accepted covariance-admissible runner-up";
+     accept_global = true;
+     used_covariance_admissible_runner_up = true;
+     break;
+   }
  }
  if (accept_global && supervisor_.localized()) {
  // AMCL-style recovery keeps a belief across measurements. A one-scan
@@ -603,7 +643,10 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  // coherent local estimate to a geometrically similar pose.
  recovery_hyps_.seed(global, correction_stamp_ns,
  /*require_motion=*/true);
- action = std::string("global_relocalization:confirming score=") +
+ action = std::string("global_relocalization:") +
+ (used_covariance_admissible_runner_up
+      ? "confirming covariance-admissible runner-up score="
+      : "confirming score=") +
  std::to_string(global.score) +
  " overlap=" + std::to_string(global.overlap) +
  " margin=" + std::to_string(global.score_margin) +
@@ -707,8 +750,15 @@ bool LocalizationSystem::try_local_correction(
  const EstimatedState& est = estimator.estimate();
  ScanMatcherConfig local_config;
  const auto& supervisor_config = supervisor_.config();
- const double translation_cap = local_config.search_translation_m;
- const double heading_cap = local_config.search_heading_rad;
+ const bool bounded_recovery = global_search_.active();
+ const double translation_cap = bounded_recovery
+     ? std::max(local_config.search_translation_m,
+                supervisor_config.recovery_local_window_m)
+     : local_config.search_translation_m;
+ const double heading_cap = bounded_recovery
+     ? std::max(local_config.search_heading_rad,
+                supervisor_config.recovery_local_heading_window_rad)
+     : local_config.search_heading_rad;
  local_config.search_translation_m = std::clamp(
  supervisor_config.local_innovation_sigma_factor *
  est.position_sigma_m,
@@ -725,6 +775,11 @@ bool LocalizationSystem::try_local_correction(
  // the window and the independent innovation gate still owns acceptance.
  local_config.translation_step_m = std::max(
  local_config.translation_step_m, 0.5 * map.resolution_m);
+ if (bounded_recovery) {
+   local_config.translation_step_m = std::max(
+       local_config.translation_step_m,
+       supervisor_config.recovery_local_translation_step_m);
+ }
  local_config.maximum_returns = 64;
  ScanMatcher local_matcher(local_config);
  local_matcher.set_lidar_mount(base_from_lidar_);

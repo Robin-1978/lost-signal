@@ -252,6 +252,7 @@ struct GlobalSearcher::WorkState {
  !(config.coarse_heading_step_rad > 0.0) ||
  !(config.coarse_score_sigma_m > 0.0) || config.coarse_beams == 0 ||
  config.coarse_hypotheses == 0 ||
+ config.bounded_recovery_hypotheses == 0 ||
  !(config.coarse_hypothesis_distance_m > 0.0) ||
  !(config.coarse_hypothesis_heading_rad > 0.0) ||
  !(config.refine_translation_m >= 0.0) ||
@@ -358,6 +359,14 @@ struct GlobalSearcher::WorkState {
  bound_center_x_m = bound_x_m;
  bound_center_y_m = bound_y_m;
  bound_radius_m_ = bound_radius_m;
+ // A wide covariance-supported recovery search must retain more spatially
+ // separated coarse modes before refinement. The radius comparison is tied
+ // to the configured coarse lattice, so tight bounded searches keep the
+ // ordinary budget and deterministic work profile.
+ if (bound_radius_m > 4.0 * config.coarse_position_step_m) {
+   config.coarse_hypotheses = std::max(
+       config.coarse_hypotheses, config.bounded_recovery_hypotheses);
+ }
  const auto lower_grid = [&](double world, double origin, int limit) {
  const int raw = static_cast<int>(std::floor(
  (world - origin) / map.resolution_m));
