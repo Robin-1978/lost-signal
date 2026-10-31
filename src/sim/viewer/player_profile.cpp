@@ -42,6 +42,14 @@ Json chapter_json(const ChapterProgress& chapter) {
       {"knowledge_cards", Json::Arr(std::move(cards))}});
 }
 
+Json archive_json(const TeachingArchive& archive) {
+  return Json::Obj({
+      {"experience_id", Json::Str(archive.experience_id)},
+      {"report_path", Json::Str(archive.report_path)},
+      {"baseline_replay_path", Json::Str(archive.baseline_replay_path)},
+      {"variant_replay_path", Json::Str(archive.variant_replay_path)}});
+}
+
 bool decode_chapter(const Json& value, ChapterProgress& output) {
   if (!value.is_object() || !string_field(value, "experience_id", output.experience_id)) return false;
   const Json* completions = field(value, "completions");
@@ -65,6 +73,16 @@ bool decode_chapter(const Json& value, ChapterProgress& output) {
     output.knowledge_cards.push_back(card.as_str());
   }
   return true;
+}
+
+bool decode_archive(const Json& value, TeachingArchive& output) {
+  return value.is_object() &&
+         string_field(value, "experience_id", output.experience_id) &&
+         string_field(value, "report_path", output.report_path) &&
+         string_field(value, "baseline_replay_path",
+                      output.baseline_replay_path) &&
+         string_field(value, "variant_replay_path",
+                      output.variant_replay_path);
 }
 }  // namespace
 
@@ -130,6 +148,32 @@ void record_chapter(PlayerProfile& profile, const ChapterOutcome& outcome) {
   }
 }
 
+void record_teaching_archive(PlayerProfile& profile,
+                             const TeachingArchive& archive) {
+  if (archive.experience_id.empty() || archive.report_path.empty() ||
+      archive.baseline_replay_path.empty() ||
+      archive.variant_replay_path.empty()) {
+    return;
+  }
+  const auto existing = std::find_if(
+      profile.archives.begin(), profile.archives.end(),
+      [&](const TeachingArchive& candidate) {
+        return candidate.report_path == archive.report_path;
+      });
+  if (existing != profile.archives.end()) {
+    *existing = archive;
+    return;
+  }
+  profile.archives.push_back(archive);
+  // Keep the profile bounded even when a player exports every retry.
+  constexpr std::size_t kMaximumArchives = 32;
+  if (profile.archives.size() > kMaximumArchives) {
+    profile.archives.erase(profile.archives.begin(),
+                           profile.archives.begin() +
+                               (profile.archives.size() - kMaximumArchives));
+  }
+}
+
 bool load_player_profile(const std::string& path, PlayerProfile& profile,
                          std::string* error) {
   if (error != nullptr) error->clear();
@@ -171,6 +215,31 @@ bool load_player_profile(const std::string& path, PlayerProfile& profile,
     }
     decoded.chapters.push_back(std::move(progress));
   }
+  const Json* archives = field(*root, "archives");
+  if (archives != nullptr) {
+    if (!archives->is_array()) {
+      profile = {};
+      if (error != nullptr) *error = "invalid profile archives";
+      return false;
+    }
+    std::set<std::string> report_paths;
+    for (const auto& archive : archives->as_array()) {
+      TeachingArchive decoded_archive;
+      if (!decode_archive(archive, decoded_archive) ||
+          !report_paths.insert(decoded_archive.report_path).second) {
+        profile = {};
+        if (error != nullptr) *error = "invalid profile archive";
+        return false;
+      }
+      decoded.archives.push_back(std::move(decoded_archive));
+    }
+    constexpr std::size_t kMaximumArchives = 32;
+    if (decoded.archives.size() > kMaximumArchives) {
+      profile = {};
+      if (error != nullptr) *error = "too many profile archives";
+      return false;
+    }
+  }
   profile = std::move(decoded);
   return true;
 }
@@ -184,6 +253,10 @@ bool save_player_profile(const std::string& path, const PlayerProfile& profile,
   }
   Json::Array chapters;
   for (const auto& chapter : profile.chapters) chapters.push_back(chapter_json(chapter));
+  Json::Array archives;
+  for (const auto& archive : profile.archives) {
+    archives.push_back(archive_json(archive));
+  }
   const std::filesystem::path target(path);
   std::error_code fs_error;
   if (!target.parent_path().empty()) std::filesystem::create_directories(target.parent_path(), fs_error);
@@ -194,7 +267,8 @@ bool save_player_profile(const std::string& path, const PlayerProfile& profile,
   output << robot::core::json_dump(Json::Obj({
       {"format", Json::Str("lost-signal-player-profile/1")},
       {"version", Json::Num(1.0)},
-      {"chapters", Json::Arr(std::move(chapters))}})) << '\n';
+      {"chapters", Json::Arr(std::move(chapters))},
+      {"archives", Json::Arr(std::move(archives))}})) << '\n';
   output.close();
   if (!output) { if (error != nullptr) *error = "cannot write profile temporary file"; return false; }
   std::filesystem::rename(temporary, target, fs_error);

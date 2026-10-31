@@ -57,6 +57,42 @@ def bevel(name, width):
     bpy.context.view_layer.objects.active = o
     bpy.ops.object.modifier_apply(modifier=mod.name)
 
+def soften_imported_box(name, width=0.008):
+    """Round one authored box once, without expanding its declared envelope.
+
+    The legacy RO-1 chassis is intentionally low-poly.  A single-segment
+    bevel makes the large service panels catch the scene light without adding
+    another physics shape or pushing the asset outside its manifest bounds.
+    The polygon-count guard keeps this refinement idempotent when the script
+    is run again on the already exported GLB.
+    """
+    o = bpy.data.objects.get(name)
+    if o is None or o.type != "MESH" or len(o.data.polygons) > 12:
+        return
+    mod = o.modifiers.new("ro1_soft_edge", "BEVEL")
+    mod.width, mod.segments, mod.limit_method = width, 1, "NONE"
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+
+def restore_box_mesh(name):
+    """Collapse a prior beauty-pass bevel back to its authored box.
+
+    Blender's glTF importer may rename generated panel objects, so rerunning
+    the script must also clean any old detail meshes by material (handled in
+    ``refine_chassis`` below).  Rebuilding only the nine known legacy boxes
+    keeps the pass deterministic even after an interrupted export.
+    """
+    o = bpy.data.objects.get(name)
+    if o is None or o.type != "MESH" or len(o.data.polygons) <= 12:
+        return
+    corners = [o.matrix_world @ v.co for v in o.data.vertices]
+    lo = tuple(min(v[i] for v in corners) for i in range(3))
+    hi = tuple(max(v[i] for v in corners) for i in range(3))
+    material = o.data.materials[0] if o.data.materials else None
+    bpy.data.objects.remove(o, do_unlink=True)
+    cube(name, tuple((lo[i] + hi[i]) * 0.5 for i in range(3)),
+         tuple(hi[i] - lo[i] for i in range(3)), material, 0.0)
+
 def cylinder(name, loc, radius, depth, axis, material, vertices=32):
     existing = bpy.data.objects.get(name)
     if existing is not None:
@@ -184,12 +220,31 @@ def refine_drive_wheel():
 def refine_chassis():
     path = MODELS / "robots" / "ro1" / "chassis.glb"
     import_glb(path)
-    pearl = mat("ro1_pearl", (0.82, 0.87, 0.85), 0.08, 0.30)
-    shell = mat("ro1_shell", (0.60, 0.68, 0.65), 0.10, 0.36)
-    graphite = mat("ro1_graphite", (0.035, 0.055, 0.052), 0.0, 0.38)
-    slate = mat("ro1_slate", (0.17, 0.24, 0.22), 0.24, 0.30)
-    mint = mat("ro1_mint", (0.25, 0.86, 0.70), 0.26, 0.25)
+    pearl = mat("ro1_pearl", (0.86, 0.90, 0.88), 0.08, 0.28)
+    shell = mat("ro1_shell", (0.58, 0.68, 0.65), 0.10, 0.34)
+    graphite = mat("ro1_graphite", (0.024, 0.040, 0.042), 0.0, 0.34)
+    slate = mat("ro1_slate", (0.12, 0.19, 0.19), 0.24, 0.28)
+    mint = mat("ro1_mint", (0.20, 0.92, 0.72), 0.26, 0.22)
     amber = mat("ro1_amber", (0.98, 0.64, 0.18), 0.0, 0.30, (0.95, 0.40, 0.05))
+    top_glass = mat("ro1_top_glass", (0.010, 0.060, 0.068), 0.30, 0.16,
+                    (0.015, 0.12, 0.13))
+    top_status = mat("ro1_top_status", (0.20, 0.94, 0.74), 0.12, 0.18,
+                     (0.08, 0.72, 0.46))
+    soft_boxes = (
+        "top_deck", "front_bumper", "front_chin", "face_panel",
+        "side_rail_left", "side_rail_right", "shoulder_left",
+        "shoulder_right", "rear_service",
+    )
+    for n in soft_boxes:
+        restore_box_mesh(n)
+    # Remove panels from a previous run even when Blender assigned them a
+    # generated name such as Cube.002 during glTF import.
+    for o in list(bpy.context.scene.objects):
+        if o.type == "MESH" and any(
+            m and m.name in {"ro1_top_glass", "ro1_top_status"}
+            for m in o.data.materials
+        ):
+            bpy.data.objects.remove(o, do_unlink=True)
     for n in ("lower_skirt", "top_deck", "face_panel", "eye_bezel_left",
               "eye_bezel_right"):
         assign(n, graphite)
@@ -202,6 +257,30 @@ def refine_chassis():
               "service_latch_right"):
         assign(n, mint)
     assign("rear_status", amber)
+
+    # Keep the authored silhouette and soften only the five high-visibility
+    # panels.  A single segment is enough for a clean specular break while
+    # remaining well below the chassis' raised presentation budget.
+    for n, width in (
+        ("top_deck", 0.012), ("front_bumper", 0.010),
+        ("front_chin", 0.010), ("face_panel", 0.007),
+        ("rear_service", 0.006),
+    ):
+        soften_imported_box(n, width)
+
+    # The remaining detail budget is spent on deliberate graphic surfaces.
+    # They are embedded in existing panels so the vehicle reads as a designed
+    # product rather than a collection of floating primitives.
+    cube("ro1_top_glass", (-0.015, -0.2035, 0.0),
+         (0.205, 0.004, 0.095), top_glass, 0.0)
+    cube("ro1_top_status", (0.105, -0.2035, 0.0),
+         (0.045, 0.004, 0.012), top_status, 0.0)
+    cube("ro1_side_trim_left", (0.015, -0.078, 0.271),
+         (0.105, 0.006, 0.004), top_status, 0.0)
+    cube("ro1_side_trim_right", (0.015, -0.078, -0.271),
+         (0.105, 0.006, 0.004), top_status, 0.0)
+    cube("ro1_front_badge", (0.374, -0.072, 0.0),
+         (0.006, 0.018, 0.082), amber, 0.0)
     # Keep the cosmetic skid inside the authored chassis envelope; the
     # manifest bounds describe render geometry and are also used by the
     # grounding gate.
@@ -265,8 +344,115 @@ def refine_lidar():
     cylinder("lidar_status_ring", (0.0, -0.071, 0.0), 0.073, 0.007, "Y", mint, 16)
     export_glb(path)
 
+
+def refine_secondary_chassis():
+    """Apply the RO product language to the other chassis families.
+
+    Every variant gets the same functional hierarchy: a dark sensor/service
+    deck, one forward identity mark and bilateral side trim.  The silhouette
+    stays chassis-specific (four-wheel Ackermann, tracked, swerve and
+    mecanum); these meshes only make the authored link asset read as a
+    finished product.  Coordinates below are runtime X-forward/Y-left/Z-up
+    and are converted to Blender's imported Z-up basis at the last moment.
+    """
+    variants = (
+        ("ro2", "chassis.glb", "ro2_signal", (0.08, 0.82, 0.70),
+         "sensor_deck_material", (
+          ("ro2_front_sensor_band", (0.365, 0.0, 0.135),
+           (0.008, 0.30, 0.024)),
+          ("ro2_rear_status_strip", (-0.305, -0.238, 0.105),
+           (0.12, 0.008, 0.020)),
+          ("ro2_service_glass", (0.015, 0.0, 0.180),
+           (0.140, 0.160, 0.006)),
+          ("ro2_service_status", (0.105, 0.0, 0.186),
+           (0.025, 0.080, 0.004)),
+          ("ro2_side_trim_left", (-0.020, 0.247, 0.090),
+           (0.140, 0.006, 0.008)),
+          ("ro2_side_trim_right", (-0.020, -0.247, 0.090),
+           (0.140, 0.006, 0.008)),
+          ("ro2_front_badge", (0.375, 0.0, 0.110),
+           (0.008, 0.100, 0.018)),)),
+        ("ro3", "hull.glb", "ro3_signal", (0.88, 0.48, 0.10),
+         "equipment_deck_material", (
+          ("ro3_sensor_band", (0.285, 0.0, 0.235),
+           (0.010, 0.22, 0.020)),
+          ("ro3_rear_status_strip", (-0.270, -0.222, 0.125),
+           (0.10, 0.008, 0.020)),
+          ("ro3_service_glass", (-0.040, 0.0, 0.245),
+           (0.170, 0.200, 0.006)),
+          ("ro3_service_status", (0.080, 0.0, 0.252),
+           (0.030, 0.120, 0.005)),
+          ("ro3_side_trim_left", (-0.100, 0.248, 0.120),
+           (0.180, 0.006, 0.008)),
+          ("ro3_side_trim_right", (-0.100, -0.248, 0.120),
+           (0.180, 0.006, 0.008)),
+          ("ro3_front_badge", (0.360, 0.0, 0.120),
+           (0.008, 0.120, 0.020)),)),
+        ("ro4", "chassis.glb", "ro4_signal", (0.18, 0.72, 0.94),
+         "lower_frame_material", (
+          ("ro4_front_status", (0.250, 0.0, 0.115),
+           (0.010, 0.25, 0.018)),
+          ("ro4_side_status", (-0.18, -0.225, 0.095),
+           (0.12, 0.008, 0.018)),
+          ("ro4_service_glass", (0.0, 0.0, 0.112),
+           (0.300, 0.180, 0.006)),
+          ("ro4_service_status", (0.170, 0.0, 0.120),
+           (0.040, 0.120, 0.005)),
+          ("ro4_side_trim_left", (0.0, 0.252, 0.060),
+           (0.180, 0.006, 0.008)),
+          ("ro4_side_trim_right", (0.0, -0.252, 0.060),
+           (0.180, 0.006, 0.008)),
+          ("ro4_front_badge", (0.265, 0.0, 0.080),
+           (0.008, 0.140, 0.016)),)),
+        ("ro5", "chassis.glb", "ro5_signal", (0.96, 0.55, 0.16),
+         "lower_frame_material", (
+          ("ro5_front_status", (0.250, 0.0, 0.140),
+           (0.010, 0.25, 0.018)),
+          ("ro5_side_status", (-0.18, -0.225, 0.112),
+           (0.12, 0.008, 0.018)),
+          ("ro5_service_glass", (0.0, 0.0, 0.120),
+           (0.300, 0.180, 0.006)),
+          ("ro5_service_status", (0.170, 0.0, 0.128),
+           (0.040, 0.120, 0.005)),
+          ("ro5_side_trim_left", (0.0, 0.252, 0.070),
+           (0.180, 0.006, 0.008)),
+          ("ro5_side_trim_right", (0.0, -0.252, 0.070),
+           (0.180, 0.006, 0.008)),
+          ("ro5_front_badge", (0.265, 0.0, 0.090),
+           (0.008, 0.140, 0.016)),)),
+    )
+    for robot, filename, material_name, color, glass_material_name, details in variants:
+        path = MODELS / "robots" / robot / filename
+        import_glb(path)
+        signal = mat(material_name, color, 0.12, 0.24,
+                     tuple(channel * 0.55 for channel in color))
+        glass = bpy.data.materials.get(glass_material_name)
+        if glass is None:
+            raise RuntimeError(f"missing product glass material: {glass_material_name}")
+        # The identity material is reserved for authored product marks.  Drop
+        # previous marks before adding the current family layout so repeated
+        # Blender exports stay deterministic and never double the details.
+        for obj in list(bpy.context.scene.objects):
+            if obj.type == "MESH" and any(
+                material and material.name == material_name
+                for material in obj.data.materials
+            ):
+                bpy.data.objects.remove(obj, do_unlink=True)
+        for name, location, scale in details:
+            # Existing GLBs are imported into Blender's Z-up basis.  The
+            # manifest/runtime basis is (x, y, z) with +z up; convert the
+            # authored detail rather than accidentally widening the vertical
+            # envelope when exporting it back to glTF.
+            x, y, z = location
+            dx, dy, dz = scale
+            surface = glass if "service_glass" in name else signal
+            cube(name, (x, -z, y), (dx, dz, dy), surface, 0.0)
+        export_glb(path)
+
+
 def main():
  refine_drive_wheel(); refine_chassis(); refine_caster(); refine_lidar()
+ refine_secondary_chassis()
  clear()
  print("model assets refined")
 

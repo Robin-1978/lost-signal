@@ -16,9 +16,19 @@ struct ChapterProgress {
   std::vector<std::string> knowledge_cards;
 };
 
+// A local pointer to an immutable teaching export.  Paths are presentation
+// metadata only; the archive is never part of the runtime input digest.
+struct TeachingArchive {
+  std::string experience_id;
+  std::string report_path;
+  std::string baseline_replay_path;
+  std::string variant_replay_path;
+};
+
 struct PlayerProfile {
   int version = 1;
   std::vector<ChapterProgress> chapters;
+  std::vector<TeachingArchive> archives;
 };
 
 struct ChapterOutcome {
@@ -44,6 +54,8 @@ std::string knowledge_card_id(const std::string& experience_id,
 // actor identity, future script, or score shortcut enters this calculation.
 std::uint8_t chapter_stars(const ChapterOutcome& outcome);
 void record_chapter(PlayerProfile& profile, const ChapterOutcome& outcome);
+void record_teaching_archive(PlayerProfile& profile,
+                             const TeachingArchive& archive);
 
 bool load_player_profile(const std::string& path, PlayerProfile& profile,
                          std::string* error = nullptr);

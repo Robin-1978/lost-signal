@@ -82,6 +82,31 @@ def cylinder(name, location, radius, depth, axis, surface, vertices=24):
     return obj
 
 
+def torus(name, location, major_radius, minor_radius, surface,
+          major_segments=12, minor_segments=4, normal_axis="Y"):
+    """Create a thin service ring in the requested wheel/link frame.
+
+    The actor files are presentation meshes only.  Keeping the ring inside
+    the existing wheel envelope makes it a useful visual witness for the
+    physical joint without introducing a second collision or animation
+    source.
+    """
+    rotation = {
+        "X": (0.0, math.pi / 2.0, 0.0),
+        "Y": (math.pi / 2.0, 0.0, 0.0),
+        "Z": (0.0, 0.0, 0.0),
+    }[normal_axis]
+    bpy.ops.mesh.primitive_torus_add(
+        major_radius=major_radius, minor_radius=minor_radius,
+        major_segments=major_segments, minor_segments=minor_segments,
+        location=location, rotation=rotation)
+    obj = bpy.context.object
+    obj.name = name
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    assign(obj, surface)
+    return obj
+
+
 def uv_sphere(name, location, scale, surface):
     bpy.ops.mesh.primitive_uv_sphere_add(
         segments=20, ring_count=10, radius=1.0, location=location)
@@ -155,6 +180,16 @@ def build_forklift():
     box("forklift_windshield", (0.255, 0.0, 0.88),
         (0.018, 0.43, 0.29), glass, 0.006)
 
+    # Compact headlamps and a rear status lens make the vehicle orientation
+    # obvious in the teaching view.  They stay within the authored base
+    # envelope and are rendered from the same MuJoCo base body pose.
+    for side in (-1.0, 1.0):
+        suffix = "left" if side > 0 else "right"
+        box(f"forklift_headlamp_{suffix}", (0.205, side * 0.235, 0.59),
+            (0.018, 0.038, 0.052), mint, 0.0)
+        box(f"forklift_rear_lens_{suffix}", (-0.555, side * 0.235, 0.48),
+            (0.008, 0.030, 0.038), amber, 0.0)
+
     # Named modules preserve the future joint boundary: rear steer wheels,
     # front driven wheels, mast, carriage, and forks remain independent.
     for x, radius, role in ((-0.30, 0.135, "rear_steer"),
@@ -170,6 +205,11 @@ def build_forklift():
                 f"forklift_{role}_hub_{suffix}",
  (x, side * (0.35 - 0.048), radius),
                 radius * 0.48, 0.096, "Y", steel, 20)
+            # A shallow sidewall ring reads as a tire sidewall at gameplay
+            # distance and remains well inside the measured wheel envelope.
+            torus(f"forklift_{role}_sidewall_{suffix}",
+                  (x, side * (0.35 - 0.048), radius), radius * 0.70,
+                  0.004, steel, 8, 3, "Y")
 
     for side in (-1.0, 1.0):
         suffix = "left" if side > 0 else "right"
@@ -187,6 +227,8 @@ def build_forklift():
             (0.60, 0.075, 0.075), steel, 0.012)
         box(f"forklift_fork_heel_{suffix}", (0.59, side * 0.17, 0.24),
             (0.075, 0.075, 0.37), steel, 0.010)
+        box(f"forklift_fork_warning_{suffix}", (0.88, side * 0.17, 0.118),
+            (0.16, 0.006, 0.009), amber, 0.0)
 
     box("forklift_identity_strip", (-0.16, -0.316, 0.46),
         (0.38, 0.012, 0.035), mint, 0.004)

@@ -131,8 +131,10 @@ void draw_player_profile_panel(const ExperienceManifest& experience,
   const ChapterProgress* progress =
       chapter_progress(profile, experience.experience_id);
   const float screen_width = static_cast<float>(GetScreenWidth());
+  const float screen_height = static_cast<float>(GetScreenHeight());
   const float width = std::min(292.0f, screen_width - 36.0f);
-  const float height = detailed ? 242.0f : 128.0f;
+  const float height = detailed ? std::min(300.0f, screen_height - 36.0f)
+                                : 128.0f;
   const float x = detailed ? 18.0f : screen_width - width - 18.0f;
   const float y = detailed ? 18.0f : 24.0f;
   DrawRectangleRounded({x, y, width, height}, 0.04f, 8, kPanel);
@@ -174,8 +176,16 @@ void draw_player_profile_panel(const ExperienceManifest& experience,
                       : "KNOWLEDGE CARDS %zu / %zu   U: LEARNING VIEW",
                 unlocked, experience.lessons.size());
   draw_text(font, cards, x + 16, y + 104, 11, scale, kCyan);
-  if (!detailed || experience.lessons.empty()) return;
-  float card_y = y + 128.0f;
+  if (!detailed) return;
+  char archives[160];
+  std::snprintf(archives, sizeof(archives),
+                zh_cn ? "教学存档 %zu　复盘报告与 replay 已保存"
+                      : "TEACHING ARCHIVES %zu   REPORT + REPLAY SAVED",
+                profile->archives.size());
+  draw_text(font, archives, x + 16, y + 124, 10, scale,
+            profile->archives.empty() ? kMuted : kAmber);
+  if (experience.lessons.empty()) return;
+  float card_y = y + 146.0f;
   const float card_width = width - 24.0f;
   for (std::size_t index = 0; index < experience.lessons.size(); ++index) {
     if (!card_unlocked(experience, progress, index)) continue;

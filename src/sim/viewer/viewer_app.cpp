@@ -1639,6 +1639,18 @@ bool show_estimate = initial_show_robot_evidence;
  } else {
  std::fprintf(stderr, "experiment bundle: %s\n",
  experiment_output_path.c_str());
+ const lost_signal::sim::viewer::TeachingArchive archive{
+     experience.experience_id,
+     experiment_output_path,
+     experiment_output_path + ".baseline.observations.jsonl",
+     experiment_output_path + ".variant.observations.jsonl"};
+ lost_signal::sim::viewer::record_teaching_archive(player_profile, archive);
+ std::string archive_profile_error;
+ if (!lost_signal::sim::viewer::save_player_profile(
+         profile_path, player_profile, &archive_profile_error)) {
+   std::fprintf(stderr, "cannot save teaching archive index: %s\n",
+                archive_profile_error.c_str());
+ }
  }
  }
  }

@@ -314,6 +314,10 @@ int main() {
       assert(f.body.wheels[0].steer_rate_radps == 0.0);
       assert(f.body.wheels[2].steer_rate_radps ==
              w.truth().steer_vel_radps[0]);
+      // Ackermann is a four-wheel layout.  The differential-only fallback
+      // must never invent a pair of passive casters when the presentation
+      // snapshot has no auxiliary supports.
+      assert(f.body.casters.empty());
     }
     // Material is sampled independently at each physical module. This is
     // SIM-only visual evidence and never enters an ObservationFrame.

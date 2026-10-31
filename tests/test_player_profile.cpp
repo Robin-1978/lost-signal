@@ -27,12 +27,30 @@ int main() {
  assert(profile.chapters.front().best_elapsed_s == 12.0);
  assert(profile.chapters.front().best_clearance_m == 0.42);
  assert(profile.chapters.front().knowledge_cards.size() == 2);
+ TeachingArchive archive{
+     "assembly_lab", "/tmp/assembly.json",
+     "/tmp/assembly.json.baseline.observations.jsonl",
+     "/tmp/assembly.json.variant.observations.jsonl"};
+ record_teaching_archive(profile, archive);
+ record_teaching_archive(profile, archive);
+ assert(profile.archives.size() == 1);
  const auto path = std::filesystem::temp_directory_path() / "lost_signal_player_profile_test.json";
  std::string error;
  assert(save_player_profile(path.string(), profile, &error));
  PlayerProfile loaded;
  assert(load_player_profile(path.string(), loaded, &error));
  assert(loaded.chapters.size() == 1 && loaded.chapters.front().stars == 3);
+ assert(loaded.archives.size() == 1);
+ assert(loaded.archives.front().report_path == "/tmp/assembly.json");
+ std::filesystem::remove(path);
+ std::ofstream duplicate_archive(path);
+ duplicate_archive
+     << R"({"format":"lost-signal-player-profile/1","version":1,"chapters":[],"archives":[)"
+     << R"({"experience_id":"same","report_path":"/tmp/report.json","baseline_replay_path":"/tmp/base.jsonl","variant_replay_path":"/tmp/variant.jsonl"},)"
+     << R"({"experience_id":"same","report_path":"/tmp/report.json","baseline_replay_path":"/tmp/base2.jsonl","variant_replay_path":"/tmp/variant2.jsonl"}]})";
+ duplicate_archive.close();
+ assert(!load_player_profile(path.string(), loaded, &error));
+ assert(loaded.chapters.empty() && loaded.archives.empty());
  std::filesystem::remove(path);
  std::ofstream corrupt(path);
  corrupt << "{bad";

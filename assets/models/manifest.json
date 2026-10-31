@@ -34,7 +34,7 @@
         ]
       },
       "reference_radius_m": 0.45,
-      "content_hash": "fnv1a64:11627db598361cae",
+      "content_hash": "fnv1a64:410488d9b3b657ba",
       "license": "CC0-1.0",
       "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
       "pivot_semantic": "actor_root",
@@ -171,7 +171,7 @@
         ]
       },
       "reference_radius_m": 0.65,
-      "content_hash": "fnv1a64:9cf0d49cf2b5d991",
+      "content_hash": "fnv1a64:07f69534a57f59db",
       "license": "CC0-1.0",
       "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
       "pivot_semantic": "actor_root",
@@ -238,7 +238,7 @@
         ]
       },
       "reference_radius_m": 0.65,
-      "content_hash": "fnv1a64:7d060c634d527b94",
+      "content_hash": "fnv1a64:7e08ec2918db3f17",
       "license": "CC0-1.0",
       "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
       "pivot_semantic": "forklift_drive_wheel_link",
@@ -303,7 +303,7 @@
         ]
       },
       "reference_radius_m": 0.65,
-      "content_hash": "fnv1a64:1ca2a1dde7d1a0e6",
+      "content_hash": "fnv1a64:de67f72dad38a75b",
       "license": "CC0-1.0",
       "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
       "pivot_semantic": "forklift_steer_wheel_link",
@@ -498,7 +498,7 @@
         ]
       },
       "reference_radius_m": 0.65,
-      "content_hash": "fnv1a64:03bd016234a6cc5b",
+      "content_hash": "fnv1a64:bc623b3cff8bb7d3",
       "license": "CC0-1.0",
       "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
       "pivot_semantic": "forklift_fork_link",
@@ -1593,7 +1593,7 @@
           0.2075
         ]
       },
-      "content_hash": "fnv1a64:8d64a8eea3d712ee",
+      "content_hash": "fnv1a64:2bc23196e0aa983c",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro1/chassis.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "base_link",
@@ -1616,7 +1616,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 600,
+      "triangle_budget": 800,
       "material_budget": 21,
       "animation_clips": []
     },
@@ -1862,7 +1862,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 300,
+      "triangle_budget": 360,
       "material_budget": 5,
       "animation_clips": []
     },
@@ -1926,7 +1926,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 300,
+      "triangle_budget": 360,
       "material_budget": 4,
       "animation_clips": []
     },
@@ -2164,7 +2164,7 @@
           0.1975
         ]
       },
-      "content_hash": "fnv1a64:6abbbd5416e59b36",
+      "content_hash": "fnv1a64:11df4a7a941b437c",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro2/chassis.glb",
       "pivot_semantic": "base_link",
@@ -2187,7 +2187,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 300,
+      "triangle_budget": 360,
       "material_budget": 20,
       "animation_clips": []
     },
@@ -2341,7 +2341,7 @@
           0.2875
         ]
       },
-      "content_hash": "fnv1a64:e71f1eb8c5afcdbe",
+      "content_hash": "fnv1a64:e22a2c769fbabf54",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro3/hull.glb",
       "pivot_semantic": "base_link",
@@ -2364,7 +2364,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 300,
+      "triangle_budget": 360,
       "material_budget": 14,
       "animation_clips": []
     },
@@ -2421,7 +2421,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 100,
+      "triangle_budget": 180,
       "material_budget": 2,
       "animation_clips": []
     },
@@ -2838,7 +2838,7 @@
           0.1475
         ]
       },
-      "content_hash": "fnv1a64:336c1edb2c07657d",
+      "content_hash": "fnv1a64:2f794cf536740987",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro4/chassis.glb",
       "pivot_semantic": "base_link",
@@ -2861,7 +2861,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 100,
+      "triangle_budget": 180,
       "material_budget": 5,
       "animation_clips": []
     },
@@ -2964,7 +2964,7 @@
           0.175
         ]
       },
-      "content_hash": "fnv1a64:d94b784a1cd0808d",
+      "content_hash": "fnv1a64:5850a6f71d852944",
       "license": "Apache-2.0",
       "source_artifact": "legacy-main:robots/ro5/chassis.glb",
       "pivot_semantic": "base_link",
@@ -2987,7 +2987,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 100,
+      "triangle_budget": 180,
       "material_budget": 5,
       "animation_clips": []
     },

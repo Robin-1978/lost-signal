@@ -272,9 +272,12 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  ? step.presentation.casters : live_casters;
  const int physical_count = static_cast<int>(casters.size());
  const double speed = std::hypot(t.forward_mps, t.lateral_mps);
+ const bool differential_fallback =
+ t.drive_count == 2 && t.steer_count == 0 && !f.body.tracked;
  const int count = physical_count > 0 ? physical_count
  : (world.motor_params().support_count > 0
- ? world.motor_params().support_count : 2);
+ ? world.motor_params().support_count
+ : differential_fallback ? 2 : 0);
  for (int i = 0; i < count &&
  i < lost_signal::sim::world::MotorParams::kMaxSupports; ++i) {
  const auto& support = world.motor_params().support_count > 0
