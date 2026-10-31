@@ -107,6 +107,20 @@ std::vector<float> scan_from(double x, double y, double yaw,
   }
   return ranges;
 }
+
+class RelativeCorrectionSpy final
+    : public lost_signal::robot::autonomy::FusedOdometryEstimator {
+ public:
+  void correct_relative_pose(double x_m, double y_m, double yaw_rad,
+                             double position_sigma_m, double heading_sigma_rad,
+                             lost_signal::robot::core::MonotonicNs stamp_ns) override {
+    ++relative_corrections;
+    FusedOdometryEstimator::correct_relative_pose(
+        x_m, y_m, yaw_rad, position_sigma_m, heading_sigma_rad, stamp_ns);
+  }
+
+  int relative_corrections = 0;
+};
 }  // namespace
 
 int main() {
@@ -1241,6 +1255,43 @@ o.stamp_ns = static_cast<core::MonotonicNs>(i + 2) * 20'000'000LL;
  true_x_m += 0.25;
  }
  assert(accepted_tracks > 0);
+ }
+
+ // A surveyed map owns map->odom. Scan-to-submap tracking is correlated with
+ // that map and wheel chain, so it may remain observable for diagnostics but
+ // must not write a relative correction into the absolute map estimate.
+ {
+   LocalizationSystem localization;
+   localization.reset();
+   localization.mark_localized();
+   RelativeCorrectionSpy estimator;
+   estimator.reset();
+   estimator.seed_pose(0.0, 0.0, 0.0, 0.10, 0.05, 1);
+   RayClearingMapper mapper;
+   const auto geometry = make_wall_map();
+   std::size_t accepted_tracks = 0;
+   for (int sample = 0; sample < 8 && accepted_tracks == 0; ++sample) {
+     iface::ObservationFrame observation;
+     observation.sequence = static_cast<std::uint64_t>(sample + 1);
+     observation.stamp_ns =
+         1'000'000'000LL + static_cast<core::MonotonicNs>(sample) *
+                               50'000'000LL;
+     observation.source = "t.surveyed-correlated-track";
+     observation.frame = core::Frame::kLidarLink;
+     observation.odometry_valid = true;
+     observation.forward_mps = sample == 0 ? 0.0 : 1.25;
+     observation.scan_valid = true;
+     const double x_m = 0.0625 * static_cast<double>(sample);
+     observation.ranges_m = scan_from(x_m, 0.0, 0.0, geometry);
+     observation.scan_angle_min_rad = -M_PI;
+     observation.scan_angle_increment_rad = 2.0 * M_PI / 72;
+     estimator.predict(observation);
+     localization.update(geometry, observation, observation.stamp_ns, true,
+                         estimator, mapper);
+     accepted_tracks = localization.slam_tracks();
+   }
+   assert(accepted_tracks > 0);
+   assert(estimator.relative_corrections == 0);
  }
 
   std::printf("localization ok\n");

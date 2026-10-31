@@ -1179,3 +1179,14 @@ ROBOT。
 - `test_dwa` 新增 `position_sigma=0.80 m` 的终端越过回归；Debug/Release 的 DWA、DWA/TEB
   对比、Ackermann planner 和四底盘 mission 定向回归通过。该修复不改变 `footprint_radius_m`
   的半径语义，也没有放宽 GoalArrival 的置信门槛。
+
+### Surveyed-map submap frame ownership regression（2026-10-31）
+
+- 已测绘地图下的 scan-to-submap tracking 现在只保留为 ROBOT 运动/诊断证据，不再调用
+  `correct_relative_pose()` 改写绝对 map estimate。该 tracking 与轮速和同一 keyframe 链
+  相关，直接融合会把 map->odom 逐步拉到车后；绝对地图帧只由独立的 surveyed scan matcher
+  和受门控的 recovery/global correction 更新。
+- 新增 `test_localization` 的 surveyed correlated-track 回归：tracking 仍能被接受，
+  但 map-frame estimator 没有收到 relative correction。完整 Debug/Release
+  `test_localization` 与 Release `test_terrain_mission`（2/2、0 碰撞）通过；没有改变
+  到达阈值、底盘半径或 SIM/ROBOT 边界。

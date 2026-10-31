@@ -155,12 +155,12 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
  tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
  }
  } else {
- // A surveyed map owns absolute authority. Scan-to-submap shares the
- // estimator's keyframe history, so it may improve local consistency but
- // must preserve absolute map covariance. Global scan matching supplies
- // independent map information.
- estimator.correct_relative_pose(tr.x_m, tr.y_m, tr.yaw_rad,
- tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
+ // A surveyed map owns the absolute frame. The submap match shares the
+ // same keyframe chain and is therefore correlated with wheel odometry and
+ // the map scan matcher; applying it as a pose update would move map->odom
+ // without independent map evidence. Keep the result for diagnostics and
+ // motion gating, but let only the surveyed scan matcher update the map pose.
+ return;
  }
 }
 
