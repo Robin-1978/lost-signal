@@ -1167,3 +1167,15 @@ ROBOT。
 - `test_dynamic_crossing_mission` 三个到达相位现均为零碰撞并能恢复前进；`test_perception`
   的离场测试显式保留 3 次 miss 的老化契约。Release 差速 `signal_town` 带演员任务
   重新完成 5/5、0 碰撞，`execution_monitor` 的低速换向误报也已由定向回归锁定。
+
+### Ackermann terminal direction under high covariance（2026-10-31）
+
+- 终端末段的“目标是否已经落在当前 gear 的行驶方向后方”现在只由 ROBOT 估计均值的
+  有符号投影和声明的位置容差判定。定位协方差继续只参与到达置信合同、安全包络和观察动作，
+  不再把一个几何上已经落后的目标重新解释成仍处于前向可达盘内。
+- 旧判据把置信半径直接加到终端投影上；协方差变宽时，Ackermann 会继续保留一条不可收敛的
+  reverse 末段，反复尝试同一方向并在目标附近进入 `planner-hold`。修复后会请求新的全局
+  pose maneuver，保留高协方差下“不能宣称到达”的约束。
+- `test_dwa` 新增 `position_sigma=0.80 m` 的终端越过回归；Debug/Release 的 DWA、DWA/TEB
+  对比、Ackermann planner 和四底盘 mission 定向回归通过。该修复不改变 `footprint_radius_m`
+  的半径语义，也没有放宽 GoalArrival 的置信门槛。
