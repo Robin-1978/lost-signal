@@ -339,6 +339,12 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const double recovery_turn = car_like
  ? std::min(turn, crawl * effective.max_curvature_inv_m)
  : turn;
+ // A bounded observation manoeuvre must not let the stale route endpoint
+ // choose a new gear. Preserve the measured travel direction; from rest,
+ // use forward as the deterministic observation direction. If a forward
+ // block is independently reported, the normal recovery set may still use
+ // reverse to clear it.
+ const int observation_direction = est.forward_mps < -1e-6 ? -1 : 1;
  const double period_s = std::max(1e-9, config_.decision_period_s);
  std::size_t recovery_count = 0;
  auto add_recovery = [&](double forward, double yaw, double lateral) {
@@ -399,8 +405,13 @@ MotionDecisionResult MotionDecisionPipeline::run(
  candidate.feasible = true;
  recovery[recovery_count++] = candidate;
  };
- add_recovery(-crawl, 0.0, 0.0);
- add_recovery(crawl, 0.0, 0.0);
+ if (!observation_recovery_required || forward_blocked ||
+     observation_direction < 0) {
+   add_recovery(-crawl, 0.0, 0.0);
+ }
+ if (!observation_recovery_required || observation_direction > 0) {
+   add_recovery(crawl, 0.0, 0.0);
+ }
  if (!car_like || !observation_recovery_required) {
  add_recovery(0.0, turn, 0.0);
  add_recovery(0.0, -turn, 0.0);
@@ -408,8 +419,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
  if (!car_like || !observation_recovery_required) {
    add_recovery(crawl, recovery_turn, 0.0);
    add_recovery(crawl, -recovery_turn, 0.0);
-   add_recovery(-crawl, recovery_turn, 0.0);
-   add_recovery(-crawl, -recovery_turn, 0.0);
+   if (!observation_recovery_required || forward_blocked ||
+       observation_direction < 0) {
+     add_recovery(-crawl, recovery_turn, 0.0);
+     add_recovery(-crawl, -recovery_turn, 0.0);
+   }
  }
  if (effective.max_lateral_mps > 0.0) {
  const double slide = std::min(crawl, effective.max_lateral_mps);
@@ -471,8 +485,13 @@ MotionDecisionResult MotionDecisionPipeline::run(
  if (reachable_limits.max_wheel_speed_mps > 0.0) {
    forward_limit = std::min(forward_limit, reachable_limits.max_wheel_speed_mps);
  }
- add_reachable(forward_limit, 0.0);
- add_reachable(-forward_limit, 0.0);
+ if (!bounded_observation_recovery || observation_direction > 0) {
+   add_reachable(forward_limit, 0.0);
+ }
+ if (!bounded_observation_recovery || forward_blocked ||
+     observation_direction < 0) {
+   add_reachable(-forward_limit, 0.0);
+ }
  const bool ackermann = platform::chassis_is_ackermann(reachable_limits);
  if (ackermann && reachable_limits.max_curvature_inv_m > 0.0 &&
      !bounded_observation_recovery) {

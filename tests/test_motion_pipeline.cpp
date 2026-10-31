@@ -541,6 +541,20 @@ int main() {
             recovery_ackermann.max_curvature_inv_m + 1e-9);
  assert(std::abs(ack_observation.command.yaw_rate_radps) < 1e-9);
 
+ // An empty stale-route plan must not make recovery reverse merely because
+ // the old terminal is geometrically closer behind the car.
+ pipeline.reset();
+ EmptyPlanner ack_empty_planner;
+ EstimatedState moving_uncertain = globally_uncertain;
+ moving_uncertain.forward_mps = 0.20;
+ const MotionDecisionResult ack_empty_observation = pipeline.run(
+     moving_uncertain, perception, map, route, recovery_ackermann,
+     recovery_ackermann, observation, survey, estimate.stamp_ns, behavior,
+     ack_empty_planner, validator, controller, false, true);
+ assert(!ack_empty_observation.command.is_safe_stop());
+ assert(ack_empty_observation.command.forward_mps >= -1e-9);
+ assert(std::abs(ack_empty_observation.command.yaw_rate_radps) < 1e-9);
+
  pipeline.reset();
  HoldPlanner hold_planner;
  platform::ChassisLimits ackermann_limits = limits;
