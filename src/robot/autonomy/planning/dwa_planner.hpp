@@ -134,6 +134,11 @@ class DwaPlanner : public ILocalPlanner {
   // as if it had already had the full rollout dt to brake.
   core::MonotonicNs previous_est_stamp_ns_ = core::kInvalidTime;
  int terminal_mismatch_settle_count_ = 0;
+  // A terminal pose that has fallen behind the active Ackermann gear needs
+  // one fresh kinematic route.  Keep that request latched for this goal until
+  // the new route/pose makes the terminal direction reachable again; otherwise
+  // every decision tick can restart the same route and reset the local cursor.
+  bool terminal_replan_latched_ = false;
  // Stateful terminal-heading mode. Entry uses the declared raw XY envelope
  // so a differential base can begin the final-yaw manoeuvre while its
  // confidence region is still being tightened. GoalArrivalPolicy retains the

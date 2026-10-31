@@ -483,6 +483,11 @@ int main() {
  est.position_sigma_m = 0.02;
  const LocalPlan overshot = planner.plan(est, perc, m, route, ack);
  assert(overshot.route_replan_requested);
+ // The request is edge-triggered for this terminal pose.  Keeping the old
+ // route while Hybrid-A* builds its replacement must not restart the same
+ // replan every control tick and reset Ackermann progress.
+ const LocalPlan overshot_repeat = planner.plan(est, perc, m, route, ack);
+ assert(!overshot_repeat.route_replan_requested);
 
  est.x_m = 2.0;
  est.yaw_rad = 0.5;

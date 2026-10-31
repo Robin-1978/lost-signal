@@ -328,6 +328,7 @@ DwaPlanner::DwaPlanner(DwaPlannerConfig config) : config_(config) {}
 
 void DwaPlanner::reset() {
  reset_tracking();
+  terminal_replan_latched_ = false;
  terminal_position_latched_ = false;
  terminal_heading_settled_ = false;
  terminal_identity_valid_ = false;
@@ -532,6 +533,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  terminal_identity_ = terminal;
  terminal_position_latched_ = false;
  terminal_heading_settled_ = false;
+ terminal_replan_latched_ = false;
  }
  const double terminal_distance_m = std::hypot(
  terminal.x_m - est.x_m, terminal.y_m - est.y_m);
@@ -691,8 +693,22 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  route_segment_ + 2 >= route.points.size() &&
  terminal_distance_m > terminal_position_tolerance_m &&
  terminal_along_travel_m + terminal_direction_hysteresis_m < 0.0;
+ // A terminal replan is a state transition, not a level-triggered request.
+ // RoutePlanningPipeline keeps the previous route while the replacement is
+ // built; issuing the same request on every decision cycle repeatedly resets
+ // the Ackermann route cursor and produces visible forward/reverse alignment
+ // chatter.  Release the latch only after the terminal is reachable again or
+ // the goal identity changes (handled above).
+ if (!terminal_behind_active_gear ||
+     terminal_distance_m <= terminal_position_tolerance_m ||
+     terminal_along_travel_m >= terminal_direction_hysteresis_m) {
+   terminal_replan_latched_ = false;
+ }
+ const bool terminal_replan_transition =
+     terminal_behind_active_gear && !terminal_replan_latched_;
+ if (terminal_replan_transition) terminal_replan_latched_ = true;
  out.route_replan_requested =
- out.route_replan_requested || terminal_behind_active_gear;
+     out.route_replan_requested || terminal_replan_transition;
  double car_like_tracking_heading = target.yaw_rad;
  if (car_like && std::isfinite(target.yaw_rad)) {
  // A Hybrid-A* point carries the body heading that made its bicycle
