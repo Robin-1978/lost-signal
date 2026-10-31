@@ -54,6 +54,8 @@ int main() {
     // Name-based construction lives in planning and rejects unknown policy.
     assert(dynamic_cast<DwaPlanner*>(make_local_planner("dwa").get()) !=
         nullptr);
+    assert(dynamic_cast<DwaPlanner*>(make_local_planner("dwb").get()) !=
+        nullptr);
     assert(dynamic_cast<TebPlanner*>(make_local_planner("teb").get()) !=
         nullptr);
     assert(make_local_planner("magic") == nullptr);

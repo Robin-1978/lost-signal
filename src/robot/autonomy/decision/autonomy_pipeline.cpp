@@ -22,10 +22,13 @@ MotionDecisionResult DecisionCyclePipeline::run(
  const bool replan = force_route_refresh || local_replan_requested_;
  local_replan_requested_ = false;
  if (reset_local_plan) local_planner.reset_tracking();
+ // Route departure is measured from the route centerline. The admissible
+ // cross-track radius is the declared chassis envelope; using its diameter
+ // lets a car enter a wall-side corner before the route is refreshed.
  const bool route_state_changed = route_.advance(
  global_planner, estimate, goal, has_goal,
  map, replan, active_route,
- 2.0 * std::max(0.0, limits.footprint_radius_m));
+  std::max(0.0, limits.footprint_radius_m));
  if (route_state_changed) local_planner.reset_tracking();
  // A failed global route is a ROBOT-side planning observation: the current
  // estimate may have landed inside an inflated/occupied raster cell after

@@ -207,7 +207,9 @@ int main() {
 
   // Departed object: beams back to reference -> track ages out.
   {
-    LidarPerception perc;
+    LidarPerceptionConfig config;
+    config.max_misses = 3;
+    LidarPerception perc(config);
     for (int k = 1; k <= 2; ++k) {
       auto obs = make_scan(k * 1'000'000, 10.0f, 34, 38, 3.0f);
       perc.update(obs, origin());

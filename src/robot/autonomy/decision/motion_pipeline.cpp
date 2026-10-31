@@ -323,10 +323,12 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const double crawl = std::min(
  std::max(0.0, config_.recovery_speed_mps),
  std::max(0.0, effective.max_forward_mps));
+ const bool car_like = platform::chassis_is_ackermann(effective);
+ const bool differential = platform::chassis_is_differential(effective);
  const double turn = std::min(
  std::max(0.0, config_.recovery_yaw_rate_radps),
  std::max(0.0, effective.max_yaw_rate_radps));
- const double recovery_turn = effective.max_curvature_inv_m > 0.0
+ const double recovery_turn = car_like
  ? std::min(turn, crawl * effective.max_curvature_inv_m)
  : turn;
  const double period_s = std::max(1e-9, config_.decision_period_s);
@@ -342,14 +344,12 @@ MotionDecisionResult MotionDecisionPipeline::run(
  lateral = clamp_next_symmetric(
  lateral, est.lateral_mps, config_.motion.lateral_acceleration_mps2,
  period_s);
- if (effective.max_curvature_inv_m > 0.0) {
+ if (car_like) {
  const double yaw_limit =
  std::abs(forward) * effective.max_curvature_inv_m;
  yaw = std::clamp(yaw, -yaw_limit, yaw_limit);
  }
- if (effective.differential_track_m > 0.0 &&
- effective.max_lateral_mps <= 0.0 &&
- effective.max_curvature_inv_m <= 0.0) {
+ if (differential) {
  const double half_track = 0.5 * effective.differential_track_m;
  const double measured_left =
  est.forward_mps - est.yaw_rate_radps * half_track;
@@ -393,7 +393,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  };
  add_recovery(-crawl, 0.0, 0.0);
  add_recovery(crawl, 0.0, 0.0);
- if (!(effective.max_curvature_inv_m > 0.0)) {
+ if (!car_like) {
  add_recovery(0.0, turn, 0.0);
  add_recovery(0.0, -turn, 0.0);
  }
@@ -428,23 +428,44 @@ MotionDecisionResult MotionDecisionPipeline::run(
  // momentarily clear publishes opposite drive demands. No new speed, distance
  // or time constant is introduced: the targets are the chassis limits.
  const bool reach_committed = escape_active_ && escape_reach_active_;
- std::array<LocalCandidate, 4> reachable{};
+ // The reachable escape set also carries the extreme curvature members for
+ // Ackermann.  A straight reverse is often still inside the obstacle's swept
+ // corridor; industry car-like local planners sample speed and curvature as
+ // a coupled pair, so the emergency set must do the same.
+ std::array<LocalCandidate, 10> reachable{};
  std::size_t reachable_count = 0;
  if (stop_is_unsafe || reach_committed || observation_recovery_required) {
- const auto add_reachable = [&](double forward, double lateral) {
+ const auto add_reachable = [&](double forward, double lateral,
+                                double yaw = 0.0) {
  if (std::abs(forward) < 1e-9 && std::abs(lateral) < 1e-9) return;
+ if (reachable_count >= reachable.size()) return;
  LocalCandidate candidate;
  candidate.forward_mps = forward;
  candidate.lateral_mps = lateral;
+ candidate.yaw_rate_radps = yaw;
  candidate.feasible = true;
  reachable[reachable_count++] = candidate;
  };
  double forward_limit = std::max(0.0, limits.max_forward_mps);
+ // Dynamic escape remains inside the declared reachable envelope.  A
+ // car-like base may need its full reverse authority to leave a predicted
+ // crossing before the actor reaches the stopped pose; capping this set to
+ // the recovery crawl can make every valid escape arrive too late.  The
+ // validator still replays response delay, acceleration, braking and the
+ // complete dynamic prediction for each member before publication.
  if (limits.max_wheel_speed_mps > 0.0) {
  forward_limit = std::min(forward_limit, limits.max_wheel_speed_mps);
  }
  add_reachable(forward_limit, 0.0);
  add_reachable(-forward_limit, 0.0);
+ const bool ackermann = platform::chassis_is_ackermann(limits);
+ if (ackermann && limits.max_curvature_inv_m > 0.0) {
+   const double forward_yaw = forward_limit * limits.max_curvature_inv_m;
+   add_reachable(forward_limit, 0.0, forward_yaw);
+   add_reachable(forward_limit, 0.0, -forward_yaw);
+   add_reachable(-forward_limit, 0.0, forward_yaw);
+   add_reachable(-forward_limit, 0.0, -forward_yaw);
+ }
  const double lateral_limit = std::max(0.0, limits.max_lateral_mps);
  if (lateral_limit > 0.0) {
  add_reachable(0.0, lateral_limit);

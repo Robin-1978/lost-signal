@@ -498,7 +498,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // the switch: approach the point by bearing, then settle the requested yaw.
  const double goal_distance = std::hypot(goal.x - est.x_m, goal.y - est.y_m);
  const double goal_bearing = std::atan2(goal.y - est.y_m, goal.x - est.x_m);
- const bool car_like = limits.max_curvature_inv_m > 0.0;
+ const bool car_like = platform::chassis_is_ackermann(limits);
+ const bool differential = platform::chassis_is_differential(limits);
  const bool route_tracking_valid = route_projection.distance_m <=
  route_tracking_tube_m;
  const auto& terminal = route.points.back();
@@ -545,8 +546,14 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // This keeps the manoeuvre tied to the declared position tolerance rather
  // than introducing a second distance threshold derived from a footprint or
  // a map cell.
- const double terminal_heading_capture_m =
-     terminal_position_reset_tolerance_m;
+ // A high covariance can consume the confidence-bounded position envelope
+ // before a car-like base has a chance to execute its final reachable arc.
+ // Let that observation manoeuvre begin inside one declared chassis radius;
+ // this is a controller capture region only, never an arrival tolerance.
+ const double terminal_heading_capture_m = car_like
+     ? std::max(terminal_position_reset_tolerance_m,
+                std::max(0.0, limits.footprint_radius_m))
+     : terminal_position_reset_tolerance_m;
  const bool high_uncertainty_terminal_capture =
  std::isfinite(terminal_position_confidence_radius_m) &&
  terminal_position_confidence_radius_m >= terminal_position_reset_tolerance_m &&
@@ -556,9 +563,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  terminal_position_latched_ = false;
  terminal_heading_settled_ = false;
  }
- } else if (terminal_distance_m <=
-                std::max(terminal_position_tolerance_m,
-                         terminal_position_reset_tolerance_m) ||
+ } else if (terminal_distance_m <= terminal_position_tolerance_m ||
             high_uncertainty_terminal_capture) {
  terminal_position_latched_ = true;
  terminal_heading_settled_ = false;
@@ -676,6 +681,33 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  car_like_tracking_heading = core::wrap_angle(
  target.yaw_rad + std::atan2(-lateral_error_m,
  correction_distance_m));
+
+ // A route can be refreshed while the car is already close to the terminal
+ // pose.  Following the intermediate lattice tangent all the way to the
+ // endpoint then leaves the requested terminal heading behind the travel
+ // direction; the next cycle asks for reverse and produces the visible
+ // forward/reverse chatter.  Blend the declared terminal body heading into
+ // the route tangent over the response-and-braking envelope.  The blend is
+ // a steering target only; GoalArrival still owns the strict confidence and
+ // settled-motion completion contract.
+ const double terminal_influence_radius_m =
+     std::max(std::max(0.0, limits.footprint_radius_m),
+              terminal_position_reset_tolerance_m) +
+     stopping_distance_m;
+ const double terminal_influence_span_m = std::max(
+     1e-6, terminal_influence_radius_m -
+               terminal_position_reset_tolerance_m);
+ const double terminal_heading_blend = std::clamp(
+     (terminal_influence_radius_m - terminal_distance_m) /
+         terminal_influence_span_m,
+     0.0, 1.0);
+ if (terminal_heading_blend > 0.0 &&
+     std::isfinite(terminal.yaw_rad)) {
+   car_like_tracking_heading = core::wrap_angle(
+       car_like_tracking_heading +
+       terminal_heading_blend * core::wrap_angle(
+           terminal.yaw_rad - car_like_tracking_heading));
+ }
  }
  const double heading_target = car_like
  ? car_like_tracking_heading
@@ -729,6 +761,34 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  tracking_speed_limit_mps,
  std::sqrt(config_.lateral_accel_mps2 /
  std::abs(target_curvature)));
+ }
+
+ // On the final route segment, spend the remaining distance to the requested
+ // terminal position on response delay and braking instead of carrying the
+ // cruise sample through the pose. This is a controller speed cap only: the
+ // GoalArrival policy still owns the strict position, heading, covariance,
+ // and settled-motion completion contract.
+ const double terminal_capture_radius_m =
+     std::max(0.0, limits.footprint_radius_m) +
+     // This is a controller braking region, so use the declared raw
+     // geometric position envelope.  The confidence-bounded tolerance above
+     // is intentionally allowed to collapse to zero while localization is
+     // uncertain; using it here would defer braking until the chassis is
+     // already inside its footprint radius and cause a car-like base to
+     // overshoot before it can reverse.  GoalArrival still uses the
+     // confidence-bounded contract for completion.
+     std::max(0.0, terminal_position_reset_tolerance_m);
+ if (route_segment_ + 2 >= route.points.size() && decel > 0.0 &&
+     !terminal_behind_active_gear &&
+     terminal_distance_m <= terminal_capture_radius_m) {
+   const double terminal_stop_distance_m = std::max(
+       0.0, terminal_distance_m - terminal_position_tolerance_m);
+   const double terminal_delay_speed_mps =
+       -decel * response_s + std::sqrt(
+           decel * decel * response_s * response_s +
+           2.0 * decel * terminal_stop_distance_m);
+   tracking_speed_limit_mps = std::min(
+       tracking_speed_limit_mps, std::max(0.0, terminal_delay_speed_mps));
  }
 
  // The final point is already behind the current travel direction while the
@@ -911,9 +971,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // independent body-twist intervals. Simultaneous linear and yaw changes
  // can satisfy both scalar windows while asking one tread to jump beyond
  // its motor acceleration or speed envelope.
- if (limits.differential_track_m > 0.0 &&
- limits.max_lateral_mps <= 0.0 &&
- limits.max_curvature_inv_m <= 0.0) {
+ if (differential) {
  const double half_track = 0.5 * limits.differential_track_m;
  const double measured_left =
  est.forward_mps - est.yaw_rate_radps * half_track;

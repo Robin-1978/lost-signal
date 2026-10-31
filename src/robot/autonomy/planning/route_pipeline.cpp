@@ -109,11 +109,12 @@ bool RoutePlanningPipeline::advance(
  has_request_ = true;
  failed_ = false;
  diagnostic_.clear();
- // A changed goal/map or a complete route-tube departure invalidates the
- // old route immediately. A same-request local replan keeps the last
- // validated route until a replacement succeeds: global planning is an
- // atomic refresh, and Validator/Safety still gate every fallback command.
- if (request_changed || route_deviated) active_route = Route{};
+ // A changed goal/map invalidates the old route immediately. A same-request
+ // route refresh keeps the last validated route while the replacement is
+ // built: it is still checked by the local planner and Validator/Safety, and
+ // retaining it prevents a fast chassis from free-running during the
+ // cooperative planning gap.
+ if (request_changed) active_route = Route{};
 
  if (!planner.supports_incremental_plan()) {
  Route replacement = planner.plan(start, goal, map);

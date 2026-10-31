@@ -41,7 +41,11 @@ flowchart LR
  GP -->|"active Route"| LP
 ```
 
-`local_planner` in the robot configuration selects `dwa` (default) or `teb`.
+`local_planner` in the robot configuration selects `dwa` (default), `dwb`, or
+`teb`.  `dwb` uses the same chassis-aware dynamic-window generator with the
+critic-style candidate ranking exposed by the native `LocalCandidate` seam;
+it is an explicit alias rather than a second implementation that could drift
+from DWA's reachability and safety rules.
 Both planners consume the same estimate, local map, route, chassis limits and
 ROBOT-side `PredictionBatch`, and both emit one reachable `LocalCandidate`.
 `DwaPlanner` samples the measured-twist dynamic window and scores complete
@@ -68,6 +72,17 @@ braking tail; the actuator layer does not silently change the command that was
 validated. `test_local_planner_compare` pins this for Ackermann curvature and
 differential wheel-space reachability.
 
+This is deliberately a composition boundary rather than a class hierarchy of
+`DwaAckermann`, `DwaDifferential`, `TebAckermann`, and so on. The planner
+factory selects the algorithm (`dwa`/`dwb`/`teb`); the explicit
+`ChassisMotionModel` selects the trajectory generator/projection policy inside
+that algorithm. This follows the industry pattern used by Nav2 DWB (a shared
+controller with a selectable trajectory generator and critics) and TEB (one
+optimizer with a configured robot model). It keeps the cost function,
+prediction, validator and safety contract single-sourced while making every
+chassis-specific command reachable. A new chassis therefore adds one motion
+model policy and its regression cases instead of copying an entire planner.
+
 ## Ownership rules
 
 - Estimation consumes odometry/IMU prediction + scan/map correction only.
@@ -90,9 +105,12 @@ differential wheel-space reachability.
  it associates compact return clusters across scans in the estimated map
  frame and publishes only after repeated measured motion; static clusters
  remain map evidence. One-to-one predicted association, alpha-beta correction
- and a recent time-window fit estimate velocity and uncertainty. Tracks carry
- their actual last acquisition time and `prediction_ready`; local collision
- checks still consume immature tracks conservatively.
+ and a recent time-window fit estimate velocity and uncertainty. A retained
+ track is coasted across short lidar occlusions for the declared miss window;
+ forecast uncertainty grows with coast age and the shared predictor drops the
+ track only after its age budget expires. Tracks carry their actual last
+ acquisition time and `prediction_ready`; local collision checks still consume
+ immature tracks conservatively.
 - Mapping owns the rolling local model. It never writes the static
   `MapSnapshot` revision; that is an explicit provider publication.
   `LocalMap` carries real occupancy (`-1` unknown, `0` free, `100`
@@ -128,7 +146,8 @@ differential wheel-space reachability.
   degrades to a straight line when the map has no raster; a walled-in goal
  yields an invalid route (fail closed upstream). `RoutePlanningPipeline`
  refreshes the active route on goal/map change, an explicit replan event, or
- when the ROBOT-estimated base leaves a route tube one chassis diameter wide;
+ when the ROBOT-estimated base leaves a route tube whose half-width is one
+ chassis radius (the full tube is two radii wide);
  the last case starts a new kinematic route from the current estimate instead
  of making a nonholonomic local planner chase a stale prefix;
  `DecisionCyclePipeline` then hands that route to local planning, validation,

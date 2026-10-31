@@ -1068,6 +1068,10 @@ ROBOT。
 
 ### Grounded visual asset refinement（2026-10-31）
 
+- 本机 Blender 资产检查入口固定为 `/disk/blender-5.2.2-linux-x64/blender`
+  （Blender 5.2.2 LTS）；无系统级 `bpy` 时必须用该二进制执行
+  `tools/modeling/inspect_assets.py`。
+
 - RO-1 被动万向轮的视觉 GLB 现在与 MuJoCo 的三段冠状胎面同构：中心名义半径胎面
   承载，左右肩部半径降低，轮毂和旋转见证仍在同一 `wheel_roll_link` 坐标系中。
   渲染器继续只读取 MuJoCo 的 caster fork/wheel body pose 和 roll/swivel joint；GLB
@@ -1116,3 +1120,50 @@ ROBOT。
   仅用于侧视滚动识别，不改变 MuJoCo tire/contact geometry、轴向、轮心高度或碰撞尺寸。
   `inspect_assets.py`、asset manifest hash、`test_asset_manifest`、`test_viewer_frame` 和
   `test_mujoco_backend` 已验证该 GLB 的 bounds、grounding、triangle/material budget。
+
+### Presentation asset beauty pass（2026-10-31）
+
+- 叉车的完整资产和可绑定的 base/drive-wheel/steer-wheel/fork 模块增加了车灯、后部
+  状态灯、轮胎侧壁环和货叉安全标识。新增网格全部位于原有 link-frame bounds 内，模块仍
+  由 MuJoCo 的 base、轮、门架、carriage 和 fork body/joint pose 驱动；没有新增碰撞体、
+  draw-time 动画或独立姿态积分。
+- RO-2/RO-3/RO-4/RO-5 的底盘增加了低成本的 front/side status witness，使用统一的
+  颜色语义区分四底盘能力，仍按各自 chassis link frame 导出。RO-1 既有轮胎冠状胎面、
+  LiDAR 状态环和车体细节保持不变。
+- 生成入口仍是 `build_actor_assets.py` 与 `refine_assets.py`，并显式处理 Blender
+  Z-up 与 GLB/runtime `(x,y,z)` 基变换，防止细节把竖直 bounds 错写成横向尺寸。
+  全部 53 个模型重新通过 `inspect_assets.py`：hash、单位/轴、pivot、grounding、link
+  binding、三角面/材质预算和动画清单均一致；ROBOT 不读取任何 presentation asset。
+
+### Teaching archive index（2026-10-31）
+
+- Viewer 导出的 A/B report 与两份 v4 observation replay 现在写入本地 profile 的有界
+  `archives` 索引；重复 report 路径幂等更新，最多保留 32 条，损坏、重复或超量数据
+  fail closed。复盘进度面板显示当前章节的存档数量；profile 仍是 presentation-only，
+  不进入 ROBOT/SIM digest 或任务判定。
+- `test_player_profile` 覆盖 archive round-trip、幂等去重和重复路径拒绝；Debug/Release
+  Viewer 构建与定向回归通过。
+
+### Navigation envelope audit and Ackermann route recovery（2026-10-31）
+
+- Ackermann 的声明底盘外接圆是 `sqrt(0.28² + 0.25²) = 0.377 m`，配置中的
+  `footprint_radius_m = 0.4 m` 已经是半径，不是直径。全局 A*、Hybrid-A*、DWA、TEB、
+  Validator 和 Safety 的硬清障语义仍是 `0.4 + clearance_margin(0.1) = 0.5 m`；不以
+  直径替代硬膨胀，也不放宽 GoalArrival 合同。
+- 修复了路线偏离阈值的直径误用：`DecisionCyclePipeline` 现在按底盘半径触发全局重规划；
+  soft inflation 仍只参与局部偏好代价。规划刷新期间继续保留上一条已验证路线，新路线
+  成功后原子替换，避免车式底盘在规划空窗期驶向墙边。
+- `test_astar` 锁定 0.39/0.41 m 的半径边界、同目标增量刷新期间的旧路线保留；`test_dwa`
+  和 `test_motion_pipeline` 回归覆盖车式恢复、动态逃逸和终端机动。Ackermann 无演员
+  `signal_town` 长测完成 5/5、0 碰撞；带演员长测的剩余阻塞仍是动态让行恢复时间，
+  不是碰撞膨胀或直径误用。
+
+### Dynamic track coast and release regression（2026-10-31）
+
+- 横穿回归暴露出短暂 LiDAR 遮挡后的丢轨问题：旧的 3 次 miss 窗口约为 60 ms，
+  会在预测间隙重新放行局部规划。已将默认 coast 窗口设为 15 次 miss（约 300 ms）；
+  预测仍以 track 的最后采集时间为起点，并按声明的不确定度增长扩展占用包络，超出
+  预测年龄预算后才丢弃。没有引入 actor identity、未来 waypoint 或 SIM truth。
+- `test_dynamic_crossing_mission` 三个到达相位现均为零碰撞并能恢复前进；`test_perception`
+  的离场测试显式保留 3 次 miss 的老化契约。Release 差速 `signal_town` 带演员任务
+  重新完成 5/5、0 碰撞，`execution_monitor` 的低速换向误报也已由定向回归锁定。

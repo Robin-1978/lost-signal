@@ -31,8 +31,7 @@ Route StraightLinePlanner::plan(const EstimatedState& start,
 std::unique_ptr<IGlobalPlanner> make_global_planner(
  const platform::ChassisLimits& limits, double wheel_base_m,
  const platform::NavigationSafetyPolicy& navigation) {
- if (std::isfinite(limits.max_curvature_inv_m) &&
- limits.max_curvature_inv_m > 0.0) {
+ if (platform::chassis_is_ackermann(limits)) {
  AckermannPlanner::Config config;
  config.wheel_base_m = std::isfinite(wheel_base_m) && wheel_base_m > 0.0
  ? wheel_base_m

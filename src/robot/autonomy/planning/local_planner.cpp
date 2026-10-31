@@ -15,7 +15,10 @@ std::unique_ptr<ILocalPlanner> make_local_planner(
  double terminal_maximum_position_sigma_m,
  double terminal_maximum_heading_sigma_rad,
  int terminal_replan_settle_cycles) {
- if (planner_kind == "dwa") {
+ // DWB is the critic/plugin form of the same dynamic-window controller
+ // family.  Keep one chassis-aware trajectory generator and one validator
+ // contract instead of maintaining a second sampler with divergent limits.
+ if (planner_kind == "dwa" || planner_kind == "dwb") {
  DwaPlannerConfig config;
  config.safety_margin_m = navigation.clearance_margin_m;
  config.soft_inflation_radius_m = navigation.soft_inflation_radius_m;

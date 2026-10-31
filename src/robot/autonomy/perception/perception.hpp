@@ -117,7 +117,11 @@ struct LidarPerceptionConfig {
   int min_beams_per_cluster = 2;
   // Association gate + track lifetime.
   double association_gate_m = 0.6;
-  int max_misses = 3;
+  // Coast tracks across short lidar occlusions. The
+  // predictor grows the explicit position uncertainty while coasting, so a
+  // temporary dropout cannot make the local planner forget a crossing object
+  // and accelerate into its last predicted corridor.
+  int max_misses = 15;
   int min_updates_for_ready = 3;
  // Object extent estimate from the cluster's world-space bounding box.
  // One beam (or a tiny cluster) clamps up to the minimum; long walls clamp

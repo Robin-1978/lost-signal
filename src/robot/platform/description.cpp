@@ -8,6 +8,7 @@ namespace lost_signal::robot::platform {
 bool valid_robot_description(const RobotDescription& desc) {
  if (desc.robot_id.empty()) return false;
  if (desc.local_planner_kind != "dwa" &&
+     desc.local_planner_kind != "dwb" &&
  desc.local_planner_kind != "teb") return false;
   if (desc.version == 0) return false;
   if (desc.links.empty()) return false;
@@ -108,7 +109,10 @@ bool valid_robot_description(const RobotDescription& desc) {
 }
 
 std::uint64_t hash_robot_description(const RobotDescription& desc) {
-  // FNV-1a over robot_id + version + limits + mount ids.
+  // FNV-1a over the complete ROBOT motion contract.  Calibration artifacts
+  // must not survive a chassis/planner envelope change under the same mount
+  // ids: a different motion model, wheel limit or response budget changes
+  // which local trajectories are executable.
   std::uint64_t h = 1469598103934665603ULL;
   auto mix = [&](const std::string& s) {
     for (unsigned char c : s) {
@@ -117,8 +121,18 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
     }
   };
  mix(desc.robot_id);
+ mix(desc.chassis_kind);
  mix(desc.local_planner_kind);
   mix(std::to_string(desc.version));
+ mix(std::to_string(static_cast<int>(desc.limits.motion_model)));
+ mix(std::to_string(desc.limits.max_forward_mps));
+ mix(std::to_string(desc.limits.max_yaw_rate_radps));
+ mix(std::to_string(desc.limits.footprint_radius_m));
+ mix(std::to_string(desc.limits.max_steer_rad));
+ mix(std::to_string(desc.limits.max_lateral_mps));
+ mix(std::to_string(desc.limits.max_curvature_inv_m));
+ mix(std::to_string(desc.limits.differential_track_m));
+ mix(std::to_string(desc.limits.max_wheel_speed_mps));
   for (const auto& l : desc.links) {
     mix(l.link);
     mix(l.parent);
@@ -152,6 +166,7 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
  mix(std::to_string(desc.motion.yaw_acceleration_radps2));
  mix(std::to_string(desc.motion.actuator_response_delay_s));
  mix(std::to_string(desc.motion.safety_reaction_time_s));
+ mix(std::to_string(desc.motion.execution_fault_confirmation_s));
   return h;
 }
 

@@ -41,6 +41,12 @@ int main() {
     const auto desc = robot::platform::description_from_config(cfg);
     assert(desc.chassis_kind == kind);
     assert(desc.limits.max_forward_mps == 2.0);
+    const auto expected_model =
+        differential ? robot::platform::ChassisMotionModel::kDifferential
+        : (std::string(kind) == "ackermann"
+               ? robot::platform::ChassisMotionModel::kAckermann
+               : robot::platform::ChassisMotionModel::kHolonomic);
+    assert(desc.limits.motion_model == expected_model);
  assert(desc.navigation.clearance_margin_m == 0.1);
  assert(desc.navigation.soft_inflation_radius_m == 0.2);
  assert(desc.arrival.confidence_probability == 0.95);
@@ -259,6 +265,11 @@ int main() {
  assert(cfg.local_planner_kind == "teb");
  assert(robot::platform::description_from_config(cfg).local_planner_kind ==
  "teb");
+ write(R"({"kind": "differential", "local_planner": "dwb"})");
+ assert(robot::platform::load_robot_config(tmp, cfg, &err));
+ assert(cfg.local_planner_kind == "dwb");
+ assert(robot::platform::description_from_config(cfg).local_planner_kind ==
+ "dwb");
  write(R"({"kind": "differential", "local_planner": "magic"})");
  assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential", "limits": {"max_forward_mps": -1}})");

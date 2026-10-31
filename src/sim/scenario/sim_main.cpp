@@ -536,18 +536,19 @@ int main(int argc, char** argv) {
  const std::string localization_action = recorded == nullptr
  ? std::string{}
  : recorded->diag.localization_action;
+ const auto diag = recorded == nullptr
+ ? robot::app::RobotApplication::Diagnostics{}
+ : recorded->diag;
  const bool localization_event =
  localization_action.rfind("global_relocalization:", 0) == 0 &&
  localization_action != "global_relocalization:search pending" &&
  localization_action != verbose_localization_event;
- if (opt.verbose && (ran % 100 == 0 || collision_now || localization_event)) {
+ if (opt.verbose && (ran % 100 == 0 || collision_now || localization_event ||
+                      diag.execution_monitor.diagnostic != "tracking")) {
  const auto ev = session->last_evidence();
  const auto& truth = recorded == nullptr
  ? sim::world::WorldTruth{}
  : recorded->truth_after;
- const auto diag = recorded == nullptr
- ? robot::app::RobotApplication::Diagnostics{}
- : recorded->diag;
  std::fprintf(stderr,
  "step=%ld objective=%s goal=%s constraint=%s reason=%s action=%s "
  "v=%.2f w=%.2f "
@@ -557,7 +558,7 @@ int main(int argc, char** argv) {
  "collision=%s/%s/%s dyn_clr=%.2f localized=%s "
  "loops=%zu loop_corr=%.3f/%.3f tracks=%zu "
  "track_corr=%.3f/%.3f track=%s grip=%.2f slip=%s/%.3f(s=%.3f) "
- "motion_scale=%.3f exec=%s\n",
+ "motion_scale=%.3f exec=%s(req=%.3f/meas=%.3f,pending=%.3f)\n",
  ran, session->objectives().active_place().c_str(),
  session->current_goal().state ==
  robot::iface::GoalState::kActive ? "active" : "idle",
@@ -585,7 +586,10 @@ int main(int argc, char** argv) {
  diag.track_correction_rad, diag.track_diagnostic.c_str(),
  diag.grip_factor, diag.slip_quality.c_str(),
  diag.slip_longitudinal_ratio, diag.slip_longitudinal_sigma,
- diag.motion_scale, diag.execution_monitor.diagnostic.c_str());
+ diag.motion_scale, diag.execution_monitor.diagnostic.c_str(),
+ diag.execution_monitor.request_forward_mps,
+ diag.execution_monitor.measured_forward_mps,
+ diag.execution_monitor.pending_elapsed_s);
  if (localization_event) verbose_localization_event = localization_action;
  }
  }

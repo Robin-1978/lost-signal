@@ -138,7 +138,16 @@ ExecutionMonitorReport ExecutionMonitor::update(
         // the measured projection is itself inside the deadband and the
         // command-to-feedback gap exceeds both sides of that uncertainty.
         } else if (projection <= velocity_band &&
-                   request_norm - projection > 2.0 * velocity_band) {
+                   request_norm - projection > 2.0 * velocity_band &&
+                   // A low-speed gear change can spend the declared actuator
+                   // response interval crossing zero.  Treat requests below
+                   // the observable response floor as an in-band transient;
+                   // otherwise a healthy differential base is latched while
+                   // the controller is braking a small reverse velocity.
+                   request_norm >
+                       velocity_band +
+                           std::max(0.0, config_.brake_deceleration_mps2) *
+                               std::max(0.0, config_.response_delay_s)) {
           observed = ExecutionFault::kNoResponse;
         }
       }

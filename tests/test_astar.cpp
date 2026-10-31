@@ -234,9 +234,9 @@ int main() {
  }
  }
 
- // A route is tied to the estimated start from which it was validated. A
- // chassis-sized cross-track departure triggers one event-driven replan;
- // ordinary motion inside the route tube does not create a planning storm.
+ // A route is tied to the estimated start from which it was validated. The
+ // cross-track trigger is a chassis radius, not its diameter: motion at
+ // 0.39 m remains on the route, while 0.41 m starts one event-driven replan.
  {
  CountingPlanner counting;
  RoutePlanningPipeline pipeline;
@@ -244,15 +244,15 @@ int main() {
  const auto map = iface::MapSnapshot{};
  const RoutePoint goal{2.0, 0.0, 0.0};
  assert(pipeline.advance(
- counting, at(0.0, 0.0), goal, true, map, false, active, 0.5));
+ counting, at(0.0, 0.0), goal, true, map, false, active, 0.4));
  assert(counting.calls == 1 && active.valid);
  assert(!pipeline.advance(
- counting, at(0.2, 0.2), goal, true, map, false, active, 0.5));
+ counting, at(0.2, 0.39), goal, true, map, false, active, 0.4));
  assert(counting.calls == 1);
  assert(pipeline.advance(
- counting, at(0.2, 0.8), goal, true, map, false, active, 0.5));
+ counting, at(0.2, 0.41), goal, true, map, false, active, 0.4));
  assert(counting.calls == 2 && active.valid);
- assert(active.points.front().y_m == 0.8);
+ assert(active.points.front().y_m == 0.41);
  }
 
  // The route pipeline retains one in-flight request across decision cycles,
@@ -323,16 +323,29 @@ int main() {
  counting, at(0.0, 0.0), goal, true, map, false, active));
  assert(active.valid && counting.begin_calls == 1);
 
+ // A same-goal refresh keeps the last validated route until the incremental
+ // replacement succeeds; the local planner never sees a planning gap.
+ counting.advances_to_finish = 3;
+ assert(!pipeline.advance(
+ counting, at(0.2, 0.0), goal, true, map, true, active));
+ assert(pipeline.pending() && active.valid);
+ assert(!pipeline.advance(
+ counting, at(0.2, 0.0), goal, true, map, false, active));
+ assert(pipeline.pending() && active.valid);
+ assert(pipeline.advance(
+ counting, at(0.2, 0.0), goal, true, map, false, active));
+ assert(!pipeline.pending() && active.valid);
+
  counting.fail = true;
  assert(!pipeline.advance(
  counting, at(0.1, 0.0), goal, true, map, true, active));
- assert(active.valid && pipeline.failed() && counting.begin_calls == 2);
+ assert(active.valid && pipeline.failed() && counting.begin_calls == 3);
  assert(!pipeline.advance(
  counting, at(0.1, 0.0), goal, true, map, true, active));
- assert(active.valid && counting.begin_calls == 2);
+ assert(active.valid && counting.begin_calls == 3);
  assert(!pipeline.advance(
  counting, at(0.6, 0.0), goal, true, map, true, active));
- assert(active.valid && counting.begin_calls == 3);
+ assert(active.valid && counting.begin_calls == 4);
  }
 
   // Wall with a gap: route threads the gap, never through occupied cells.

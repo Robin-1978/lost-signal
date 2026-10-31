@@ -12,6 +12,16 @@ namespace {
 platform::ChassisLimits autonomy_limits_from_description(
  const platform::RobotDescription& desc) {
  platform::ChassisLimits limits = desc.limits;
+ if (desc.chassis_kind == "differential") {
+   limits.motion_model = platform::ChassisMotionModel::kDifferential;
+ } else if (desc.chassis_kind == "ackermann") {
+   limits.motion_model = platform::ChassisMotionModel::kAckermann;
+ } else if (desc.chassis_kind == "mecanum" ||
+            desc.chassis_kind == "swerve") {
+   limits.motion_model = platform::ChassisMotionModel::kHolonomic;
+ } else if (desc.chassis_kind == "tracked") {
+   limits.motion_model = platform::ChassisMotionModel::kTracked;
+ }
  if (desc.chassis_kind == "differential" &&
  desc.plant.track_width_m > 0.0 &&
  std::isfinite(desc.plant.track_width_m)) {

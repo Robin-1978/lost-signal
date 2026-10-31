@@ -137,6 +137,8 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  const PerceptionResult& perception, const PredictionBatch& prediction,
  const LocalMap& map, const Route& route,
  const platform::ChassisLimits& limits) {
+ const bool car_like = platform::chassis_is_ackermann(limits);
+ const bool differential = platform::chassis_is_differential(limits);
  if (config_.topology_enabled && route.valid && route.points.size() >= 2) {
  LocalPlan combined;
  std::vector<TebBandVertex> selected_band;
@@ -398,7 +400,7 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  yaw = clamp_reachable(
  yaw, est.yaw_rate_radps, config_.yaw_accel_radps2,
  config_.yaw_accel_radps2, config_.control_dt_s);
- if (limits.max_curvature_inv_m > 0.0) {
+ if (car_like) {
  const double max_yaw = std::abs(forward) * limits.max_curvature_inv_m;
  yaw = std::clamp(yaw, -max_yaw, max_yaw);
  }
@@ -420,8 +422,7 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  // even when a warm band asks for a sharp simultaneous turn and launch.
  const auto project_differential_command = [&](double& body_forward,
                                                 double& body_yaw) {
-   if (!(limits.differential_track_m > 0.0) ||
-       limits.max_lateral_mps > 0.0 || limits.max_curvature_inv_m > 0.0) {
+   if (!differential) {
      return;
    }
    const double half_track = 0.5 * limits.differential_track_m;

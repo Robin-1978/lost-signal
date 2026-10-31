@@ -24,6 +24,18 @@ struct SensorMount {
   double rpy_rad[3] = {};
 };
 
+// The local planners must select a reachable command family from an explicit
+// chassis model.  Numeric limits remain the source of the envelope; this
+// tag prevents a differential base from being inferred as Ackermann merely
+// because a caller happened to populate one optional field.
+enum class ChassisMotionModel {
+  kUnknown = 0,
+  kDifferential,
+  kAckermann,
+  kHolonomic,
+  kTracked,
+};
+
 struct ChassisLimits {
   double max_forward_mps = 0.0;
   double max_yaw_rate_radps = 0.0;
@@ -39,7 +51,28 @@ struct ChassisLimits {
  // Zero leaves body-twist sampling for compatibility with direct tests.
  double differential_track_m = 0.0;
  double max_wheel_speed_mps = 0.0;
+  ChassisMotionModel motion_model = ChassisMotionModel::kUnknown;
 };
+
+inline bool chassis_is_ackermann(const ChassisLimits& limits) {
+  return limits.motion_model == ChassisMotionModel::kAckermann ||
+         (limits.motion_model == ChassisMotionModel::kUnknown &&
+          limits.max_curvature_inv_m > 0.0);
+}
+
+inline bool chassis_is_holonomic(const ChassisLimits& limits) {
+  return limits.motion_model == ChassisMotionModel::kHolonomic ||
+         (limits.motion_model == ChassisMotionModel::kUnknown &&
+          limits.max_lateral_mps > 0.0);
+}
+
+inline bool chassis_is_differential(const ChassisLimits& limits) {
+  return limits.motion_model == ChassisMotionModel::kDifferential ||
+         (limits.motion_model == ChassisMotionModel::kUnknown &&
+          limits.differential_track_m > 0.0 &&
+          limits.max_lateral_mps <= 0.0 &&
+          limits.max_curvature_inv_m <= 0.0);
+}
 
 // ROBOT navigation policy shared by global planning, local planning,
 // validation, behavior, and the independent collision monitor. The hard
