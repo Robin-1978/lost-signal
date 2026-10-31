@@ -1349,3 +1349,14 @@ ROBOT。
   结果，不能把它记录成任务成功。下一步要在同一帧诊断前后扇区净空和 Validator 拒绝码，
   决定是否需要单向、有预算的曲率观察动作；不能用放宽 Safety、膨胀半径或 GoalArrival
   来掩盖这个空集。
+
+### Ackermann recovery fallback quarantine（2026-11-01）
+
+- 长测后段又发现一个恢复分支漏洞：Ackermann 在 `recovery-tracking` 中没有可接受的
+  bounded observation candidate 时，`MotionDecisionPipeline` 的末尾仍会回退到普通 planner
+  候选。该候选来自尚未确认的 map-frame route，会在错误位姿附近保持小半径弧线，造成估计
+  误差不收敛的绕圈表现。
+- 现在只要 `observation_recovery_required` 仍为真，就禁止这个普通 planner fallback；
+  若 Validator/Safety 没有接受任何 bounded observation manoeuvre，结果保持安全停车，直到
+  新的观测动作或定位修正被确认。新增 `FastOnlyValidator` 回归锁定该隔离，保留正常路线和
+  已验证恢复候选的既有行为。
