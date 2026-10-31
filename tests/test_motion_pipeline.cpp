@@ -555,6 +555,41 @@ int main() {
  assert(ack_empty_observation.command.forward_mps >= -1e-9);
  assert(std::abs(ack_empty_observation.command.yaw_rate_radps) < 1e-9);
 
+ // A live forward safety veto is the one condition that may open a bounded
+ // reverse observation manoeuvre for Ackermann.  It must not reuse the stale
+ // route endpoint, and it must stop after the declared budget instead of
+ // backtracking indefinitely while localization remains ambiguous.
+ pipeline.reset();
+ MotionDecisionPipeline::Config reverse_observation_config;
+ reverse_observation_config.observation_reverse_budget_s = 0.3;
+ MotionDecisionPipeline reverse_observation_pipeline(
+     reverse_observation_config);
+ EmptyPlanner reverse_empty_planner;
+ CrossingValidator reverse_validator;
+ reverse_validator.clear_speed_mps = 0.2;
+ reverse_validator.hold_is_safe = true;
+ EstimatedState stopped_uncertain = globally_uncertain;
+ stopped_uncertain.forward_mps = 0.0;
+ const MotionDecisionResult reverse_observation =
+     reverse_observation_pipeline.run(
+         stopped_uncertain, perception, map, route, recovery_ackermann,
+         recovery_ackermann, observation, survey, estimate.stamp_ns, behavior,
+         reverse_empty_planner, reverse_validator, controller, true, true);
+ assert(!reverse_observation.command.is_safe_stop());
+ assert(reverse_observation.constraint == "localization_observe");
+ assert(reverse_observation.command.forward_mps < -1e-9);
+ EstimatedState reversing_uncertain = stopped_uncertain;
+ reversing_uncertain.forward_mps = reverse_observation.command.forward_mps;
+ for (int cycle = 0; cycle < 4; ++cycle) {
+   const MotionDecisionResult bounded_reverse =
+       reverse_observation_pipeline.run(
+           reversing_uncertain, perception, map, route, recovery_ackermann,
+           recovery_ackermann, observation,
+           survey, estimate.stamp_ns + cycle + 1, behavior,
+           reverse_empty_planner, reverse_validator, controller, true, true);
+   if (cycle == 3) assert(bounded_reverse.command.is_safe_stop());
+ }
+
  pipeline.reset();
  HoldPlanner hold_planner;
  platform::ChassisLimits ackermann_limits = limits;

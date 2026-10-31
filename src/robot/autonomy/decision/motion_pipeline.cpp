@@ -38,6 +38,8 @@ void MotionDecisionPipeline::reset() {
  recovery_active_ = false;
  recovery_command_ = LocalCandidate{};
  recovery_release_count_ = 0;
+ observation_reverse_active_ = false;
+ observation_reverse_elapsed_s_ = 0.0;
 }
 
 MotionDecisionResult MotionDecisionPipeline::run(
@@ -224,6 +226,24 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const bool observation_recovery_required =
      observation_motion_requested &&
      (car_like || !planner_motion_available);
+ if (!observation_recovery_required || !forward_blocked) {
+   observation_reverse_active_ = false;
+   observation_reverse_elapsed_s_ = 0.0;
+ }
+ const double observation_reverse_budget_s = std::max(
+     0.0, config_.observation_reverse_budget_s);
+ const bool observation_reverse_budget_available =
+     !observation_reverse_active_ ||
+     observation_reverse_elapsed_s_ + 1e-9 < observation_reverse_budget_s;
+ // A stale map-frame route must never choose reverse by itself.  A reverse
+ // observation manoeuvre is allowed only when the live safety gate reports a
+ // forward blockage, or when a previously accepted reverse manoeuvre is still
+ // being slewed to rest.  Validator and the final raw-scan safety gate remain
+ // the authorities for the complete reverse braking tail.
+ const bool observation_reverse_allowed =
+     !observation_recovery_required ||
+     (observation_reverse_budget_available &&
+      (forward_blocked || observation_reverse_active_));
  const double maximum_planar_speed_mps = std::max(
  std::max(0.0, effective.max_forward_mps),
  std::max(0.0, effective.max_lateral_mps));
@@ -405,7 +425,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  candidate.feasible = true;
  recovery[recovery_count++] = candidate;
  };
- if (!observation_recovery_required) {
+ if (!observation_recovery_required || observation_reverse_allowed) {
    add_recovery(-crawl, 0.0, 0.0);
  }
  if (!observation_recovery_required || observation_direction > 0) {
@@ -483,10 +503,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
  if (reachable_limits.max_wheel_speed_mps > 0.0) {
    forward_limit = std::min(forward_limit, reachable_limits.max_wheel_speed_mps);
  }
- if (!bounded_observation_recovery || observation_direction > 0) {
+ if (!bounded_observation_recovery || observation_direction > 0 ||
+     observation_reverse_allowed) {
    add_reachable(forward_limit, 0.0);
  }
- if (!bounded_observation_recovery) {
+ if (!bounded_observation_recovery || observation_reverse_allowed) {
    add_reachable(-forward_limit, 0.0);
  }
  const bool ackermann = platform::chassis_is_ackermann(reachable_limits);
@@ -647,6 +668,15 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
 
  if (have_recovery) {
+ if (observation_recovery_required && forward_blocked &&
+     best_recovery.candidate.forward_mps < -1e-6) {
+   observation_reverse_active_ = true;
+   observation_reverse_elapsed_s_ += std::max(
+       0.0, config_.decision_period_s);
+ } else if (!observation_recovery_required || !forward_blocked) {
+   observation_reverse_active_ = false;
+   observation_reverse_elapsed_s_ = 0.0;
+ }
  recovery_active_ = true;
  recovery_command_ = best_recovery.candidate;
  if (dynamic_escape_required) {
