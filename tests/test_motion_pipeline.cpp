@@ -519,6 +519,27 @@ int main() {
  assert(echo_planner.last_limits.max_yaw_rate_radps ==
  observation_config.recovery_yaw_rate_radps);
 
+ // A nonholonomic base must not keep executing the route that was generated
+ // from an untrusted map-frame pose during recovery.  It uses the bounded,
+ // curvature-constrained observation set so fresh scans can disambiguate the
+ // pose before another terminal alignment maneuver is attempted.
+ pipeline.reset();
+ LimitEchoPlanner ack_echo_planner;
+ platform::ChassisLimits recovery_ackermann = limits;
+ recovery_ackermann.max_curvature_inv_m = 1.2;
+ const MotionDecisionResult ack_observation = pipeline.run(
+ globally_uncertain, perception, map, route, recovery_ackermann,
+ recovery_ackermann, observation, survey, estimate.stamp_ns, behavior,
+ ack_echo_planner, validator, controller, false, true);
+ assert(!ack_observation.command.is_safe_stop());
+ assert(ack_observation.constraint == "localization_observe");
+ assert(ack_observation.reason.find("recovery:") == 0);
+ assert(std::abs(ack_observation.command.forward_mps) <=
+        observation_config.recovery_speed_mps + 1e-9);
+ assert(std::abs(ack_observation.command.yaw_rate_radps) <=
+        std::abs(ack_observation.command.forward_mps) *
+            recovery_ackermann.max_curvature_inv_m + 1e-9);
+
  pipeline.reset();
  HoldPlanner hold_planner;
  platform::ChassisLimits ackermann_limits = limits;

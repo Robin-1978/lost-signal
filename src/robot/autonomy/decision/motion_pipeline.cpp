@@ -205,6 +205,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  [&](const ValidatedCandidate& candidate) {
  return commands_resolvable_motion(candidate.candidate);
  });
+ const bool car_like = platform::chassis_is_ackermann(effective);
  const double route_translation_remaining_m = planner_requested
  ? std::hypot(route.points.back().x_m - est.x_m,
  route.points.back().y_m - est.y_m)
@@ -213,8 +214,16 @@ MotionDecisionResult MotionDecisionPipeline::run(
  route_translation_remaining_m >
  std::max(0.0, limits.footprint_radius_m) &&
  !planner_motion_available && !plan.gear_change_pending;
+ // During a surveyed-map recovery an Ackermann route is only a hypothesis:
+ // the map-frame estimate that produced it is precisely what is being
+ // re-established.  Keep the car in the bounded observation candidate set
+ // instead of allowing a stale route to select a normal arc and repeatedly
+ // circle a terminal pose.  Differential/holonomic bases may continue their
+ // validated route while a moving candidate exists because they can expose
+ // new geometry without committing to a nonholonomic arc.
  const bool observation_recovery_required =
- observation_motion_requested && !planner_motion_available;
+     observation_motion_requested &&
+     (car_like || !planner_motion_available);
  const double maximum_planar_speed_mps = std::max(
  std::max(0.0, effective.max_forward_mps),
  std::max(0.0, effective.max_lateral_mps));
@@ -323,7 +332,6 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const double crawl = std::min(
  std::max(0.0, config_.recovery_speed_mps),
  std::max(0.0, effective.max_forward_mps));
- const bool car_like = platform::chassis_is_ackermann(effective);
  const bool differential = platform::chassis_is_differential(effective);
  const double turn = std::min(
  std::max(0.0, config_.recovery_yaw_rate_radps),
