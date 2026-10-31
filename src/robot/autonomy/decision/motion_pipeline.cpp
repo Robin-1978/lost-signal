@@ -236,14 +236,24 @@ MotionDecisionResult MotionDecisionPipeline::run(
      !observation_reverse_active_ ||
      observation_reverse_elapsed_s_ + 1e-9 < observation_reverse_budget_s;
  // A stale map-frame route must never choose reverse by itself.  A reverse
- // observation manoeuvre is allowed only when the live safety gate reports a
- // forward blockage, or when a previously accepted reverse manoeuvre is still
- // being slewed to rest.  Validator and the final raw-scan safety gate remain
- // the authorities for the complete reverse braking tail.
+ // observation manoeuvre is allowed after a live forward safety veto, or
+ // after a route-backed local stall has brought the car to rest while the
+ // ordinary moving candidates are all rejected.  The latter is needed when
+ // the raw scan is nominal but the map-frame route has entered a lethal
+ // raster boundary.  A previously accepted reverse manoeuvre may continue
+ // while it is being slewed to rest.  Validator and the final raw-scan Safety
+ // gate remain the authorities for the complete reverse braking tail.
+ const double reverse_launch_speed_mps = std::max(
+     0.0, std::max(0.0, config_.motion.brake_deceleration_mps2) *
+              std::max(1e-9, config_.decision_period_s));
+ const bool stalled_at_rest = stalled_before_terminal &&
+     std::abs(est.forward_mps) <= reverse_launch_speed_mps + 1e-9;
+ const bool observation_reverse_trigger =
+     forward_blocked || stalled_at_rest;
  const bool observation_reverse_allowed =
      !observation_recovery_required ||
      (observation_reverse_budget_available &&
-      (forward_blocked || observation_reverse_active_));
+      (observation_reverse_trigger || observation_reverse_active_));
  const double maximum_planar_speed_mps = std::max(
  std::max(0.0, effective.max_forward_mps),
  std::max(0.0, effective.max_lateral_mps));
@@ -668,7 +678,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
 
  if (have_recovery) {
- if (observation_recovery_required && forward_blocked &&
+ if (observation_recovery_required && observation_reverse_trigger &&
      best_recovery.candidate.forward_mps < -1e-6) {
    observation_reverse_active_ = true;
    observation_reverse_elapsed_s_ += std::max(

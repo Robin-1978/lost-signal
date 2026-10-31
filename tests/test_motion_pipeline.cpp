@@ -574,7 +574,7 @@ int main() {
      reverse_observation_pipeline.run(
          stopped_uncertain, perception, map, route, recovery_ackermann,
          recovery_ackermann, observation, survey, estimate.stamp_ns, behavior,
-         reverse_empty_planner, reverse_validator, controller, true, true);
+         reverse_empty_planner, reverse_validator, controller, false, true);
  assert(!reverse_observation.command.is_safe_stop());
  assert(reverse_observation.constraint == "localization_observe");
  assert(reverse_observation.command.forward_mps < -1e-9);
