@@ -40,6 +40,9 @@ void MotionDecisionPipeline::reset() {
  recovery_release_count_ = 0;
  observation_reverse_active_ = false;
  observation_reverse_elapsed_s_ = 0.0;
+ observation_curve_active_ = false;
+ observation_curve_elapsed_s_ = 0.0;
+ observation_curve_sign_ = 0.0;
 }
 
 MotionDecisionResult MotionDecisionPipeline::run(
@@ -230,6 +233,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
    observation_reverse_active_ = false;
    observation_reverse_elapsed_s_ = 0.0;
  }
+ if (!observation_recovery_required) {
+   observation_curve_active_ = false;
+   observation_curve_elapsed_s_ = 0.0;
+   observation_curve_sign_ = 0.0;
+ }
  const double observation_reverse_budget_s = std::max(
      0.0, config_.observation_reverse_budget_s);
  const bool observation_reverse_budget_available =
@@ -254,6 +262,19 @@ MotionDecisionResult MotionDecisionPipeline::run(
      !observation_recovery_required ||
      (observation_reverse_budget_available &&
       (observation_reverse_trigger || observation_reverse_active_));
+ const double observation_curve_budget_s = std::max(
+     0.0, config_.observation_curve_budget_s);
+ const bool observation_curve_budget_available =
+     !observation_curve_active_ ||
+     observation_curve_elapsed_s_ + 1e-9 < observation_curve_budget_s;
+ // A curved observation is opened only while a recovery car is at (or below)
+ // its one-cycle launch speed.  It is not a goal-bearing turn: each sign is
+ // checked by the validator and raw-scan Safety, then retained for a short
+ // budget so a repetitive map cannot make the car alternate into a circle.
+ const bool observation_curve_allowed =
+     observation_recovery_required && car_like &&
+     std::abs(est.forward_mps) <= reverse_launch_speed_mps + 1e-9 &&
+     observation_curve_budget_available;
  const double maximum_planar_speed_mps = std::max(
  std::max(0.0, effective.max_forward_mps),
  std::max(0.0, effective.max_lateral_mps));
@@ -662,6 +683,28 @@ MotionDecisionResult MotionDecisionPipeline::run(
  for (std::size_t i = 0; i < recovery_count; ++i) {
  consider_recovery(recovery[i], i, false);
  }
+ // A car-like recovery only gets a curved observation after every straight
+ // and reachable-speed observation has been rejected.  Letting an arc enter
+ // the normal recovery ranking while a straight candidate is valid can turn
+ // a repetitive map into a small circle around an unconfirmed pose.  The
+ // arc remains bounded, one-sided once started, and is still checked by the
+ // same Validator/Safety gates.
+ if (!have_recovery && observation_curve_allowed) {
+   const std::size_t curve_begin = recovery_count;
+   if (observation_curve_active_ &&
+       std::abs(observation_curve_sign_) > 0.5) {
+     add_recovery(crawl,
+                  observation_curve_sign_ > 0.0 ? recovery_turn
+                                                : -recovery_turn,
+                  0.0);
+   } else {
+     add_recovery(crawl, recovery_turn, 0.0);
+     add_recovery(crawl, -recovery_turn, 0.0);
+   }
+   for (std::size_t i = curve_begin; i < recovery_count; ++i) {
+     consider_recovery(recovery[i], i, false);
+   }
+ }
  // A forward-proximity verdict is already an independent sensor decision
  // that the held pose or forward rollout is unsafe.  In that case a
  // low-speed crawl can remain below the motor torque needed to leave contact
@@ -686,6 +729,21 @@ MotionDecisionResult MotionDecisionPipeline::run(
  } else if (!observation_recovery_required || !forward_blocked) {
    observation_reverse_active_ = false;
    observation_reverse_elapsed_s_ = 0.0;
+ }
+ if (observation_recovery_required && observation_curve_allowed &&
+     best_recovery.candidate.forward_mps > 1e-6 &&
+     std::abs(best_recovery.candidate.yaw_rate_radps) > 1e-6) {
+   const double sign = best_recovery.candidate.yaw_rate_radps > 0.0 ? 1.0 : -1.0;
+   if (!observation_curve_active_ || observation_curve_sign_ == sign) {
+     observation_curve_active_ = true;
+     observation_curve_sign_ = sign;
+     observation_curve_elapsed_s_ += std::max(
+         0.0, config_.decision_period_s);
+   }
+ } else if (!observation_recovery_required) {
+   observation_curve_active_ = false;
+   observation_curve_elapsed_s_ = 0.0;
+   observation_curve_sign_ = 0.0;
  }
  recovery_active_ = true;
  recovery_command_ = best_recovery.candidate;

@@ -56,6 +56,10 @@ class MotionDecisionPipeline {
  // time budget rather than a route command: once it expires the pipeline
  // holds until fresh localization or a new safety direction is available.
  double observation_reverse_budget_s = 2.0;
+ // A one-sided, forward curved observation is the fallback when a stopped
+ // car-like base cannot safely expose new geometry by straight motion.  It is
+ // committed to one steering sign and expires quickly to prevent circling.
+ double observation_curve_budget_s = 1.0;
  platform::MotionDynamicsPolicy motion;
  double decision_period_s = 0.1;
  // Dynamic escape is released only after a stationary rollout retains this
@@ -104,6 +108,9 @@ class MotionDecisionPipeline {
  // unbounded backtrack.
  bool observation_reverse_active_ = false;
  double observation_reverse_elapsed_s_ = 0.0;
+ bool observation_curve_active_ = false;
+ double observation_curve_elapsed_s_ = 0.0;
+ double observation_curve_sign_ = 0.0;
 };
 
 } // namespace lost_signal::robot::autonomy

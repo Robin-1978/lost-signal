@@ -194,6 +194,28 @@ class FastOnlyValidator final : public IValidator {
   }
 };
 
+class ArcOnlyValidator final : public IValidator {
+ public:
+  ValidationResult validate(const LocalCandidate& candidate,
+                            const EstimatedState&, const PerceptionResult&,
+                            const PredictionBatch&,
+                            const iface::ObservationFrame&) override {
+    ValidationResult result;
+    if (!candidate.feasible) {
+      result.reason = "infeasible";
+      return result;
+    }
+    result.accepted = std::abs(candidate.forward_mps) < 1e-9 ||
+                      std::abs(candidate.yaw_rate_radps) > 1e-6;
+    result.verdict = result.accepted ? TrajectoryVerdict::kAccepted
+                                     : TrajectoryVerdict::kUnsafeEmergencyStop;
+    result.min_clearance_m = 1.0;
+    result.min_dynamic_clearance_m = 1.0;
+    result.reason = result.accepted ? "clear" : "straight observation rejected";
+    return result;
+  }
+};
+
 class DynamicClearanceValidator final : public IValidator {
  public:
  ValidationResult validate(const LocalCandidate& candidate,
@@ -576,6 +598,50 @@ int main() {
  assert(held_stale_route.reason.find("recovery rejected") !=
         std::string::npos);
 
+ EstimatedState stopped_uncertain = globally_uncertain;
+ stopped_uncertain.forward_mps = 0.0;
+
+ // A stopped Ackermann recovery may use one validator-approved forward arc
+ // to expose a different scan sector, but the steering sign is committed and
+ // the manoeuvre expires instead of circling indefinitely.
+ pipeline.reset();
+ MotionDecisionPipeline::Config curve_observation_config;
+ curve_observation_config.observation_curve_budget_s = 0.3;
+ MotionDecisionPipeline curve_observation_pipeline(curve_observation_config);
+ EmptyPlanner curve_empty_planner;
+ ArcOnlyValidator arc_validator;
+ const MotionDecisionResult arc_observation =
+     curve_observation_pipeline.run(
+         stopped_uncertain, perception, map, route, recovery_ackermann,
+         recovery_ackermann, observation, survey, estimate.stamp_ns, behavior,
+         curve_empty_planner, arc_validator, controller, false, true);
+ assert(!arc_observation.command.is_safe_stop());
+ assert(arc_observation.constraint == "localization_observe");
+ assert(arc_observation.command.forward_mps > 0.0);
+ assert(std::abs(arc_observation.command.yaw_rate_radps) > 1e-6);
+ // When a straight observation is accepted, the curved fallback must stay
+ // out of the ranking and preserve a straight observation command.
+ pipeline.reset();
+ MotionDecisionPipeline straight_observation_pipeline(curve_observation_config);
+ const MotionDecisionResult straight_observation =
+     straight_observation_pipeline.run(
+         stopped_uncertain, perception, map, route, recovery_ackermann,
+         recovery_ackermann, observation, survey, estimate.stamp_ns, behavior,
+         curve_empty_planner, validator, controller, false, true);
+ assert(!straight_observation.command.is_safe_stop());
+ assert(std::abs(straight_observation.command.yaw_rate_radps) < 1e-9);
+ EstimatedState arcing_uncertain = stopped_uncertain;
+ arcing_uncertain.forward_mps = arc_observation.command.forward_mps;
+ for (int cycle = 0; cycle < 5; ++cycle) {
+   const MotionDecisionResult bounded_arc =
+       curve_observation_pipeline.run(
+           arcing_uncertain, perception, map, route, recovery_ackermann,
+           recovery_ackermann, observation, survey,
+           estimate.stamp_ns + cycle + 1, behavior, curve_empty_planner,
+           arc_validator, controller, false, true);
+   if (cycle == 4) assert(bounded_arc.command.is_safe_stop());
+ }
+
  // An empty stale-route plan must not make recovery reverse merely because
  // the old terminal is geometrically closer behind the car.
  pipeline.reset();
@@ -603,8 +669,6 @@ int main() {
  CrossingValidator reverse_validator;
  reverse_validator.clear_speed_mps = 0.2;
  reverse_validator.hold_is_safe = true;
- EstimatedState stopped_uncertain = globally_uncertain;
- stopped_uncertain.forward_mps = 0.0;
  const MotionDecisionResult reverse_observation =
      reverse_observation_pipeline.run(
          stopped_uncertain, perception, map, route, recovery_ackermann,
