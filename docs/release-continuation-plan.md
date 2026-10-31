@@ -1312,11 +1312,17 @@ ROBOT。
   确认时承诺错误弧线；定位恢复后才回到正常 Ackermann 路线跟踪。对应提交为 `9d02337`、
   `65a3f8a`、`3e161ec`，`test_motion_pipeline`、`test_dwa`、`test_multichassis_mission`、
   `test_local_planner_compare` 和 `test_actuation` 均通过。
+- 随后的 22,000 步回归又发现不能让旧终点在“前向候选暂时不可验证”时选择倒车：这会把
+  机器人带离当前观测区。现在 observation recovery 保持已测行驶方向（静止时默认前进），
+  前向候选不安全时保持安全停车；恢复期间不再用路线终点、`static-proximity` 或一个临时
+  planner 空窗制造新的 gear。若机器人本来就在独立确认的倒车恢复中，仍由普通 recovery
+  路径处理。该修复为 `9ee063c`、`7472b07`，并新增空路线候选回归。
 - Release `industrial_200k_mission` 5,000 步诊断：0 碰撞；首次定位恢复在 step 3,649
   解除，step 5,000 已回到 `defer`/`speed_cap` 正常路线跟踪，估计与真值误差约 0.02 m。
-  该预算只覆盖 `west_hub` 的前段，结果不能宣称工业四目标或五目标完成；较长的
-  100,000/200,000 步进程仍需独立运行并保留第 4 个目标附近的定位、gear、route 和
-  terminal evidence。
+ 该预算只覆盖 `west_hub` 的前段，结果不能宣称工业四目标或五目标完成。22,000 步
+ 诊断完成 `west_hub`、0 碰撞，在 `north_depot` 的重复结构恢复时保持 `cmd=(0,0)` 安全
+ 停车，未出现前后倒退逃逸；较长的 100,000/200,000 步进程仍需独立运行并保留第 4 个
+ 目标附近的定位、gear、route 和 terminal evidence。
 - 当前下一步保持证据优先级：先完成工业大图长测并筛选 `east_terminal` 的
   `localization_action`、`requested_gear`、`route_segment`、`route_replan_requested` 和
   execution monitor 事件；若长测稳定，再继续 PNC 的 Goal/Manual authority 状态机收敛，
