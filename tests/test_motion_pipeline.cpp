@@ -539,6 +539,7 @@ int main() {
  assert(std::abs(ack_observation.command.yaw_rate_radps) <=
         std::abs(ack_observation.command.forward_mps) *
             recovery_ackermann.max_curvature_inv_m + 1e-9);
+ assert(std::abs(ack_observation.command.yaw_rate_radps) < 1e-9);
 
  pipeline.reset();
  HoldPlanner hold_planner;

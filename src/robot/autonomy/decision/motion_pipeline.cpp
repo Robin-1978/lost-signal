@@ -401,14 +401,16 @@ MotionDecisionResult MotionDecisionPipeline::run(
  };
  add_recovery(-crawl, 0.0, 0.0);
  add_recovery(crawl, 0.0, 0.0);
- if (!car_like) {
+ if (!car_like || !observation_recovery_required) {
  add_recovery(0.0, turn, 0.0);
  add_recovery(0.0, -turn, 0.0);
  }
- add_recovery(crawl, recovery_turn, 0.0);
- add_recovery(crawl, -recovery_turn, 0.0);
- add_recovery(-crawl, recovery_turn, 0.0);
- add_recovery(-crawl, -recovery_turn, 0.0);
+ if (!car_like || !observation_recovery_required) {
+   add_recovery(crawl, recovery_turn, 0.0);
+   add_recovery(crawl, -recovery_turn, 0.0);
+   add_recovery(-crawl, recovery_turn, 0.0);
+   add_recovery(-crawl, -recovery_turn, 0.0);
+ }
  if (effective.max_lateral_mps > 0.0) {
  const double slide = std::min(crawl, effective.max_lateral_mps);
  add_recovery(0.0, 0.0, slide);
@@ -472,7 +474,8 @@ MotionDecisionResult MotionDecisionPipeline::run(
  add_reachable(forward_limit, 0.0);
  add_reachable(-forward_limit, 0.0);
  const bool ackermann = platform::chassis_is_ackermann(reachable_limits);
- if (ackermann && reachable_limits.max_curvature_inv_m > 0.0) {
+ if (ackermann && reachable_limits.max_curvature_inv_m > 0.0 &&
+     !bounded_observation_recovery) {
    const double forward_yaw =
        forward_limit * reachable_limits.max_curvature_inv_m;
    add_reachable(forward_limit, 0.0, forward_yaw);
