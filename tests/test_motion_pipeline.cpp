@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <deque>
 #include <limits>
+#include <string>
 
 #include "robot/autonomy/control/controller.hpp"
 #include "robot/autonomy/decision/motion_pipeline.hpp"
@@ -171,6 +172,26 @@ class SpeedValidator final : public IValidator {
  result.reason = "clear";
  return result;
  }
+};
+
+class FastOnlyValidator final : public IValidator {
+ public:
+  ValidationResult validate(const LocalCandidate& candidate,
+                            const EstimatedState&, const PerceptionResult&,
+                            const PredictionBatch&,
+                            const iface::ObservationFrame&) override {
+    ValidationResult result;
+    if (!candidate.feasible || candidate.forward_mps <= 0.5) {
+      result.reason = "observation candidate rejected";
+      return result;
+    }
+    result.accepted = true;
+    result.verdict = TrajectoryVerdict::kAccepted;
+    result.min_clearance_m = 1.0;
+    result.min_dynamic_clearance_m = 1.0;
+    result.reason = "clear";
+    return result;
+  }
 };
 
 class DynamicClearanceValidator final : public IValidator {
@@ -540,6 +561,20 @@ int main() {
         std::abs(ack_observation.command.forward_mps) *
             recovery_ackermann.max_curvature_inv_m + 1e-9);
  assert(std::abs(ack_observation.command.yaw_rate_radps) < 1e-9);
+
+ // If all bounded observation candidates are rejected, a normal planner
+ // candidate must not leak back into Ackermann recovery.  That fallback can
+ // follow the stale map-frame route and create a low-speed circle.
+ pipeline.reset();
+ RankedPlanner stale_route_planner;
+ FastOnlyValidator fast_only_validator;
+ const MotionDecisionResult held_stale_route = pipeline.run(
+     globally_uncertain, perception, map, route, recovery_ackermann,
+     recovery_ackermann, observation, survey, estimate.stamp_ns, behavior,
+     stale_route_planner, fast_only_validator, controller, false, true);
+ assert(held_stale_route.command.is_safe_stop());
+ assert(held_stale_route.reason.find("recovery rejected") !=
+        std::string::npos);
 
  // An empty stale-route plan must not make recovery reverse merely because
  // the old terminal is geometrically closer behind the car.

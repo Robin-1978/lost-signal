@@ -716,7 +716,13 @@ MotionDecisionResult MotionDecisionPipeline::run(
  out.reason += "; planner=" + first_rejection.reason;
  }
  } else if (!planner_valid.empty() && !forward_blocked &&
- !dynamic_escape_required) {
+ !dynamic_escape_required && !observation_recovery_required) {
+ // A surveyed-map Ackermann route is untrusted for the whole duration of a
+ // recovery belief.  If every bounded observation candidate was rejected,
+ // falling back to a normal planner arc would follow the stale map-frame
+ // route and can produce a low-speed circle around the wrong pose.  Keep the
+ // safe stop and wait for a newly validated observation manoeuvre or an
+ // accepted localization correction instead.
  const auto& selected = planner_valid.front();
  out.command = controller.track(selected.candidate, est, now_ns);
  out.validated_static_clearance_m = selected.verdict.min_clearance_m;
