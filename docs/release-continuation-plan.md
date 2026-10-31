@@ -1297,3 +1297,28 @@ ROBOT。
   authority 并加状态机回归；最后按 freshness、完整 3×3 Hessian（含平移-航向交叉项）、
   回环历史约束/边缘化和 Place Recognition 的证据优先级推进能力项。3D LIO 仍单列为
   后续工程，不把当前 2D 栅格链路宣称为紧耦合 3D LiDAR-Inertial SLAM。
+
+### Ackermann terminal replan hysteresis and recovery motion gate（2026-11-01）
+
+- 末端“目标已经落到当前 gear 后方”的重规划请求现在是边沿触发：同一个终端目标在
+  新 Hybrid-A* 路线构建期间只发出一次请求，直到终端方向重新可达或目标身份改变才释放。
+  路线替换不会再次把同一请求写入每个控制周期，也不会反复清空 Ackermann 的局部路线游标。
+  `test_dwa` 新增重复调用回归；Release DWA、DWA/TEB 对比、四底盘 mission 和执行器回归通过。
+- surveyed-map 定位进入全局恢复时，Ackermann 不再按尚未确认的 map-frame route 做普通车式
+  跟踪。它进入由当前底盘能力限制的 observation recovery 候选集，候选仍逐条经过
+  Validator 和最终 Safety；差速、Mecanum、Swerve 保留原有的可验证路线观测策略。
+- 工业短回归证明恢复观测不能使用任意曲率弧：曲率观测候选会在重复结构中把车变成小半径
+  绕圈。因此 Ackermann 的 bounded observation recovery 只保留直行/倒车候选，避免在定位未
+  确认时承诺错误弧线；定位恢复后才回到正常 Ackermann 路线跟踪。对应提交为 `9d02337`、
+  `65a3f8a`、`3e161ec`，`test_motion_pipeline`、`test_dwa`、`test_multichassis_mission`、
+  `test_local_planner_compare` 和 `test_actuation` 均通过。
+- Release `industrial_200k_mission` 5,000 步诊断：0 碰撞；首次定位恢复在 step 3,649
+  解除，step 5,000 已回到 `defer`/`speed_cap` 正常路线跟踪，估计与真值误差约 0.02 m。
+  该预算只覆盖 `west_hub` 的前段，结果不能宣称工业四目标或五目标完成；较长的
+  100,000/200,000 步进程仍需独立运行并保留第 4 个目标附近的定位、gear、route 和
+  terminal evidence。
+- 当前下一步保持证据优先级：先完成工业大图长测并筛选 `east_terminal` 的
+  `localization_action`、`requested_gear`、`route_segment`、`route_replan_requested` 和
+  execution monitor 事件；若长测稳定，再继续 PNC 的 Goal/Manual authority 状态机收敛，
+  最后推进 observation freshness、完整 Hessian、历史回环约束和 Place Recognition。Blender
+  工具路径记录为 `/disk/blender-5.2.2-linux-x64`。
