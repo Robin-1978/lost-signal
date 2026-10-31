@@ -870,6 +870,18 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  map, std::max(0.0, ego_radius),
  std::max(0.0, config_.soft_inflation_radius_m));
  out.local_costmap = make_local_costmap_diagnostic(costmap);
+ // A cell-centre estimate can sit on the first lethal cell of the inflated
+ // raster even when the source map still reports observed-free space with
+ // the declared envelope clear of the obstacle. Allow only a monotone egress
+ // from that one initial boundary cell. The source map and independent
+ // Validator/Safety gates remain hard constraints for every published command.
+ const bool initial_lethal = costmap.lethal.is_blocked(est.x_m, est.y_m);
+ const bool initial_source_free = map.is_free(est.x_m, est.y_m);
+ const double initial_source_clearance = map.clearance(est.x_m, est.y_m);
+ const bool initial_boundary_egress = initial_lethal && initial_source_free &&
+     std::isfinite(initial_source_clearance) &&
+     initial_source_clearance + 1e-9 >= ego_radius;
+ if (initial_boundary_egress) out.route_replan_requested = true;
 
  // Only the current route neighborhood can affect a finite rollout. Find
  // progress once on the complete route, then score every candidate against
@@ -970,8 +982,20 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  std::max(tracking_speed_limit_mps, one_cycle_braking_floor) + 1e-9) {
  continue;
  }
- if (requested_gear < 0 && velocity > 1e-9) continue;
- if (requested_gear > 0 && velocity < -1e-9) continue;
+ // If the estimate is already on the inflated boundary, a car-like base may
+ // have no forward-curvature command that can leave the cell: steering and
+ // translation are coupled, so a short reverse egress is the only physically
+ // reachable recovery. Do not turn this escape into a route-gear override:
+ // zero is allowed as a safe hold, while every moving recovery sample must be
+ // reverse. It is still subject to the source-map monotonic egress check above
+ // and Validator/Safety; once clear, normal route gear gating resumes on the
+ // refreshed route.
+ if (initial_boundary_egress) {
+   if (velocity > 1e-9) continue;
+ } else {
+   if (requested_gear < 0 && velocity > 1e-9) continue;
+   if (requested_gear > 0 && velocity < -1e-9) continue;
+ }
  auto angular_window = next_window(est.yaw_rate_radps, -w_max, w_max,
  config_.yaw_accel_radps2 * dt);
  // For a car-like base, yaw rate is not an independent command axis:
@@ -1039,6 +1063,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  bool static_collision = false;
  bool dynamic_overlap = false;
  double worst_static_cost = costmap.cost_at(x, y);
+      bool escaped_initial_boundary = !initial_lethal;
+      double previous_source_clearance = initial_source_clearance;
       for (double time = 0.0; time < predict_T; time += dt) {
         const double step_dt = std::min(dt, predict_T - time);
         const double previous_x = x;
@@ -1062,12 +1088,35 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         heading += rollout_w * step_dt;
         const double sample_time = time + step_dt;
         samples.push_back({x, y});
- if (!costmap.lethal.segment_is_traversable(
- previous_x, previous_y, x, y) ||
- (gate_ && !gate_(previous_x, previous_y, x, y, heading))) {
- static_collision = true;
-          break;
-        }
+ const bool lethal_segment = !costmap.lethal.segment_is_traversable(
+     previous_x, previous_y, x, y);
+ if (lethal_segment && !escaped_initial_boundary) {
+   const double source_clearance = map.clearance(x, y);
+   const double clearance_tolerance = 1e-6;
+   const bool source_egress = initial_boundary_egress &&
+       map.segment_is_traversable(previous_x, previous_y, x, y) &&
+       source_clearance + clearance_tolerance >= previous_source_clearance;
+   if (!source_egress) {
+     static_collision = true;
+     break;
+   }
+   previous_source_clearance = source_clearance;
+ } else if (lethal_segment) {
+   static_collision = true;
+   break;
+ }
+ if (initial_boundary_egress && !escaped_initial_boundary &&
+     !costmap.lethal.is_blocked(x, y)) {
+   const double source_clearance = map.clearance(x, y);
+   const double clearance_tolerance = 1e-6;
+   if (source_clearance > initial_source_clearance + clearance_tolerance) {
+     escaped_initial_boundary = true;
+   }
+ }
+ if (gate_ && !gate_(previous_x, previous_y, x, y, heading)) {
+   static_collision = true;
+   break;
+ }
  worst_static_cost = std::max(
  worst_static_cost, static_cast<double>(costmap.cost_at(x, y)));
  // Dynamic hypotheses are deliberately a score here, not an early
@@ -1083,6 +1132,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  dynamic_free_time = std::min(dynamic_free_time, time);
  }
       }
+ if (initial_lethal && !escaped_initial_boundary) static_collision = true;
  // Classical DWA admissibility: a collision-free finite rollout is not
  // executable unless its complete braking tail also fits. Continue from the
  // terminal actuator state, decelerating every commanded degree of freedom
@@ -1117,11 +1167,34 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  heading += average_w * dt;
  const double next_time = stop_time + dt;
  samples.push_back({x, y});
- if (!costmap.lethal.segment_is_traversable(
- previous_x, previous_y, x, y) ||
- (gate_ && !gate_(previous_x, previous_y, x, y, heading))) {
- static_collision = true;
- break;
+ const bool lethal_segment = !costmap.lethal.segment_is_traversable(
+     previous_x, previous_y, x, y);
+ if (lethal_segment && !escaped_initial_boundary) {
+   const double source_clearance = map.clearance(x, y);
+   const double clearance_tolerance = 1e-6;
+   const bool source_egress = initial_boundary_egress &&
+       map.segment_is_traversable(previous_x, previous_y, x, y) &&
+       source_clearance + clearance_tolerance >= previous_source_clearance;
+   if (!source_egress) {
+     static_collision = true;
+     break;
+   }
+   previous_source_clearance = source_clearance;
+ } else if (lethal_segment) {
+   static_collision = true;
+   break;
+ }
+ if (initial_boundary_egress && !escaped_initial_boundary &&
+     !costmap.lethal.is_blocked(x, y)) {
+   const double source_clearance = map.clearance(x, y);
+   const double clearance_tolerance = 1e-6;
+   if (source_clearance > initial_source_clearance + clearance_tolerance) {
+     escaped_initial_boundary = true;
+   }
+ }
+ if (gate_ && !gate_(previous_x, previous_y, x, y, heading)) {
+   static_collision = true;
+   break;
  }
  worst_static_cost = std::max(
  worst_static_cost, static_cast<double>(costmap.cost_at(x, y)));

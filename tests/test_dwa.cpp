@@ -1104,6 +1104,42 @@ int main() {
  assert(capture.best.route_heading_error_rad < initial_bearing_error);
  }
 
+ // A car-like base that is already on the inflated wall boundary must use a
+ // validated reverse egress instead of deadlocking behind a forward-only
+ // route gear. The next global plan is requested from the cleared pose.
+ {
+   LocalMap m = make_map(400, 400, 0.1, -5.0, -5.0, 0);
+   fill_box(m, 4.0, 12.0, 10.0, 18.0);
+   EstimatedState est;
+   est.valid = true;
+   est.stamp_ns = 1'000'000;
+   est.x_m = 3.50;
+   est.y_m = 13.85;
+   est.yaw_rad = -0.96;
+   PerceptionResult perc;
+   perc.scan_ok = true;
+   Route route;
+   route.valid = true;
+   route.points = {
+       {2.403, 14.780, -0.386, 1}, {2.758, 14.597, -0.568, 1},
+       {3.073, 14.352, -0.750, 1}, {3.305, 14.029, -1.146, 1},
+       {3.395, 13.642, -1.541, 1}, {3.328, 13.250, -1.937, 1},
+       {3.152, 12.892, -2.119, 1}, {2.943, 12.551, -2.119, 1},
+       {2.735, 12.209, -2.119, 1}, {2.559, 11.851, -1.937, 1},
+       {2.492, 11.459, -1.541, 1}, {2.582, 11.072, -1.146, 1},
+       {2.814, 10.749, -0.750, 1}, {3.129, 10.504, -0.568, 1},
+       {2.792, 10.719, -0.568, -1}, {2.437, 10.903, -0.386, -1},
+       {2.000, 11.000, 0.000, -1}};
+   platform::ChassisLimits ack = limits;
+   ack.max_curvature_inv_m = std::tan(0.55) / 0.56;
+   DwaPlanner planner;
+   const LocalPlan p = planner.plan(est, perc, m, route, ack);
+   assert(p.has_plan);
+   assert(p.moving_candidate_count > 0);
+   assert(p.best.forward_mps < 0.0);
+   assert(p.route_replan_requested);
+ }
+
  std::printf("dwa ok\n");
  return 0;
 }
