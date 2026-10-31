@@ -21,6 +21,10 @@ SafetyConfig safety_config_for(
  config.footprint_radius_m = limits.footprint_radius_m;
  }
  config.static_margin_m = navigation.clearance_margin_m;
+ config.acceleration_mps2 = motion.acceleration_mps2;
+ config.lateral_acceleration_mps2 = motion.lateral_acceleration_mps2;
+ config.yaw_acceleration_radps2 = motion.yaw_acceleration_radps2;
+ config.actuator_response_delay_s = motion.actuator_response_delay_s;
  config.brake_decel_mps2 = motion.brake_deceleration_mps2;
  config.command_reaction_time_s = motion.safety_reaction_time_s;
  return config;

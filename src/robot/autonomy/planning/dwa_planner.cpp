@@ -758,6 +758,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const double terminal_creep_speed = terminal_heading_creep
  ? std::min(v_max, terminal_distance_m / std::max(dt, predict_T))
  : 0.0;
+ double terminal_confidence_correction_speed_mps = 0.0;
  if (car_like && route_tracking_valid) {
  // Keep lateral acceleration inside the declared chassis envelope. The
  // chord formula is the constant-curvature connector between the current
@@ -793,14 +794,26 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  if (route_segment_ + 2 >= route.points.size() && decel > 0.0 &&
      !terminal_behind_active_gear &&
      terminal_distance_m <= terminal_capture_radius_m) {
+   // Raw terminal tolerance is a braking envelope, while GoalArrival uses
+   // the confidence-bounded envelope for completion.  If covariance consumes
+   // the last few centimetres of that envelope, retain a small reachable
+   // forward/reverse sample so an Ackermann base can close the residual
+   // instead of selecting a permanent zero-speed hold at the raw boundary.
+   const double confidence_tolerance_m =
+       std::isfinite(terminal_position_confidence_radius_m)
+           ? std::max(0.0, terminal_position_tolerance_m -
+                              terminal_position_confidence_radius_m)
+           : terminal_position_tolerance_m;
    const double terminal_stop_distance_m = std::max(
-       0.0, terminal_distance_m - terminal_position_tolerance_m);
+       0.0, terminal_distance_m - confidence_tolerance_m);
    const double terminal_delay_speed_mps =
        -decel * response_s + std::sqrt(
            decel * decel * response_s * response_s +
            2.0 * decel * terminal_stop_distance_m);
    tracking_speed_limit_mps = std::min(
        tracking_speed_limit_mps, std::max(0.0, terminal_delay_speed_mps));
+   terminal_confidence_correction_speed_mps =
+       std::max(0.0, terminal_delay_speed_mps);
  }
 
  // The final point is already behind the current travel direction while the
@@ -844,8 +857,9 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
 
  const auto velocity_samples = command_samples(
  velocity_window, std::max(1e-3, config_.velocity_sample_step_mps),
- {est.forward_mps, 0.0, v_max, -v_max, terminal_creep_speed,
- -terminal_creep_speed});
+      {est.forward_mps, 0.0, v_max, -v_max, terminal_creep_speed,
+       -terminal_creep_speed, terminal_confidence_correction_speed_mps,
+       -terminal_confidence_correction_speed_mps});
 
   const double ego_radius =
       limits.footprint_radius_m + config_.safety_margin_m;

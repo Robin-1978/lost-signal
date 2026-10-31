@@ -538,6 +538,34 @@ int main() {
  assert(std::abs(observe.best.forward_mps) < 1e-9);
  }
 
+ // A car-like base that is just inside the raw terminal tolerance can still
+ // miss the confidence-bounded arrival envelope by a few millimetres.  Keep
+ // a small reachable correction sample so DWA does not turn that state into
+ // a permanent hold before GoalArrival can accept it.
+ {
+   LocalMap m = make_map(160, 160, 0.1, -4.0, -4.0, 0);
+   EstimatedState est;
+   est.valid = true;
+   est.stamp_ns = 1'000'000;
+   est.x_m = 5.892;
+   est.y_m = 0.001;
+   est.yaw_rad = -0.021;
+   est.position_sigma_m = 0.059;
+   est.heading_sigma_rad = 0.041;
+   PerceptionResult perc;
+   perc.scan_ok = true;
+   Route route;
+   route.valid = true;
+   route.points = {{0.0, 0.0, 0.0, 1}, {6.0, 0.0, 0.0, 1}};
+   platform::ChassisLimits ack = limits;
+   ack.max_curvature_inv_m = 1.2;
+   DwaPlanner planner;
+   const LocalPlan correction = planner.plan(est, perc, m, route, ack);
+   assert(correction.has_plan);
+   assert(correction.moving_candidate_count > 0);
+   assert(correction.best.forward_mps > 0.0);
+ }
+
  // Pure-pursuit heading for a car-like base must correct cross-track error.
  // The planned body heading plus bounded cross-track feedback must drive the
  // error down without the near-goal bearing singularity.

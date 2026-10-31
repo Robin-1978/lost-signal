@@ -94,31 +94,61 @@ StaticClearance static_clearance_for_command(
 double dynamic_clearance_for_command(
  const EstimatedState& est, const std::vector<DynamicTrack>& tracks,
  const iface::MotionCommand& command, double horizon_s,
- double ego_contact_radius_m, double check_dt_s) {
+ double ego_contact_radius_m, double check_dt_s,
+ double acceleration_mps2, double lateral_acceleration_mps2,
+ double yaw_acceleration_radps2, double brake_decel_mps2,
+ double response_delay_s) {
  double minimum = std::numeric_limits<double>::infinity();
  const double step_s = std::max(1e-3, check_dt_s);
  const int steps = std::max(
  1, static_cast<int>(std::ceil(std::max(0.0, horizon_s) / step_s)));
- for (int step = 0; step <= steps; ++step) {
- const double t = std::min(horizon_s, step * step_s);
+ const auto slew = [](double current, double target, double acceleration,
+                      double deceleration, double dt_s) {
+   if (!(dt_s > 0.0)) return current;
+   const bool accelerating = current * target >= 0.0 &&
+                            std::abs(target) > std::abs(current);
+   const double rate = std::max(
+       0.0, accelerating ? acceleration : deceleration);
+   return current + std::clamp(
+       target - current, -rate * dt_s, rate * dt_s);
+ };
+ double forward = est.forward_mps;
+ double lateral = est.lateral_mps;
+ double yaw_rate = est.yaw_rate_radps;
  double x = est.x_m;
  double y = est.y_m;
- const double w = command.yaw_rate_radps;
- if (std::abs(w) > 1e-9) {
- const double h1 = est.yaw_rad + w * t;
- x += (command.forward_mps *
- (std::sin(h1) - std::sin(est.yaw_rad)) +
- command.lateral_mps *
- (std::cos(h1) - std::cos(est.yaw_rad))) / w;
- y += (-command.forward_mps *
- (std::cos(h1) - std::cos(est.yaw_rad)) +
- command.lateral_mps *
- (std::sin(h1) - std::sin(est.yaw_rad))) / w;
- } else {
- x += (command.forward_mps * std::cos(est.yaw_rad) -
- command.lateral_mps * std::sin(est.yaw_rad)) * t;
- y += (command.forward_mps * std::sin(est.yaw_rad) +
- command.lateral_mps * std::cos(est.yaw_rad)) * t;
+ double heading = est.yaw_rad;
+ for (int step = 0; step <= steps; ++step) {
+ const double t = std::min(horizon_s, step * step_s);
+ if (step > 0) {
+   const double response_dt = std::max(
+       0.0, t - std::max((step - 1) * step_s, response_delay_s));
+   const double delayed_dt = step_s - response_dt;
+   const double previous_forward = forward;
+   const double previous_lateral = lateral;
+   const double previous_yaw = yaw_rate;
+   forward = slew(forward, command.forward_mps, acceleration_mps2,
+                  brake_decel_mps2, response_dt);
+   lateral = slew(lateral, command.lateral_mps, lateral_acceleration_mps2,
+                  lateral_acceleration_mps2, response_dt);
+   yaw_rate = slew(yaw_rate, command.yaw_rate_radps,
+                   yaw_acceleration_radps2, yaw_acceleration_radps2,
+                   response_dt);
+   const double average_forward =
+       (previous_forward * delayed_dt +
+        0.5 * (previous_forward + forward) * response_dt) / step_s;
+   const double average_lateral =
+       (previous_lateral * delayed_dt +
+        0.5 * (previous_lateral + lateral) * response_dt) / step_s;
+   const double average_yaw =
+       (previous_yaw * delayed_dt +
+        0.5 * (previous_yaw + yaw_rate) * response_dt) / step_s;
+   const double middle_heading = heading + 0.5 * average_yaw * step_s;
+   x += (average_forward * std::cos(middle_heading) -
+         average_lateral * std::sin(middle_heading)) * step_s;
+   y += (average_forward * std::sin(middle_heading) +
+         average_lateral * std::cos(middle_heading)) * step_s;
+   heading += average_yaw * step_s;
  }
  for (const auto& track : tracks) {
  const double tx = track.x_m + track.vx_mps * t;
@@ -444,11 +474,15 @@ iface::MotionCommand SafetyMonitor::gate(const iface::MotionCommand& cmd,
  const double hold_clearance = dynamic_clearance_for_command(
  dynamic_estimate_, dynamic_tracks_, hold,
  config_.dynamic_lookahead_s, dynamic_envelope,
- config_.dynamic_check_dt_s);
+ config_.dynamic_check_dt_s, config_.acceleration_mps2,
+ config_.lateral_acceleration_mps2, config_.yaw_acceleration_radps2,
+ config_.brake_decel_mps2, config_.actuator_response_delay_s);
  const double command_clearance = dynamic_clearance_for_command(
  dynamic_estimate_, dynamic_tracks_, cmd,
  config_.dynamic_lookahead_s, dynamic_envelope,
- config_.dynamic_check_dt_s);
+ config_.dynamic_check_dt_s, config_.acceleration_mps2,
+ config_.lateral_acceleration_mps2, config_.yaw_acceleration_radps2,
+ config_.brake_decel_mps2, config_.actuator_response_delay_s);
  last_.dynamic_hold_clearance_m = hold_clearance;
  last_.dynamic_command_clearance_m = command_clearance;
  const double speed = std::hypot(cmd.forward_mps, cmd.lateral_mps);

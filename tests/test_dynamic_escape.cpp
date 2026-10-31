@@ -70,6 +70,17 @@ int main() {
  assert(escaped.min_dynamic_clearance_m >
  stopped.min_dynamic_clearance_m);
 
+ // A confirmed moving return must not become permanent static geometry when
+ // the scan has no mapper-produced static reference. The dynamic validator
+ // remains the hard gate for the same track.
+ auto unreferenced_observation = open_scan(stamp_ns);
+ unreferenced_observation.scan_static_valid = false;
+ unreferenced_observation.static_ranges_m.clear();
+ unreferenced_observation.ranges_m[16] = 0.6f;
+ const ValidationResult unreferenced_escape = validator.validate(
+     retreat, estimate, perception, prediction, unreferenced_observation);
+ assert(unreferenced_escape.accepted);
+
  LocalCandidate toward = retreat;
  toward.forward_mps = 0.25;
  const ValidationResult collision = validator.validate(

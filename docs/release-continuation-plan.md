@@ -1225,3 +1225,13 @@ ROBOT。
   Frame、SIM、ROBOT 和相机轨道角度都不被改写。2D follow 保留原有屏幕居中路径。
 - `test_viewer_frame` 新增了零速交替噪声与持续倒车回归；Release `test_viewer_frame`
   与 Xvfb `--sandbox --3d --scene configs/worlds/lab_default.scene.json` smoke 通过。
+
+### Ackermann confidence-bound terminal correction（2026-10-31）
+
+- `test_multichassis_mission` 暴露了一个与镜头无关的终端边界问题：Ackermann 在
+  `(5.892, 0.001)` 停住时，原始 0.25 m 到达半径已满足，但位置协方差半径约 0.144 m
+  使置信度包络多出约 2 mm，GoalArrival 永远保持 `approaching`，DWA 却只生成零速 hold。
+- DWA 现在把置信度包络剩余距离带入终端制动速度，并把这个小的可达速度显式加入采样
+  偏好；它仍受 Ackermann 曲率、加速度、制动尾和 Validator/Safety 约束，GoalArrival
+  仍是唯一完成判定。新增回归确认该状态生成正向修正；Release `test_dwa`、
+  `test_multichassis_mission`（diff/ackermann/mecanum/swerve 全部完成）通过。

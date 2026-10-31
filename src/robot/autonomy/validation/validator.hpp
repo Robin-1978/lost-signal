@@ -421,6 +421,28 @@ class ClearanceValidator : public IValidator {
  }
  return false;
  };
+ // A moving return can be associated directly from ROBOT-side track
+ // evidence even when the mapper has not produced a static reference for
+ // this scan. This keeps a dynamic obstacle from becoming permanent static
+ // geometry and blocking every escape. Immature or stationary tracks remain
+ // conservative raw obstacles.
+ auto tracked_dynamic_foreground = [&](double x, double y) {
+   for (const auto& track : perception.tracks) {
+     if (!track.prediction_ready ||
+         !std::isfinite(track.x_m) || !std::isfinite(track.y_m) ||
+         !std::isfinite(track.vx_mps) || !std::isfinite(track.vy_mps)) {
+       continue;
+     }
+     const double speed = std::hypot(track.vx_mps, track.vy_mps);
+     if (speed < 0.1 ||
+         std::hypot(track.x_m - x, track.y_m - y) >
+             track.occupied_radius_m() + 0.5) {
+       continue;
+     }
+     return true;
+   }
+   return false;
+ };
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0f) || !std::isfinite(range)) continue;
@@ -431,6 +453,7 @@ class ClearanceValidator : public IValidator {
  map_from_sensor.rotation, {local.x, local.y, 0.0});
  const double ex = sensor_p.x + off.x;
  const double ey = sensor_p.y + off.y;
+ const bool dynamic_foreground = tracked_dynamic_foreground(ex, ey);
  if (has_static_ref) {
  const float expected = obs.static_ranges_m[i];
  const bool foreground = std::isfinite(expected) && expected > 0.0f &&
@@ -440,6 +463,11 @@ class ClearanceValidator : public IValidator {
  // remains a conservative static obstacle; missing association is not a
  // license to drive through raw evidence.
  if (foreground && tracked_foreground(ex, ey)) continue;
+ } else if (dynamic_foreground) {
+   // Without a static reference, a confirmed moving track is the only
+   // ROBOT-owned evidence that can distinguish the actor return from a wall.
+   // The dynamic validator below still replays the same track independently.
+   continue;
  }
       if (survey != nullptr &&
           survey->is_ground(ex, ey, survey->sensor_z(est))) {

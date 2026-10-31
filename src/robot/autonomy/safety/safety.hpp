@@ -95,6 +95,13 @@ struct SafetyConfig {
   // Padding for lidar angular/range resolution and tracking error. This is
   // local sensor geometry, not a global-localization covariance term.
  double static_margin_m = platform::kDefaultNavigationClearanceMarginM;
+  // Dynamic command projection uses the declared actuator envelope. Keeping
+  // the response and slew limits here makes the independent safety gate
+  // conservative in the same way as the validator and plant controller.
+  double acceleration_mps2 = 2.0;
+  double lateral_acceleration_mps2 = 2.0;
+  double yaw_acceleration_radps2 = 8.0;
+  double actuator_response_delay_s = 0.1;
   double brake_decel_mps2 = 2.0;
   double forward_half_angle_rad = 0.5;
  // Once a front veto has stopped the base, keep the reverse escape active
