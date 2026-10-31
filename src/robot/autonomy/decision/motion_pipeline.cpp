@@ -435,6 +435,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
  std::array<LocalCandidate, 10> reachable{};
  std::size_t reachable_count = 0;
  if (stop_is_unsafe || reach_committed || observation_recovery_required) {
+ const bool bounded_observation_recovery =
+     observation_recovery_required && !stop_is_unsafe &&
+     !reach_committed && !dynamic_escape_required;
+ const platform::ChassisLimits& reachable_limits =
+     bounded_observation_recovery ? effective : limits;
  const auto add_reachable = [&](double forward, double lateral,
                                 double yaw = 0.0) {
  if (std::abs(forward) < 1e-9 && std::abs(lateral) < 1e-9) return;
@@ -446,27 +451,29 @@ MotionDecisionResult MotionDecisionPipeline::run(
  candidate.feasible = true;
  reachable[reachable_count++] = candidate;
  };
- double forward_limit = std::max(0.0, limits.max_forward_mps);
+ double forward_limit = std::max(0.0, reachable_limits.max_forward_mps);
  // Dynamic escape remains inside the declared reachable envelope.  A
  // car-like base may need its full reverse authority to leave a predicted
  // crossing before the actor reaches the stopped pose; capping this set to
  // the recovery crawl can make every valid escape arrive too late.  The
  // validator still replays response delay, acceleration, braking and the
  // complete dynamic prediction for each member before publication.
- if (limits.max_wheel_speed_mps > 0.0) {
- forward_limit = std::min(forward_limit, limits.max_wheel_speed_mps);
+ if (reachable_limits.max_wheel_speed_mps > 0.0) {
+   forward_limit = std::min(forward_limit, reachable_limits.max_wheel_speed_mps);
  }
  add_reachable(forward_limit, 0.0);
  add_reachable(-forward_limit, 0.0);
- const bool ackermann = platform::chassis_is_ackermann(limits);
- if (ackermann && limits.max_curvature_inv_m > 0.0) {
-   const double forward_yaw = forward_limit * limits.max_curvature_inv_m;
+ const bool ackermann = platform::chassis_is_ackermann(reachable_limits);
+ if (ackermann && reachable_limits.max_curvature_inv_m > 0.0) {
+   const double forward_yaw =
+       forward_limit * reachable_limits.max_curvature_inv_m;
    add_reachable(forward_limit, 0.0, forward_yaw);
    add_reachable(forward_limit, 0.0, -forward_yaw);
    add_reachable(-forward_limit, 0.0, forward_yaw);
    add_reachable(-forward_limit, 0.0, -forward_yaw);
  }
- const double lateral_limit = std::max(0.0, limits.max_lateral_mps);
+ const double lateral_limit =
+     std::max(0.0, reachable_limits.max_lateral_mps);
  if (lateral_limit > 0.0) {
  add_reachable(0.0, lateral_limit);
  add_reachable(0.0, -lateral_limit);

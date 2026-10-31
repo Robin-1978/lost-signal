@@ -939,6 +939,45 @@ o.stamp_ns = static_cast<core::MonotonicNs>(i + 2) * 20'000'000LL;
  assert(estimator.estimate().y_m == -8.0);
  }
 
+ // A surveyed-map recovery must not launch a whole-map search from a scan
+ // that has no matcher support. The supervisor remains in recovery backoff,
+ // while a later informative scan is still allowed to start the search.
+ {
+   auto map = make_wall_map();
+   LocalizationSystem localization;
+   localization.mark_localized();
+   FusedOdometryEstimator estimator;
+   estimator.reset();
+   estimator.seed_pose(0.0, 0.0, 0.0, 0.80, 0.10, 1);
+   RayClearingMapper mapper;
+   iface::ObservationFrame sparse;
+   sparse.sequence = 1;
+   sparse.stamp_ns = 20'000'000;
+   sparse.source = "t.sparse-recovery-lidar";
+   sparse.frame = core::Frame::kLidarLink;
+   sparse.odometry_valid = true;
+   sparse.scan_valid = true;
+   sparse.ranges_m.assign(
+       72, static_cast<float>(ScanMatcherConfig{}.max_range_m + 1.0));
+   sparse.scan_angle_min_rad = -M_PI;
+   sparse.scan_angle_increment_rad = 2.0 * M_PI / sparse.ranges_m.size();
+   const auto sparse_result = localization.update(
+       map, sparse, sparse.stamp_ns, true, estimator, mapper);
+   assert(sparse_result.action ==
+          "global_relocalization:insufficient geometric returns");
+   assert(std::abs(estimator.estimate().x_m) < 1e-12);
+   assert(std::abs(estimator.estimate().y_m) < 1e-12);
+
+   sparse.sequence = 2;
+   sparse.stamp_ns = 2'200'000'000;
+   sparse.ranges_m = scan_from(1.0, 0.0, 0.0, map);
+   const auto informative_result = localization.update(
+       map, sparse, sparse.stamp_ns, true, estimator, mapper);
+   assert(informative_result.action.rfind("global_relocalization:", 0) == 0);
+   assert(informative_result.action !=
+          "global_relocalization:insufficient geometric returns");
+ }
+
  // A cooperative whole-map search freezes its first scan while odometry
  // continues. The accepted pose must be advanced by the intervening ROBOT
  // motion; applying the old scan pose at completion would jump backwards.

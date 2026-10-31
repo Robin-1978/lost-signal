@@ -103,8 +103,12 @@ out.local_plan_reset_requested = true;
 out.local_plan_reset_requested = true;
   }
  out.motion_authorized = supervisor_.localized();
+ // Observation-speed limiting belongs to an active cooperative search or
+ // temporal recovery belief. A sparse frame by itself must not turn a long
+ // valid route into a crawl; the next informative scan can start recovery
+ // while ordinary route/safety planning remains in charge between attempts.
  out.observation_motion_requested = supervisor_.localized() &&
- (global_search_.active() || !recovery_hyps_.empty());
+     (global_search_.active() || !recovery_hyps_.empty());
   return out;
 }
 
@@ -346,9 +350,25 @@ bool LocalizationSystem::run_localization(
  if (supervisor_.accept_global_innovation(
  position_innovation_m, heading_innovation_rad,
  est.position_sigma_m, est.heading_sigma_rad)) {
+ const double promotion_position_sigma =
+     std::max(tracked.position_sigma_m,
+              std::isfinite(est.position_sigma_m)
+                  ? std::max(0.0, est.position_sigma_m)
+                  : tracked.position_sigma_m);
+ const double promotion_heading_sigma =
+     std::max(tracked.heading_sigma_rad,
+              std::isfinite(est.heading_sigma_rad)
+                  ? std::max(0.0, est.heading_sigma_rad)
+                  : tracked.heading_sigma_rad);
+ // The tracker is seeded from the same ambiguous whole-map result that
+ // produced the candidate. Promotion therefore supplies temporal support,
+ // but it is correlated with the current absolute belief and must not make a
+ // multi-metre prior look centimetric in one tick. Preserve the wider of the
+ // prior and candidate uncertainty; an independent surveyed scan is still
+ // required to release the observation-speed envelope.
  estimator.correct_pose(
  tracked.x_m, tracked.y_m, tracked.yaw_rad,
- tracked.position_sigma_m, tracked.heading_sigma_rad, obs.stamp_ns);
+ promotion_position_sigma, promotion_heading_sigma, obs.stamp_ns);
  supervisor_.record_global(true, ScanMatchResult{});
  action = std::string("recovery-promoted score=") +
  std::to_string(tracked.score) +
@@ -356,9 +376,15 @@ bool LocalizationSystem::run_localization(
  return true;
  }
  recovery_hyps_.reset();
- estimator.note_absolute_rejection(
- tracked.x_m - est.x_m, tracked.y_m - est.y_m,
- core::wrap_angle(tracked.yaw_rad - est.yaw_rad), obs.stamp_ns);
+ // A temporal recovery tracker is seeded from an ambiguous whole-map result.
+ // Its sole-survivor promotion is useful evidence, but it is still a
+ // hypothesis selected from that ambiguous set.  If the independent
+ // covariance innovation gate rejects it, do not feed the rejected
+ // hypothesis' full residual back as absolute covariance: doing so turns a
+ // geometrically plausible alias into a multi-metre uncertainty jump and
+ // causes the next recovery window to search the entire repetitive map.
+ // The next fresh global search remains covariance-gated and can widen from
+ // its own raycast-validated evidence.
  action = "recovery-promotion rejected by pose covariance";
  return false;
  }
@@ -431,6 +457,27 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
     supervisor_.record_global(true, ScanMatchResult{});
  return false; // same odometry frame: no map/keyframe transform to retire
   }
+ // A whole-map recovery is only meaningful when the frozen scan contains
+ // enough finite returns for the matcher to establish geometric support. In
+ // large open stretches a valid LiDAR frame can contain fewer returns than
+ // the matcher contract; starting a global search from that frame only
+ // burns the cooperative budget and leaves the odometry path waiting for a
+ // correction that the measurement cannot provide. Keep the map/odom prior
+ // live and let the next informative scan own the recovery attempt. This
+ // gate applies only to surveyed-map recovery; mapless startup above must
+ // still seed its odometry frame from an arbitrary scan.
+ if (requested_global && !global_search_.active()) {
+   const std::size_t geometric_returns = static_cast<std::size_t>(
+       std::count_if(obs.ranges_m.begin(), obs.ranges_m.end(),
+                     [](float range) {
+                       return std::isfinite(range) && range > 0.0F &&
+                              range < ScanMatcherConfig{}.max_range_m;
+                     }));
+   if (geometric_returns < ScanMatcherConfig{}.minimum_returns) {
+     action = "global_relocalization:insufficient geometric returns";
+     return false;
+   }
+ }
  if (requested_global || global_search_.active()) {
     // Whole-map search: kidnap recovery and cold start. An accepted global
     // fix establishes the estimate and marks the supervisor localized; a
@@ -600,39 +647,19 @@ global.heading_sigma_rad, correction_stamp_ns);
       }
     }
  // A geometrically supported candidate that fails the covariance innovation
- // gate is evidence that the current belief is over-confident. Widen only
- // from the measured residual; do not move the estimate or expose any SIM
- // state. The next bounded search then grows continuously with the actual
- // rejected evidence and can recover from an underestimated prior.
- if (!accept_global && global.accepted && supervisor_.localized()) {
- estimator.note_absolute_rejection(
- global.x_m - est.x_m, global.y_m - est.y_m,
- core::wrap_angle(global.yaw_rad - est.yaw_rad), correction_stamp_ns);
- }
- // A localized search can also fail before producing a raycast-valid pose.
- // When it evaluated real geometric returns and no runner-up belief exists,
- // the frozen covariance envelope is still a measured lower bound on the
- // missing pose. Feed that envelope back once so the next retry expands
- // adaptively; sparse/empty scans have zero coarse evaluations and remain
- // diagnostic only.
- if (supervisor_.localized() && !global.accepted &&
-     global.runner_ups.empty() && global.coarse_evaluations > 0 &&
-     global.usable_returns > 0 &&
-     global_search_radius_m_ > 0.0 &&
-     global_search_heading_radius_rad_ > 0.0) {
-   // `global_search_*_radius` is an uncertainty envelope, not a one-sigma
-   // measurement. Convert it back through the same configured probability
-   // quantile before handing it to the estimator. Feeding the envelope in
-   // directly creates a self-amplifying retry loop (sigma -> radius -> sigma)
-   // and eventually allows far-away repeated-map aliases to pass the gate.
-   const double recovery_quantile = supervisor_.global_recovery_quantile();
-   if (std::isfinite(recovery_quantile) && recovery_quantile > 0.0) {
-     estimator.note_absolute_search_failure(
-         global_search_radius_m_ / recovery_quantile,
-         global_search_heading_radius_rad_ / recovery_quantile,
-         correction_stamp_ns);
-   }
- }
+ // gate is only negative evidence. The candidate may be a repetitive-map
+ // alias, so its raw residual is not a valid absolute uncertainty
+ // measurement; feeding that residual into the estimator would turn one
+ // rejected alias into a multi-metre search envelope. Keep the map and odom
+ // poses unchanged and let normal odometry growth or a completed search
+ // failure provide the next uncertainty update.
+ // A bounded search that produces no raycast-valid pose is negative evidence,
+ // not an absolute measurement. The frozen envelope can be empty because the
+ // scan is sparse, because the current prior is outside the local window, or
+ // because several map places are equivalent. Feeding that failed window
+ // back as covariance would create a self-amplifying retry loop and eventually
+ // admit a far-away repeated-map alias. Keep the failure in the structured
+ // action string; only ROBOT odometry/scan corrections change covariance.
  global_search_radius_m_ = 0.0;
  global_search_heading_radius_rad_ = 0.0;
  supervisor_.record_global(accept_global, ScanMatchResult{});

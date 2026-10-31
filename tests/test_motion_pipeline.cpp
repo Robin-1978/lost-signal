@@ -529,6 +529,8 @@ int main() {
  hold_planner, validator, controller, false, true);
  assert(!observation_motion.command.is_safe_stop());
  assert(observation_motion.constraint == "localization_observe");
+ assert(std::abs(observation_motion.command.forward_mps) <=
+        observation_config.recovery_speed_mps + 1e-9);
  assert(std::abs(observation_motion.command.yaw_rate_radps) <=
  std::abs(observation_motion.command.forward_mps) *
  ackermann_limits.max_curvature_inv_m + 1e-9);
