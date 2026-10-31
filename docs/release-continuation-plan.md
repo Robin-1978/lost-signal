@@ -1336,9 +1336,11 @@ ROBOT。
   但观察恢复候选又被强制限制为前进，结果只能在 `cmd=(0,0)` 与极慢前向最小风险动作
   间徘徊。旧终点没有参与这个方向选择；阻塞来自恢复方向策略与独立安全门之间的空集。
 - 现在只有在本周期收到 `forward-proximity`、`forward-recovery`、`static-proximity` 或
-  `static-swept-proximity` 这类 ROBOT 侧前向安全阻塞时，Ackermann 才能加入直线反向
+  `static-swept-proximity` 这类 ROBOT 侧前向安全阻塞，或已由当前 route 证实“所有前向
+  moving candidate 都被拒绝且车已停住”的局部 stall 时，Ackermann 才能加入直线反向
   observation candidate。反向候选仍必须完整通过 Validator 的响应/加减速/制动尾检查和
-  最终 raw-scan Safety gate；没有前向安全证据时，旧路线或目标不会自行制造倒车。
+  最终 raw-scan Safety gate；没有安全阻塞或已证实的局部 stall 时，旧路线或目标不会自行
+  制造倒车。
 - 反向观察有独立的 2 s 时间预算，预算耗尽后保持安全停车，直到定位或安全方向重新变化。
   这把“短距离传感器脱困”与 autonomous route gear 分开，避免恢复再次变成长距离倒车。
   `test_motion_pipeline` 新增了前向 veto、Ackermann 反向候选和预算耗尽回归；Release 的
