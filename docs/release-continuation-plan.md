@@ -1328,3 +1328,22 @@ ROBOT。
   execution monitor 事件；若长测稳定，再继续 PNC 的 Goal/Manual authority 状态机收敛，
   最后推进 observation freshness、完整 Hessian、历史回环约束和 Place Recognition。Blender
   工具路径记录为 `/disk/blender-5.2.2-linux-x64`。
+
+### Ackermann forward-vetoed observation backtrack（2026-11-01）
+
+- 35,000 步 Release 工业回归在 `north_depot` 的重复结构恢复中复现了新的边界：
+  Ackermann 已进入 4 假设 recovery-tracking，前向原始激光安全门反复拒绝前向制动尾，
+  但观察恢复候选又被强制限制为前进，结果只能在 `cmd=(0,0)` 与极慢前向最小风险动作
+  间徘徊。旧终点没有参与这个方向选择；阻塞来自恢复方向策略与独立安全门之间的空集。
+- 现在只有在本周期收到 `forward-proximity`、`forward-recovery`、`static-proximity` 或
+  `static-swept-proximity` 这类 ROBOT 侧前向安全阻塞时，Ackermann 才能加入直线反向
+  observation candidate。反向候选仍必须完整通过 Validator 的响应/加减速/制动尾检查和
+  最终 raw-scan Safety gate；没有前向安全证据时，旧路线或目标不会自行制造倒车。
+- 反向观察有独立的 2 s 时间预算，预算耗尽后保持安全停车，直到定位或安全方向重新变化。
+  这把“短距离传感器脱困”与 autonomous route gear 分开，避免恢复再次变成长距离倒车。
+  `test_motion_pipeline` 新增了前向 veto、Ackermann 反向候选和预算耗尽回归；Release 的
+  DWA、motion pipeline、四底盘 mission、局部规划对比和 actuation 定向回归通过。
+- 本轮工业回归仍在后方 raw evidence 不足以通过反向安全门的帧保持停车，这是预期的安全
+  结果，不能把它记录成任务成功。下一步要在同一帧诊断前后扇区净空和 Validator 拒绝码，
+  决定是否需要单向、有预算的曲率观察动作；不能用放宽 Safety、膨胀半径或 GoalArrival
+  来掩盖这个空集。
