@@ -13,8 +13,8 @@ namespace lost_signal::robot::executive {
 //
 // Single active goal slot: a new request preempts the running goal (which
 // reports kCanceled/"preempted"), keeping dispatch deterministic for one
-// base. An empty place_id is a hold intent and completes immediately
-// (kDone/"hold") without touching the active slot.
+// base. An empty place_id is a hold intent: it cancels the active goal,
+// parks the coordinator route, and completes immediately (kDone/"hold").
 class RobotExecutive : public lifecycle::ILifecycleModule {
  public:
   const char* name() const override { return "executive"; }

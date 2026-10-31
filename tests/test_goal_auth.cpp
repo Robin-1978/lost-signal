@@ -123,11 +123,32 @@ int main() {
  moving = feed.tick(app).forward_mps > 0.0;
  }
  assert(moving);
+
+ // Manual authority cancels the autonomous task once and takes over the
+ // command source.  A watchdog expiry must stop, never resume that route.
+ app.set_operator_command(0.1, 0.0);
+ assert(app.goal_status(h2).state == iface::GoalState::kCanceled);
+ assert(app.goal_status(h2).detail == "canceled");
+ const auto manual = feed.tick(app);
+ assert(!manual.is_safe_stop());
+ feed.tick(app);  // 100 ms after the manual refresh
+ feed.tick(app);  // 200 ms boundary is still valid (strict watchdog)
+ const auto manual_expired = feed.tick(app);  // past the 200 ms watchdog
+ assert(manual_expired.is_safe_stop());
+ assert(app.goal_status(h2).state == iface::GoalState::kCanceled);
+
+ // A fresh goal is required to restore autonomous authority.
+ const iface::GoalHandle h_manual_resume = app.request_goal(again);
+ assert(h_manual_resume.valid());
+ assert(app.goal_status(h_manual_resume).state == iface::GoalState::kActive);
+ for (int i = 0; i < 3; ++i) feed.tick(app);
+
  iface::TaskRequest hold;
  hold.request_id = "hold1"; // empty place = hold
  const iface::GoalHandle hh = app.request_goal(hold);
  assert(hh.valid());
  assert(app.goal_status(hh).state == iface::GoalState::kDone);
+ assert(app.goal_status(h_manual_resume).state == iface::GoalState::kCanceled);
  for (int i = 0; i < 6; ++i) {
  assert(feed.tick(app).is_safe_stop());
  }

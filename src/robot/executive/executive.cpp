@@ -37,7 +37,16 @@ iface::GoalHandle RobotExecutive::request_goal(const std::string& place_id,
     return iface::GoalHandle{};  // fail-closed: no goal armed
   }
   if (place_id.empty()) {
-    // Hold intent: acknowledged at once, active slot untouched.
+    // Hold is a cancel-and-stop task control action. Leaving the old goal
+    // active here would let the application clear the route while Executive
+    // still reports Active, and a later manual watchdog expiry could resume
+    // that stale task. Keep the canceled goal in the current slot so its
+    // handle remains pollable; the hold request itself is the terminal ack.
+    if (has_active_goal()) {
+      current_.state = iface::GoalState::kCanceled;
+      current_.detail = "hold";
+      last_terminal_ = current_;
+    }
     last_terminal_.handle.id = next_id_++;
     last_terminal_.state = iface::GoalState::kDone;
     last_terminal_.detail = "hold";

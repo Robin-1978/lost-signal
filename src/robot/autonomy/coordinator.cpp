@@ -267,6 +267,13 @@ void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
 void AutonomyCoordinator::set_operator_command(double forward_mps,
  double yaw_rate_radps) {
  if (!std::isfinite(forward_mps) || !std::isfinite(yaw_rate_radps)) return;
+ // Manual is a command-authority transition. Withdraw any route-scoped
+ // planner state once, so watchdog expiry cannot fall back to an old
+ // autonomous route. A refresh of an already active manual source keeps
+ // the command alive without repeatedly resetting the planner.
+ if (!operator_command_active_ && local_planner_ != nullptr) {
+   clear_goal();
+ }
  operator_command_active_ = true;
  ++operator_command_generation_;
  operator_forward_mps_ = std::clamp(

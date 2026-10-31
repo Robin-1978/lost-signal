@@ -160,6 +160,18 @@ void RobotApplication::clear_operator_arm_effort() {
   ++operator_arm_generation_;
 }
 
+void RobotApplication::set_operator_command(double forward_mps,
+                                             double yaw_rate_radps) {
+  if (!std::isfinite(forward_mps) || !std::isfinite(yaw_rate_radps)) return;
+  // Manual authority explicitly ends an autonomous task. The coordinator
+  // also withdraws any direct Cartesian route on the authority transition;
+  // this Executive update keeps typed place goals consistent.
+  if (executive_.has_active_goal()) {
+    executive_.cancel_goal(executive_.current_goal().handle);
+  }
+  coordinator_.set_operator_command(forward_mps, yaw_rate_radps);
+}
+
 iface::GoalHandle RobotApplication::request_goal(
     const iface::TaskRequest& req) {
   if (!req.place_id.empty()) {
