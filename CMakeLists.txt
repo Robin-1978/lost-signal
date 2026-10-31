@@ -347,6 +347,7 @@ add_library(lost_signal_sim_viewer STATIC
  src/sim/viewer/collision_geom_wireframe.cpp
  src/sim/viewer/experience_flow.cpp
  src/sim/viewer/experience_manifest.cpp
+ src/sim/viewer/follow_camera.cpp
   src/sim/viewer/frame_builder.cpp
  src/sim/viewer/keyframe_review.cpp
   src/sim/viewer/map_editor.cpp

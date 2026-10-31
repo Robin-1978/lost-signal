@@ -4,6 +4,7 @@
 
 #include "sim/eval/episode.hpp"
 #include "sim/viewer/frame_builder.hpp"
+#include "sim/viewer/follow_camera.hpp"
 #include "sim/viewer/view_transform.hpp"
 #include "sim/world/world.hpp"
 
@@ -500,6 +501,58 @@ int main() {
           0.05);
    assert(std::abs(std::abs(blended.body.wheels[0].steer_rad) -
                    3.141592653589793) < 0.05);
+ }
+
+ // Follow-camera lookahead is filtered independently from the fixed-step
+ // frame interpolation.  Near-zero forward velocity must not flip the
+ // camera from front to rear on alternating samples, while a sustained
+ // reverse eventually changes direction.
+ {
+   sim::viewer::FollowCameraFilter filter;
+   sim::viewer::SceneCamera config;
+   config.follow_smoothing_s = 0.30;
+   config.lookahead_s = 0.80;
+   config.speed_distance_gain_s = 0.70;
+   config.minimum_distance_m = 2.0;
+   config.maximum_distance_m = 12.0;
+   double target_x = 0.0;
+   double target_y = 0.0;
+   double distance = 4.0;
+   const auto forward = sim::viewer::FollowCameraSample{
+       0.0, 0.0, 0.0, 0.5, 0.0};
+   filter.update(target_x, target_y, distance, forward, config, 4.0, 0.02);
+   const double stable_target = target_x;
+   for (int i = 0; i < 12; ++i) {
+     const auto noisy_stop = sim::viewer::FollowCameraSample{
+         0.0, 0.0, 0.0, (i & 1) == 0 ? -0.04 : 0.04, 0.0};
+     filter.update(target_x, target_y, distance, noisy_stop, config, 4.0,
+                   0.02);
+   }
+   assert(target_x > stable_target - 0.02);
+   const double before_reverse = target_x;
+   for (int i = 0; i < 80; ++i) {
+     const auto reverse = sim::viewer::FollowCameraSample{
+         0.0, 0.0, 0.0, -0.5, 0.0};
+     filter.update(target_x, target_y, distance, reverse, config, 4.0,
+                   0.02);
+   }
+   assert(target_x < before_reverse - 0.05);
+
+   // Lateral motion changes the distance budget, but it must not create a
+   // forward lookahead.  Using speed magnitude here makes a mecanum/swerve
+   // base appear to surge toward and away from the camera while strafing.
+   filter.reset();
+   target_x = 0.0;
+   target_y = 0.0;
+   distance = 4.0;
+   for (int i = 0; i < 60; ++i) {
+     const auto strafe = sim::viewer::FollowCameraSample{
+         0.0, 0.0, 0.0, 0.0, 0.6};
+     filter.update(target_x, target_y, distance, strafe, config, 4.0,
+                   0.02);
+   }
+   assert(std::abs(target_x) < 1e-9);
+   assert(distance > 4.0);
  }
 
  std::printf("viewer_frame ok\n");

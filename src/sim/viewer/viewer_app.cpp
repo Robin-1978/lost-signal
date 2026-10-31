@@ -40,6 +40,7 @@
 #include "sim/viewer/experience_manifest.hpp"
 #include "sim/viewer/experience_overlay.hpp"
 #include "sim/viewer/frame_builder.hpp"
+#include "sim/viewer/follow_camera.hpp"
 #include "sim/viewer/keyframe_review.hpp"
 #include "sim/viewer/map_editor.hpp"
 #include "sim/viewer/particle_system.hpp"
@@ -901,6 +902,7 @@ bool show_estimate = initial_show_robot_evidence;
  double camera_target_x = options.camera_target_x;
  double camera_target_y = options.camera_target_y;
   CameraState cam_st;
+  sim::viewer::FollowCameraFilter follow_camera;
   if (!map_path.empty()) {
     // Frame the authored map instead of the demo window.
     double bx0, by0, bx1, by1;
@@ -940,6 +942,7 @@ bool show_estimate = initial_show_robot_evidence;
  cam_st.target_x = session->setup_world().truth().body_x_m;
  cam_st.target_y = session->setup_world().truth().body_y_m;
  }
+ follow_camera.reset();
  float follow_base_distance_m = cam_st.dist_m;
  ParticleSystem motion_particles;
  SurfaceTraceSystem surface_traces;
@@ -976,6 +979,7 @@ bool show_estimate = initial_show_robot_evidence;
  dragging = false;
  middle_dragging = false;
  follow = view3d;
+ follow_camera.reset();
 
  cam_st = CameraState{};
  double bx0, by0, bx1, by1;
@@ -1397,7 +1401,10 @@ bool show_estimate = initial_show_robot_evidence;
  render_quality = render_quality == RenderQuality::kHigh
  ? RenderQuality::kFast : RenderQuality::kHigh;
  }
-    if (IsKeyPressed(KEY_F)) follow = !follow;
+    if (IsKeyPressed(KEY_F)) {
+      follow = !follow;
+      if (follow) follow_camera.reset();
+    }
  if (IsKeyPressed(KEY_R)) {
  cam_st.yaw_deg = 35.0f;
  cam_st.pitch_deg = 50.0f;
@@ -1950,35 +1957,21 @@ bool show_estimate = initial_show_robot_evidence;
  audio_score.collision_steps == 0,
 playback.turbo() || paused || !live_audio);
     if (follow) {
-      view.set_screen(GetScreenWidth(), GetScreenHeight());
-      // Re-center without touching zoom: pan by the screen-space error.
-      const auto cur = view.world_to_screen(frame.body.x_m, frame.body.y_m);
-      view.pan_px(GetScreenWidth() * 0.5f - cur.x_px,
-                  GetScreenHeight() * 0.5f - cur.y_px);
- const auto& camera_config = scene_loaded
- ? visual_scene.camera : lost_signal::sim::viewer::SceneCamera{};
- const double speed_mps = std::hypot(frame.body.forward_mps,
-                                     frame.body.lateral_mps);
- const double lookahead_m =
- std::abs(frame.body.forward_mps) * camera_config.lookahead_s;
- const double direction =
- frame.body.forward_mps < 0.0 ? -1.0 : 1.0;
- const double desired_x = frame.body.x_m +
- direction * lookahead_m * std::cos(frame.body.yaw_rad);
- const double desired_y = frame.body.y_m +
- direction * lookahead_m * std::sin(frame.body.yaw_rad);
- const double blend = camera_config.follow_smoothing_s > 0.0
- ? 1.0 - std::exp(
- presentation_wall_dt_s / -camera_config.follow_smoothing_s)
- : 1.0;
- cam_st.target_x += (desired_x - cam_st.target_x) * blend;
- cam_st.target_y += (desired_y - cam_st.target_y) * blend;
- const double desired_distance = std::clamp(
- static_cast<double>(follow_base_distance_m) +
- speed_mps * camera_config.speed_distance_gain_s,
- camera_config.minimum_distance_m, camera_config.maximum_distance_m);
- cam_st.dist_m += static_cast<float>(
- (desired_distance - cam_st.dist_m) * blend);
+      if (!view3d) {
+        view.set_screen(GetScreenWidth(), GetScreenHeight());
+        const auto cur = view.world_to_screen(frame.body.x_m, frame.body.y_m);
+        view.pan_px(GetScreenWidth() * 0.5f - cur.x_px,
+                    GetScreenHeight() * 0.5f - cur.y_px);
+      }
+      const auto& camera_config = scene_loaded
+          ? visual_scene.camera : lost_signal::sim::viewer::SceneCamera{};
+      double camera_distance_m = cam_st.dist_m;
+      follow_camera.update(
+          cam_st.target_x, cam_st.target_y, camera_distance_m,
+          {frame.body.x_m, frame.body.y_m, frame.body.yaw_rad,
+           frame.body.forward_mps, frame.body.lateral_mps},
+          camera_config, follow_base_distance_m, presentation_wall_dt_s);
+      cam_st.dist_m = static_cast<float>(camera_distance_m);
     }
 
  const ExperienceViewPolicy view_policy =

@@ -1214,3 +1214,14 @@ ROBOT。
   局部硬安全约束；改动已撤回，未提交，也没有改变底盘半径、footprint 或到达条件。
 - 第五目标右侧墙洞仍需基于局部 costmap/Validator 的真实证据继续定位，后续先补诊断和
   可重复的最小回归，再提交任何规划修改。
+
+### 3D follow target filtering（2026-10-31）
+
+- 固定步插值消除了 50 Hz physics frame 的停顿/跳帧后，跟随镜头仍会把底盘在刹停和
+  倒车换向时的瞬时速度噪声放大成前后抖动：原实现每帧直接重算 lookahead 和镜头距离，
+  速度在零附近变号就会把 target 拉到车头和车尾两侧。
+- 新增 `FollowCameraFilter`。它只作用于 viewer 的 target/distance：对前后/横向速度和
+  距离做时间低通，对前进/倒车方向设 0.12 m/s 滞回，并让 lookahead 也连续过渡；录制的
+  Frame、SIM、ROBOT 和相机轨道角度都不被改写。2D follow 保留原有屏幕居中路径。
+- `test_viewer_frame` 新增了零速交替噪声与持续倒车回归；Release `test_viewer_frame`
+  与 Xvfb `--sandbox --3d --scene configs/worlds/lab_default.scene.json` smoke 通过。
