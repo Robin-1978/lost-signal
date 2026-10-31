@@ -405,8 +405,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  candidate.feasible = true;
  recovery[recovery_count++] = candidate;
  };
- if (!observation_recovery_required || forward_blocked ||
-     observation_direction < 0) {
+ if (!observation_recovery_required) {
    add_recovery(-crawl, 0.0, 0.0);
  }
  if (!observation_recovery_required || observation_direction > 0) {
@@ -419,8 +418,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  if (!car_like || !observation_recovery_required) {
    add_recovery(crawl, recovery_turn, 0.0);
    add_recovery(crawl, -recovery_turn, 0.0);
-   if (!observation_recovery_required || forward_blocked ||
-       observation_direction < 0) {
+   if (!observation_recovery_required) {
      add_recovery(-crawl, recovery_turn, 0.0);
      add_recovery(-crawl, -recovery_turn, 0.0);
    }
@@ -488,8 +486,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  if (!bounded_observation_recovery || observation_direction > 0) {
    add_reachable(forward_limit, 0.0);
  }
- if (!bounded_observation_recovery || forward_blocked ||
-     observation_direction < 0) {
+ if (!bounded_observation_recovery) {
    add_reachable(-forward_limit, 0.0);
  }
  const bool ackermann = platform::chassis_is_ackermann(reachable_limits);
