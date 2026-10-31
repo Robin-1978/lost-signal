@@ -344,6 +344,7 @@ void DwaPlanner::reset_tracking() {
  route_pose_valid_ = false;
  cusp_braking_armed_ = false;
  cusp_segment_ = 0;
+  previous_est_stamp_ns_ = core::kInvalidTime;
  terminal_mismatch_settle_count_ = 0;
 }
 
@@ -363,6 +364,24 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const double accel = config_.accel_mps2;
  const double decel = config_.decel_mps2 > 0.0 ? config_.decel_mps2 : accel;
  if (dt <= 0.0) return out;
+  // `config_.dt_s` is the rollout integration step, not necessarily the
+  // cadence at which plan() is called.  Use the measured estimate interval
+  // for gates that describe what the chassis can physically settle between
+  // decisions; malformed, repeated, or first timestamps use the configured
+  // period as a deterministic compatibility fallback.
+  double decision_dt_s = dt;
+  if (previous_est_stamp_ns_ != core::kInvalidTime &&
+      est.stamp_ns != core::kInvalidTime &&
+      est.stamp_ns > previous_est_stamp_ns_) {
+    const double measured_dt_s =
+        static_cast<double>(est.stamp_ns - previous_est_stamp_ns_) * 1e-9;
+    if (std::isfinite(measured_dt_s) && measured_dt_s > 0.0) {
+      decision_dt_s = measured_dt_s;
+    }
+  }
+  if (est.stamp_ns != core::kInvalidTime) {
+    previous_est_stamp_ns_ = est.stamp_ns;
+  }
   // Holonomic lateral sampling, gated by the chassis envelope: diff and
   // Ackermann bases carry max_lateral_mps == 0 and never sample sideways.
  // The previous command supplies the lateral state between measurements.
@@ -467,7 +486,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // later decision may shift, once measured speed has settled and the base
  // reference is inside its chassis-derived capture region.
  const bool settled_for_gear_change =
- std::abs(est.forward_mps) <= decel * dt + 1e-9;
+ std::abs(est.forward_mps) <= decel * decision_dt_s + 1e-9;
  const bool cusp_reached = gear_change && braking_was_armed &&
  cusp_braking_armed_ && settled_for_gear_change &&
  endpoint_distance_m <= cusp_capture_m;

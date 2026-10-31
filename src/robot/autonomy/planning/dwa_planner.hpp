@@ -128,6 +128,11 @@ class DwaPlanner : public ILocalPlanner {
  // nearby reverse leg on the first projection into the capture region.
  bool cusp_braking_armed_ = false;
  std::size_t cusp_segment_ = 0;
+  // The rollout integration period is deliberately fixed, but gear changes
+  // are decided at the ROBOT loop cadence.  Keep the last valid estimate
+  // timestamp so the stop-and-shift gate cannot treat a 20 ms decision loop
+  // as if it had already had the full rollout dt to brake.
+  core::MonotonicNs previous_est_stamp_ns_ = core::kInvalidTime;
  int terminal_mismatch_settle_count_ = 0;
  // Stateful terminal-heading mode. Entry uses the declared raw XY envelope
  // so a differential base can begin the final-yaw manoeuvre while its

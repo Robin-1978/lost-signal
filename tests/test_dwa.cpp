@@ -425,6 +425,30 @@ int main() {
  const LocalPlan captured = physical_cusp_planner.plan(
  settled_near_cusp, perc, m, route, ack);
  assert(captured.has_plan && captured.best.forward_mps < 0.0);
+
+ // A 20 ms ROBOT decision interval must not be widened to the 100 ms DWA
+ // rollout step when deciding whether an Ackermann cusp is physically
+ // stopped.  At 0.15 m/s and 2 m/s^2 deceleration, one 20 ms cycle can only
+ // settle 0.04 m/s; the planner must keep the current gear until a later
+ // observation confirms the stop.  A 100 ms interval retains the legacy
+ // reachable threshold and may shift at the same measured speed.
+ DwaPlanner cadence_planner;
+ EstimatedState cadence_pose = settled_near_cusp;
+ cadence_pose.forward_mps = 0.15;
+ cadence_pose.stamp_ns = 2'000'000'000;
+ const LocalPlan cadence_first = cadence_planner.plan(
+     cadence_pose, perc, m, route, ack);
+ assert(cadence_first.has_plan);
+ cadence_pose.stamp_ns += 20'000'000;
+ const LocalPlan cadence_20ms = cadence_planner.plan(
+     cadence_pose, perc, m, route, ack);
+ assert(cadence_20ms.has_plan);
+ assert(cadence_20ms.route_segment == cadence_first.route_segment);
+ cadence_pose.stamp_ns += 100'000'000;
+ const LocalPlan cadence_100ms = cadence_planner.plan(
+     cadence_pose, perc, m, route, ack);
+ assert(cadence_100ms.has_plan);
+ assert(cadence_100ms.route_segment > cadence_20ms.route_segment);
  }
 
  // A consumed car-like route cannot correct a residual terminal heading by
