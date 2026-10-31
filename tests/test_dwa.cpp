@@ -464,6 +464,17 @@ int main() {
  est.yaw_rad = 0.5;
  const LocalPlan exhausted = planner.plan(est, perc, m, route, ack);
  assert(exhausted.route_replan_requested);
+
+ // A wide localization covariance may withhold arrival, but it must not
+ // erase the mean-pose geometry that says the terminal point is behind the
+ // active forward gear.  The final Ackermann route must request a fresh pose
+ // maneuver instead of preserving an impossible reverse tail indefinitely.
+ est.x_m = 2.4;
+ est.yaw_rad = 0.0;
+ est.position_sigma_m = 0.80;
+ const LocalPlan high_covariance_overshoot = planner.plan(
+     est, perc, m, route, ack);
+ assert(high_covariance_overshoot.route_replan_requested);
  }
 
  // Once global planning supplies a real same-position pose maneuver, being

@@ -656,10 +656,22 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const double terminal_along_travel_m =
  (terminal.x_m - est.x_m) * std::cos(terminal_travel_heading_rad) +
  (terminal.y_m - est.y_m) * std::sin(terminal_travel_heading_rad);
+ // Directional reachability is a control-geometry question.  The estimate
+ // mean tells us whether the terminal pose is in front of the active gear;
+ // localization covariance belongs to the arrival/safety contract and must
+ // not turn a visibly rearward goal back into a forward route.  Otherwise a
+ // wide covariance disk can keep an Ackermann planner on an exhausted final
+ // segment forever: every reverse proposal increases the route error while
+ // the confidence radius masks the fact that the goal is already behind the
+ // current travel direction.  Keep the configured position tolerance as the
+ // small geometric hysteresis band so an estimate on the capture boundary
+ // does not chatter between route tracking and replan.
+ const double terminal_direction_hysteresis_m =
+     std::max(0.0, terminal_position_tolerance_m);
  const bool terminal_behind_active_gear = car_like &&
  route_segment_ + 2 >= route.points.size() &&
  terminal_distance_m > terminal_position_tolerance_m &&
- terminal_along_travel_m + terminal_position_confidence_radius_m < 0.0;
+ terminal_along_travel_m + terminal_direction_hysteresis_m < 0.0;
  out.route_replan_requested =
  out.route_replan_requested || terminal_behind_active_gear;
  double car_like_tracking_heading = target.yaw_rad;
