@@ -111,7 +111,7 @@
 3. freshness 已完成并提交：定位健康度现在同时检查协方差和估计年龄；默认 0.5 s
    没有新鲜来源观测即触发受全局重试节流保护的重定位。`test_localization` 覆盖过期估计，
    退化走廊拒绝回放保持原位，且不会把 freshness 与 scan-match 失败计数混用。下一项是
-   历史回环和 Place Recognition 的证据优先实现；完整 Hessian 已完成并提交。
+   Place Recognition 的证据优先实现；完整 Hessian 与历史回环保留已完成并提交。
 4. 最后推进 Coordinator runtime 拆分和实板 HIL/profile 验收；3D LIO 单独立项，不把现有
    2D surveyed-map 链路宣称为紧耦合 LIO。
 
@@ -133,6 +133,17 @@
   对称半正定信息矩阵。走廊等 rank-deficient 场景继续保留未观测方向的零信息。
 - `test_localization` 新增对称性、非零耦合和半正定行列式断言；`localization`、`slam` 回归
   通过。该阶段只改变观测信息表达，不放宽匹配、到达、碰撞或 Safety 门限。
+
+### 2026-11-01 有界 Pose Graph 回环保留
+
+- `SlamSession` 不再把已接受的 loop factor 只留在可重建的 backend 实例中；每条回环的原始
+  相对位姿、信息矩阵和约束类型都进入 session history。环形窗口重建时，仍有两个端点的
+  回环按原测量重新挂回，保留真实不确定性，不降级成固定里程计边。
+- 当窗口淘汰一条回环的一个端点时，旧端点的当前优化位姿会成为固定边界节点，原回环因子
+  转换为活动端点的边界先验。这样旧扫描可以释放，回环施加的全局校正仍能约束活动窗口；
+  后续窗口继续裁剪时，已吸收到新边界的先验不会引入未知节点或断开图。
+- `slam`、`localization`、`loop_closure` 回归通过。该实现是有界边界先验，不宣称完整
+  Schur 补边缘化；若产品需要跨任意长度的稠密历史地图，仍需单独的稀疏边缘化设计和性能门禁。
 
 ### 已完成基线
 

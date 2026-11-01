@@ -12,6 +12,12 @@
 namespace lost_signal::robot::autonomy {
 
 namespace {
+// Keyframe ids start at one and loop constraint ids are derived from those
+// ids. Reserve the high bits for fixed boundary nodes/factors created when a
+// bounded window evicts one endpoint of an accepted historical loop.
+constexpr std::uint64_t kArchivedNodeIdBase = 1ULL << 63;
+constexpr std::uint64_t kArchivedConstraintIdBase = 1ULL << 62;
+
 // Providers predating the explicit layout leave the increment at zero:
 // keep the legacy full-rotation interpretation instead of collapsing every
 // beam onto one angle.
@@ -304,6 +310,9 @@ void SlamSession::reset() {
   keyframes_.clear();
   next_id_ = 1;
   loop_closures_ = 0;
+  loop_constraints_.clear();
+  archived_loop_priors_.clear();
+  next_archived_id_ = 1;
  closed_historical_keyframes_.clear();
   last_attempt_s_ = -1.0e9;
   keyframes_at_last_attempt_ = 0;
@@ -381,10 +390,38 @@ void SlamSession::ingest(const EstimatedState& est,
   }
   keyframes_.push_back(std::move(kf));
   // Ring: drop the oldest node with its constraints once over budget. The
-  // backend has no removal, so rebuild the retained tail (bounded, rare).
+  // backend has no removal, so archive any loop factors touching that node
+  // and rebuild the retained tail (bounded, rare).
   if (keyframes_.size() > config_.max_keyframes && config_.max_keyframes > 1) {
+    archive_dropped_loop_constraints(keyframes_.front().id);
     keyframes_.erase(keyframes_.begin());
     rebuild_graph();
+  }
+}
+
+void SlamSession::archive_dropped_loop_constraints(std::uint64_t dropped_id) {
+  const PoseGraphKeyframe* dropped = graph_.find_keyframe(dropped_id);
+  if (dropped == nullptr) return;
+  for (const auto& loop : loop_constraints_) {
+    const bool drops_from = loop.from == dropped_id;
+    const bool drops_to = loop.to == dropped_id;
+    if (drops_from == drops_to) continue;  // neither, or an invalid self-edge
+    const std::uint64_t retained_id = drops_from ? loop.to : loop.from;
+    if (graph_.find_keyframe(retained_id) == nullptr) continue;
+
+    ArchivedLoopPrior prior;
+    prior.anchor = *dropped;
+    prior.anchor.id = kArchivedNodeIdBase | next_archived_id_;
+    prior.anchor.fixed = true;
+    prior.constraint = loop;
+    prior.constraint.id = kArchivedConstraintIdBase | next_archived_id_;
+    if (drops_from) {
+      prior.constraint.from = prior.anchor.id;
+    } else {
+      prior.constraint.to = prior.anchor.id;
+    }
+    archived_loop_priors_.push_back(std::move(prior));
+    ++next_archived_id_;
   }
 }
 
@@ -408,6 +445,29 @@ void SlamSession::rebuild_graph() {
     c.information = pose_graph_information(0.05, 0.02);
     c.kind = PoseGraphConstraintKind::Odometry;
     graph_.add_constraint(c, nullptr);
+  }
+  // Reattach historical loop topology whose original endpoints are still in
+  // the active window. The original information matrix and measured pose are
+  // retained; rebuilding must not replace them with a guessed odometry edge.
+  for (const auto& loop : loop_constraints_) {
+    if (graph_.find_keyframe(loop.from) == nullptr ||
+        graph_.find_keyframe(loop.to) == nullptr) {
+      continue;
+    }
+    graph_.add_constraint(loop, nullptr);
+  }
+  // If a loop endpoint was evicted, its optimized pose becomes a fixed
+  // boundary anchor. This is a bounded prior equivalent to retaining the
+  // loop's information at the edge of the active window; scans and old nodes
+  // still age out, while the nonlocal correction remains in the live graph.
+  for (const auto& prior : archived_loop_priors_) {
+    const std::uint64_t retained_id =
+        prior.constraint.from == prior.anchor.id
+            ? prior.constraint.to
+            : prior.constraint.from;
+    if (graph_.find_keyframe(retained_id) == nullptr) continue;
+    if (!graph_.add_keyframe(prior.anchor, nullptr)) continue;
+    graph_.add_constraint(prior.constraint, nullptr);
   }
 }
 
@@ -1929,6 +1989,10 @@ SlamLoopResult SlamSession::try_close_loops(
  out.heading_sigma_rad = std::max(
  fwd.heading_sigma_rad, rev.heading_sigma_rad);
 
+ // Keep the accepted factor in session history as well as the live backend.
+ // A later bounded-window rebuild must be able to restore this exact
+ // measurement (or turn it into a boundary prior when an endpoint ages out).
+ loop_constraints_.push_back(loop);
  graph_ = std::move(candidate_graph);
     // Sync session keyframe poses with the optimized graph. The loop's
     // correction is the newest node's delta; the live estimate may have

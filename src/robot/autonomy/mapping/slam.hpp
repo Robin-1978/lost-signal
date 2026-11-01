@@ -254,10 +254,12 @@ class SlamSession {
  iface::MapSnapshot historical_submap_around(
  std::size_t index, bool pad_endpoints = true) const;
   bool keyframe_due(const EstimatedState& est) const;
-  // Rebuild the backend from retained keyframes (ring drop). Chain links
-  // are re-derived from keyframe poses; loop constraints do not survive a
-  // drop of either endpoint (documented: the ring bounds memory, old loops
-  // age out with their keyframes).
+  // Rebuild the backend from retained keyframes (ring drop). Chain links are
+  // re-derived from the retained poses, while accepted loop constraints are
+  // restored whenever both endpoints remain. If a ring drop removes one
+  // endpoint, archive that edge as a fixed boundary prior on the retained
+  // endpoint so the loop's global correction is not silently discarded.
+  void archive_dropped_loop_constraints(std::uint64_t dropped_id);
   void rebuild_graph();
 
   SlamConfig config_;
@@ -266,6 +268,16 @@ class SlamSession {
   std::vector<SlamKeyframe> keyframes_;
   std::uint64_t next_id_ = 1;
   std::size_t loop_closures_ = 0;
+  // Accepted loop factors are session history, not just backend state. Keeping
+  // the original factors lets a bounded keyframe window rebuild without
+  // erasing nonlocal topology whenever its oldest scan is evicted.
+  std::vector<PoseGraphConstraint> loop_constraints_;
+  struct ArchivedLoopPrior {
+    PoseGraphKeyframe anchor;
+    PoseGraphConstraint constraint;
+  };
+  std::vector<ArchivedLoopPrior> archived_loop_priors_;
+  std::uint64_t next_archived_id_ = 1;
  // One historical submap contributes at most one loop edge. Reusing the
  // same stored scans for several nearby recent keyframes would count
  // correlated evidence as independent constraints.
