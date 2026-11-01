@@ -64,6 +64,18 @@
   两次 Release 的五个目标 truth miss 分别为 `0.145/0.104/0.109/0.160/0.238 m`，最终均为
   `goal_hold/arrived/stop`。
 
+### 2026-11-01 Safety 与 Validator 起始 twist 对齐
+
+- Safety 的独立静态 command sweep 过去只从新命令速度开始投影，而
+  `ClearanceValidator` 从当前实测 ROBOT twist 开始；车辆处于减速、换向或转向响应段时，
+  这会低估 raw obstacle 前的反应位移。
+- `3cf62ce` 让 Safety 保存本次新鲜估计的线速度/角速度，并在最终 raw-scan sweep 中保留
+  大于请求目标的实测分量；反应时间、制动尾、footprint、Safety veto 和 Validator 规则
+  均保持原合同。`test_safety` 新增“高速实测 + 低速制动命令”负例，证明低估不会放行。
+- Release/Debug `test_safety`、`test_motion_pipeline`，以及 `dynamic_escape`、
+  `dynamic_safety_experience_mission`、`safety_experience_mission` 定向回归通过。仍需把
+  静态、动态、低抓地、反馈过期和 watchdog 的端到端矩阵跑完，才能关闭这一项软件门禁。
+
 ### 当前 1.0 发布门禁
 
 1. **算法与场景**：动态横穿、四底盘、`signal_town`、工业 `4→5` 和五目标任务必须在
@@ -165,9 +177,9 @@
 
 1. **已完成**：动态横穿恢复排序与 raw-scan 恢复门修复已提交（`e747ddd`、`c4042e4`），
    工业五目标 Release 重复长测和 Debug 对照通过；继续保留结构化 trace 作为发布证据。
-2. **当前软件阻塞**：完成 Safety、Validator 与底盘执行器的制动尾运动模型一致性复核，
-   覆盖静态障碍、动态横穿、低抓地、反馈过期和命令 watchdog；然后独立提交并跑 Debug/
-   Release 定向回归。
+2. **当前软件阻塞**：继续完成 Safety、Validator 与底盘执行器的制动尾运动模型一致性矩阵，
+   覆盖静态障碍、动态横穿、低抓地、反馈过期和命令 watchdog；起始实测 twist 对齐已提交
+   （`3cf62ce`），剩余矩阵完成后独立提交并跑 Debug/Release 定向回归。
 3. **PNC 收敛**：把 ObservationRuntime、NavigationRuntime、MotionRuntime、SafetyRuntime
    和 CommandArbiter 的独立状态/接口收敛到 Coordinator 调度边界，保持 Goal 生命周期与
    Hold/Manual authority 一致；不在 Coordinator 重新实现规划和安全算法。
