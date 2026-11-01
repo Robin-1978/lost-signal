@@ -84,10 +84,13 @@ bool RoutePlanningPipeline::advance(
  // kinematic prefix is no longer a valid recovery instruction. Replan from
  // the estimate instead of asking a local planner to chase a point behind a
  // nonholonomic base. Infinity keeps the compatibility API opt-out explicit.
+ const double route_distance = active_route.valid
+     ? distance_to_route(start, active_route)
+     : std::numeric_limits<double>::infinity();
  const bool route_deviated = active_route.valid &&
  std::isfinite(maximum_route_deviation_m) &&
  maximum_route_deviation_m >= 0.0 &&
- distance_to_route(start, active_route) > maximum_route_deviation_m;
+ route_distance > maximum_route_deviation_m;
  force_replan = force_replan || route_deviated;
  const bool request_changed = !same_request(goal, map);
  if (pending_ && request_changed) {

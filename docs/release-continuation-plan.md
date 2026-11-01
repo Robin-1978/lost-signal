@@ -27,6 +27,12 @@
   `recovery-tracking`、动态逃逸或安全停车；`be10d96` 已封住未确认 map-route 的弧线回退，
   但完整 100,000/200,000 步五目标尚未在该修复后重新验收。直接 `central_gate` 单目标
   Release 回归通过，不能替代 4→5 验收。
+- **已关闭一类阿克曼终端抖动**：路线管线此前把 Ackermann 中心线偏差严格按
+  `footprint_radius_m` 判定。`signal_town` 的实际跟踪在栅格量化和转向响应下会短暂达到
+  0.40–0.51 m，导致仍在执行的 Hybrid-A* 尖点被重复重规划，表现为前进、停车、倒车循环。
+  现在只对 Ackermann 的路线刷新增加 `2 * map.resolution_m` 的中心线量化余量；碰撞膨胀、
+  Validator 和 Safety 仍使用原 footprint 半径，绝对安全包络没有变宽。新增
+  `signal_town_ackermann_terminal` 单目标回归，3000 步完成 `energy_hub`、零碰撞。
 - **阿克曼近期验收门**：墙边速度必须在同一安全包络内单调限速，不能出现“减速→加速”抖动；
   终端 pose 必须先沿可行曲率一次性收敛，只有在独立定位/安全证据不足时才允许有预算倒车，
   且不得因重复重规划反复换档。验收使用小地图最小场景、`test_dwa`/`test_motion_pipeline`、
@@ -52,6 +58,18 @@
 - 阿克曼验收新增两条硬门：墙边限速在同一安全包络内只能单调收紧并受命令加速度约束，不能
   出现减速后又恢复巡航的抖动；终端 pose 必须优先沿可行曲率一次收敛，换挡只能在测得停稳
   且由新路线授权，禁止安全停车后的自动倒车循环。
+
+### 2026-11-01 Ackermann 路线刷新量化余量
+
+- `signal_town` 的首目标失败根因进一步缩小为路线管线的重复刷新：旧阈值把中心线偏差
+  `0.404 m` 直接判为离线（底盘半径为 `0.4 m`），随后每个决策周期重启全局路线，重置
+  DWA 的 route cursor/cusp 状态。该阈值不是碰撞膨胀，不能与安全 footprint 混用。
+- `DecisionCyclePipeline` 对 Ackermann 使用 `footprint_radius + 2 * map_resolution` 的
+  路线中心线跟踪容差；它只抑制栅格量化和短时转向跟踪误差引起的路线重启，真正的碰撞、
+  clearance、制动尾和 Safety gate 仍保持原合同。差速、全向底盘继续使用通用半径门。
+- Release 定向回归：`test_dwa`、`test_motion_pipeline`、`test_ackermann_planner` 通过；
+  `signal_town` Ackermann `energy_hub` 3000 步完成、零碰撞。完整五目标和工业 4→5
+  长测仍是下一道验收门，不能用单目标结果替代。
 
 ### 2026-11-01 Hybrid-A* 导引锚点与终端接近窗口
 

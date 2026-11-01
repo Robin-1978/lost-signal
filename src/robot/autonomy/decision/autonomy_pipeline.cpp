@@ -22,13 +22,27 @@ MotionDecisionResult DecisionCyclePipeline::run(
  const bool replan = force_route_refresh || local_replan_requested_;
  local_replan_requested_ = false;
  if (reset_local_plan) local_planner.reset_tracking();
- // Route departure is measured from the route centerline. The admissible
- // cross-track radius is the declared chassis envelope; using its diameter
- // lets a car enter a wall-side corner before the route is refreshed.
+ // Route departure is measured from the route centerline. The generic
+ // pipeline contract remains the declared chassis radius; Ackermann gets a
+ // separate raster-tracking allowance below, without changing collision
+ // inflation.
+ // The global route is a centerline reference, not the lethal footprint
+ // boundary.  Ackermann tracking can legitimately sit a raster cell or two
+ // off that centerline while a bounded steering arc settles; using only the
+ // footprint radius here starts a replacement plan during a valid cusp and
+ // resets the gear cursor.  Keep the generic route-pipeline contract at the
+ // chassis radius, but give car-like tracking the same map-quantization
+ // allowance used by its local route tube.  Collision clearance remains
+ // owned by the costmap, Validator, and Safety Monitor.
+ const double route_deviation_tolerance_m =
+     platform::chassis_is_ackermann(limits)
+         ? std::max(0.0, limits.footprint_radius_m) +
+               2.0 * std::max(0.0, local_map.resolution_m)
+         : std::max(0.0, limits.footprint_radius_m);
  const bool route_state_changed = route_.advance(
  global_planner, estimate, goal, has_goal,
  map, replan, active_route,
-  std::max(0.0, limits.footprint_radius_m));
+ route_deviation_tolerance_m);
  if (route_state_changed) local_planner.reset_tracking();
  // A failed global route is a ROBOT-side planning observation: the current
  // estimate may have landed inside an inflated/occupied raster cell after

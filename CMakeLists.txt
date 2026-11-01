@@ -730,6 +730,21 @@ set_tests_properties(signal_town_mission PROPERTIES
  RUN_SERIAL TRUE
  TIMEOUT 300)
 
+# Ackermann terminal regression: a valid Hybrid-A* cusp must be allowed to
+# settle across raster cells without the route pipeline restarting it from a
+# slightly off-center estimate.
+add_test(NAME signal_town_ackermann_terminal
+ COMMAND lost_signal_sim
+ --robot ${CMAKE_SOURCE_DIR}/configs/robot/ackermann.json
+ --sim ${CMAKE_SOURCE_DIR}/configs/sim/default.json
+ --map ${CMAKE_SOURCE_DIR}/configs/worlds/signal_town.json
+ --objectives energy_hub
+ --steps 3000 --require-pass)
+set_tests_properties(signal_town_ackermann_terminal PROPERTIES
+ LABELS "physics;ackermann"
+ RUN_SERIAL TRUE
+ TIMEOUT 120)
+
 # The enlarged town previously stopped after big_gate because dock_door was
 # authored inside the global footprint-inflated obstacle boundary. Exercise
 # the complete authored route so every approach pose remains compatible with
