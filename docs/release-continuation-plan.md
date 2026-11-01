@@ -89,6 +89,12 @@ ctest --test-dir build-release -L long --output-on-failure
 
 Viewer/资产工具路径：`/disk/blender-5.2.2-linux-x64/blender`。
 
+## 3D Hero 资产更新
+
+RO-1 的 chassis 与标准 LiDAR 已按产品传播场景重设计，增加前向识别、状态灯带、服务面板和分层传感器外壳，服务 Player/Learning 的 3D 跟随视角。资产仍使用米制 `+X` 前向、`+Y` 左、`+Z` 上坐标；MuJoCo 继续作为 link、joint、碰撞、footprint 和姿态的唯一权威，视觉重设计不进入导航或物理参数。
+
+`tools/modeling/inspect_assets.py` 对全量 53 个模型通过；RO-1 chassis 为 564 triangles、标准 LiDAR 为 188 triangles，manifest bounds、link binding、材质/三角预算和 content hash 均通过。Release 定向回归 `mujoco_backend|sim_actor|viewer_frame|asset_manifest|scene_manifest|experience_manifest|experience_runtime|experience_catalog` 为 8/8。
+
 工业地图：
 
 ```sh
