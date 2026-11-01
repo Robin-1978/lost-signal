@@ -1738,3 +1738,29 @@ ROBOT。
 - Release 非 long 全量 CTest 为 94/94（288.83 s），Debug 非 long 全量 CTest 为 94/94
   （642.55 s）；包含工业规划、signal_town Ackermann、动态安全、terrain、四底盘、
   Viewer、Native HIL、truth-isolation 和 boundary。PNC 软件回归没有新增失败。
+
+### 行业实践对照与发布结论（2026-11-01）
+
+- 对照 Nav2 Collision Monitor 的上游设计（
+  `https://github.com/ros-navigation/navigation2/blob/main/nav2_collision_monitor/README.md`），
+  安全层应使用新鲜传感器、绕过 costmap/trajectory planner，并在规划器之外执行减速或急停。
+  本仓库的 raw-scan Safety gate、Validator 与 planner 分离、watchdog/制动尾复核符合这一边界；
+  真实产品仍需安全额定扫描器、控制器和急停验证，软件门本身不等于安全认证。
+- 对照 Nav2 Smac Planner 的 Hybrid-A*/State-Lattice 实践（
+  `https://github.com/ros-navigation/navigation2/blob/main/nav2_smac_planner/README.md`），
+  Ackermann 必须使用实际最小转弯半径、完整 footprint 碰撞检查、可行运动原语和有界规划时间；
+  代价层可推动路线远离高代价空间，但不能替代硬碰撞门。本仓库的 chassis-aware DWA/TEB、
+  Hybrid-A*、硬 clearance 与本轮 `clearance_cost_per_m=6.0` 正是这个组合，且保留了真实
+  wheelbase/steer 限制。
+- 对照 Nav2 Regulated Pure Pursuit 的公开设计（
+  `https://github.com/ros-navigation/navigation2/blob/main/nav2_regulated_pure_pursuit_controller/README.md`），
+  局部控制应按曲率、障碍净空、当前速度/加速度和有限时间碰撞弧联合限速，并在终端降低速度。
+  本仓库 Validator/Safety 的 measured-twist braking sweep、Ackermann 曲率-速度耦合、终端
+  settle 和墙边软净空回归覆盖了同一原则；TEB 的 kinodynamic band 与 obstacle separation
+  约束也与当前 TEB 分支保持同类职责（
+  `https://github.com/rst-tu-dortmund/teb_local_planner/blob/master/README.md`）。
+- 因此当前实现可评价为结构完整、软件仿真证据较强的 2D 导航 Release Candidate，适合内部
+  评审、仿真演示和受控工程试运行。它还不能据此宣称“量产 1.0”或“完整 3D LIO”：必须补齐
+  实板急停/制动距离、满载低抓地、传感器断链和时间同步、MCU/Host 延迟与控制权、真实 LiDAR
+  量程、标定 artifact、长时间确定性和现场回放证据；3D LIO 的 IMU bias/preintegration、
+  点云去畸变和紧耦合估计另立能力项。
