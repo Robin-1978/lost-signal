@@ -790,6 +790,40 @@ bool LocalizationSystem::try_local_correction(
        local_config.translation_step_m,
        supervisor_config.recovery_local_translation_step_m);
  }
+ // The scan provider owns the physical range. The matcher default is a
+ // conservative short-range fallback, but clamping a valid long-range
+ // return to that value makes an otherwise observable open-area landmark
+ // look like an empty scan. Matchers must use the longest finite return in
+ // this frame (the global search follows the same inference) while the map
+ // raster and unknown-space rules still decide whether it is evidence.
+ double observed_max_range_m = local_config.max_range_m;
+ for (const float range : obs.ranges_m) {
+   if (std::isfinite(range) && range > local_config.max_range_m) {
+     observed_max_range_m = std::max(observed_max_range_m,
+                                     static_cast<double>(range));
+   }
+ }
+ // Rays beyond the farthest survey corner from this sensor pose cannot
+ // contribute any known occupancy evidence. Capping at that geometry-derived
+ // bound keeps long-range profiles useful without multiplying every local
+ // lattice score by empty space outside the map.
+ const double sensor_x_m = est.x_m + base_from_lidar_.translation_m.x;
+ const double sensor_y_m = est.y_m + base_from_lidar_.translation_m.y;
+ const double map_max_x_m = map.origin_x_m +
+     static_cast<double>(map.width) * map.resolution_m;
+ const double map_max_y_m = map.origin_y_m +
+     static_cast<double>(map.height) * map.resolution_m;
+ const double map_corner_range_m = std::max({
+     std::hypot(sensor_x_m - map.origin_x_m, sensor_y_m - map.origin_y_m),
+     std::hypot(sensor_x_m - map.origin_x_m, sensor_y_m - map_max_y_m),
+     std::hypot(sensor_x_m - map_max_x_m, sensor_y_m - map.origin_y_m),
+     std::hypot(sensor_x_m - map_max_x_m, sensor_y_m - map_max_y_m)});
+ if (std::isfinite(map_corner_range_m) && map_corner_range_m > 0.0) {
+   local_config.max_range_m = std::min(observed_max_range_m,
+                                       map_corner_range_m);
+ } else {
+   local_config.max_range_m = observed_max_range_m;
+ }
  local_config.maximum_returns = 64;
  ScanMatcher local_matcher(local_config);
  local_matcher.set_lidar_mount(base_from_lidar_);

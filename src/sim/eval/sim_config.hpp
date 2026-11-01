@@ -60,7 +60,10 @@ struct SimConfig {
   providers::ImuRealismConfig imu_realism;  // all zeros = exact truth
   providers::LidarDeviceModel lidar_realism; // all zeros = exact returns
   int lidar_beams = 72;
-  float lidar_max_range_m = 10.0f;
+  // Match the release sensor profile. Short-range teaching scenes can opt
+  // down explicitly; a 10 m implicit default makes open-area localization
+  // drift before a surveyed landmark enters the scan.
+  float lidar_max_range_m = 50.0f;
   int lidar_rings = 16;  // 3D producer ring count; azimuths reuse beams
   bool lidar_composite = false;  // multi-line composite scan (opt-in front end)
 };
