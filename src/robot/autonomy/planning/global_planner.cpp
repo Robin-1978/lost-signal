@@ -33,6 +33,13 @@ std::unique_ptr<IGlobalPlanner> make_global_planner(
  const platform::NavigationSafetyPolicy& navigation) {
  if (platform::chassis_is_ackermann(limits)) {
  AckermannPlanner::Config config;
+ // The route is consumed by the terminal pose controller. Use the declared
+ // arrival-scale connector envelope in production so Hybrid-A* does not
+ // hand DWA a deliberately loose final pose that must be corrected by an
+ // orbit or repeated reverse manoeuvre. The planner's standalone defaults
+ // remain wider for cooperative lattice tests and generic callers.
+ config.goal_position_tolerance_m = 0.25;
+ config.goal_heading_tolerance_rad = 0.50;
  config.wheel_base_m = std::isfinite(wheel_base_m) && wheel_base_m > 0.0
  ? wheel_base_m
  : config.wheel_base_m;

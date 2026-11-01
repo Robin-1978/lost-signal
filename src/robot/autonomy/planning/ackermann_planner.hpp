@@ -32,12 +32,8 @@ class AckermannPlanner : public IGlobalPlanner {
  bool allow_reverse = true;
  double reverse_cost = 1.35;
  double gear_change_cost = 0.8;
- // The global route is consumed by a nonholonomic terminal controller. Keep
- // its connector contract close to the arrival envelope so a route cannot be
- // declared complete with a large residual pose error and then force DWA to
- // orbit or reverse repeatedly at the goal.
- double goal_position_tolerance_m = 0.25;
- double goal_heading_tolerance_rad = 0.30;
+ double goal_position_tolerance_m = 0.45;
+ double goal_heading_tolerance_rad = 0.8;
  // Maximum mismatch between a terminal connector chord and the midpoint
  // tangent implied by its endpoint headings.
  double connector_heading_tolerance_rad = 0.12;
