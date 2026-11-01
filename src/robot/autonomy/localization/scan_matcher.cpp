@@ -574,12 +574,44 @@ ScanMatchResult ScanMatcher::localize(
  pose.x, pose.y, core::wrap_angle(pose.heading + heading_probe_rad)));
  const double chm = cost(likelihood_score(
  pose.x, pose.y, core::wrap_angle(pose.heading - heading_probe_rad)));
+ // Translation/yaw mixed differences capture the lever-arm coupling that is
+ // lost when yaw curvature is treated as an independent scalar. A scan that
+ // sees a nearby corner, for example, can trade a small heading error for a
+ // lateral displacement; the information matrix must preserve that relation.
+ const double cxph = cost(likelihood_score(
+     pose.x + translation_probe_m, pose.y,
+     core::wrap_angle(pose.heading + heading_probe_rad)));
+ const double cxmh = cost(likelihood_score(
+     pose.x + translation_probe_m, pose.y,
+     core::wrap_angle(pose.heading - heading_probe_rad)));
+ const double cxnh = cost(likelihood_score(
+     pose.x - translation_probe_m, pose.y,
+     core::wrap_angle(pose.heading + heading_probe_rad)));
+ const double cxlh = cost(likelihood_score(
+     pose.x - translation_probe_m, pose.y,
+     core::wrap_angle(pose.heading - heading_probe_rad)));
+ const double cyph = cost(likelihood_score(
+     pose.x, pose.y + translation_probe_m,
+     core::wrap_angle(pose.heading + heading_probe_rad)));
+ const double cymh = cost(likelihood_score(
+     pose.x, pose.y + translation_probe_m,
+     core::wrap_angle(pose.heading - heading_probe_rad)));
+ const double cynh = cost(likelihood_score(
+     pose.x, pose.y - translation_probe_m,
+     core::wrap_angle(pose.heading + heading_probe_rad)));
+ const double cylh = cost(likelihood_score(
+     pose.x, pose.y - translation_probe_m,
+     core::wrap_angle(pose.heading - heading_probe_rad)));
  const bool finite_neighborhood = std::isfinite(c0) &&
  std::isfinite(cxp) && std::isfinite(cxm) &&
  std::isfinite(cyp) && std::isfinite(cym) &&
  std::isfinite(cpp) && std::isfinite(cpm) &&
  std::isfinite(cmp) && std::isfinite(cmm) &&
- std::isfinite(chp) && std::isfinite(chm);
+ std::isfinite(chp) && std::isfinite(chm) &&
+ std::isfinite(cxph) && std::isfinite(cxmh) &&
+ std::isfinite(cxnh) && std::isfinite(cxlh) &&
+ std::isfinite(cyph) && std::isfinite(cymh) &&
+ std::isfinite(cynh) && std::isfinite(cylh);
  if (finite_neighborhood) {
  const double translation_step2 =
  translation_probe_m * translation_probe_m;
@@ -596,10 +628,34 @@ ScanMatchResult ScanMatcher::localize(
  ixy = std::clamp(ixy, -cross_limit, cross_limit);
  const double ihh = evidence_scale * std::max(
  0.0, (chp - 2.0 * c0 + chm) / heading_step2);
+ double ixh = evidence_scale *
+     (cxph - cxmh - cxnh + cxlh) /
+     (4.0 * translation_probe_m * heading_probe_rad);
+ double iyh = evidence_scale *
+     (cyph - cymh - cynh + cylh) /
+     (4.0 * translation_probe_m * heading_probe_rad);
+ // Keep the finite-difference result a valid information matrix. First
+ // enforce the translational 2x2 principal minor, then limit the yaw
+ // coupling by the Schur complement. If the translation block is singular,
+ // retaining a cross term would manufacture information in its nullspace.
+ const double translation_det = ixx * iyy - ixy * ixy;
+ if (translation_det > 1e-12 && ihh > 1e-12) {
+   const double yaw_schur_numerator =
+       iyy * ixh * ixh - 2.0 * ixy * ixh * iyh + ixx * iyh * iyh;
+   const double yaw_schur = yaw_schur_numerator / translation_det;
+   if (yaw_schur > ihh && yaw_schur > 1e-12) {
+     const double scale = std::sqrt(ihh / yaw_schur);
+     ixh *= scale;
+     iyh *= scale;
+   }
+ } else {
+   ixh = 0.0;
+   iyh = 0.0;
+ }
  result.pose_information = {
- ixx, ixy, 0.0,
- ixy, iyy, 0.0,
- 0.0, 0.0, ihh};
+ ixx, ixy, ixh,
+ ixy, iyy, iyh,
+ ixh, iyh, ihh};
  result.pose_information_valid =
  ixx > 1e-9 || iyy > 1e-9 || ihh > 1e-9;
  const double trace = ixx + iyy;

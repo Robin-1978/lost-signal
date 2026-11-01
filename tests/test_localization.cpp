@@ -145,6 +145,25 @@ int main() {
  assert(r.pose_information[0] >= 0.0);
  assert(r.pose_information[4] >= 0.0);
  assert(r.pose_information[8] >= 0.0);
+ // The local information is a complete symmetric 3x3 [x,y,yaw] Hessian.
+ // The corner in this map produces a translation/yaw coupling; retaining it
+ // avoids pretending those errors are independent.
+ assert(std::abs(r.pose_information[1] - r.pose_information[3]) < 1e-12);
+ assert(std::abs(r.pose_information[2] - r.pose_information[6]) < 1e-12);
+ assert(std::abs(r.pose_information[5] - r.pose_information[7]) < 1e-12);
+ assert(std::abs(r.pose_information[2]) > 1e-6 ||
+        std::abs(r.pose_information[5]) > 1e-6);
+ const double determinant =
+     r.pose_information[0] *
+         (r.pose_information[4] * r.pose_information[8] -
+          r.pose_information[5] * r.pose_information[7]) -
+     r.pose_information[1] *
+         (r.pose_information[3] * r.pose_information[8] -
+          r.pose_information[5] * r.pose_information[6]) +
+     r.pose_information[2] *
+         (r.pose_information[3] * r.pose_information[7] -
+          r.pose_information[4] * r.pose_information[6]);
+ assert(determinant >= -1e-8);
   }
 
   // 2. Empty map: no geometric returns -> rejected, never a fake fix.

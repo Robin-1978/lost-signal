@@ -111,7 +111,7 @@
 3. freshness 已完成并提交：定位健康度现在同时检查协方差和估计年龄；默认 0.5 s
    没有新鲜来源观测即触发受全局重试节流保护的重定位。`test_localization` 覆盖过期估计，
    退化走廊拒绝回放保持原位，且不会把 freshness 与 scan-match 失败计数混用。下一项是
-   完整 Hessian、历史回环和 Place Recognition 的证据优先实现。
+   历史回环和 Place Recognition 的证据优先实现；完整 Hessian 已完成并提交。
 4. 最后推进 Coordinator runtime 拆分和实板 HIL/profile 验收；3D LIO 单独立项，不把现有
    2D surveyed-map 链路宣称为紧耦合 LIO。
 
@@ -123,6 +123,16 @@
 - freshness 是观测新鲜度契约，不是局部匹配失败计数。正常新鲜估计仍按原有局部修正节奏运行；
   退化走廊的拒绝回放测试保持位姿与协方差不变，并显式把回放时间限制在 freshness 窗口内。
 - 定向回归：`localization`、`dwa`、`motion_pipeline`、`ackermann_planner` 全部通过。
+
+### 2026-11-01 Scan matcher full Hessian
+
+- 局部 scan-to-map 匹配的有限差分现在计算完整 `[x,y,yaw]` 3×3 负对数似然 Hessian，
+  包含 `x–yaw` 与 `y–yaw` 交叉项。此前只保留平移交叉项和独立 yaw 曲率，会丢掉近场墙角
+  或端点把平移误差与航向误差耦合起来的观测信息。
+- 交叉项经过平移块主子式与 yaw Schur 补约束；退化平移块不注入虚假的 yaw 耦合，输出仍是
+  对称半正定信息矩阵。走廊等 rank-deficient 场景继续保留未观测方向的零信息。
+- `test_localization` 新增对称性、非零耦合和半正定行列式断言；`localization`、`slam` 回归
+  通过。该阶段只改变观测信息表达，不放宽匹配、到达、碰撞或 Safety 门限。
 
 ### 已完成基线
 
