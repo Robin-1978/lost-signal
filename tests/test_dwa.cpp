@@ -817,6 +817,41 @@ int main() {
  assert(!plan.has_plan);
  }
 
+  // Ackermann wall-edge speed is clearance limited and stateful. If the
+  // rolling map briefly opens again by one raster update, the cap may only
+  // recover through the declared acceleration; it must not jump back to
+  // cruise and create a decelerate/accelerate cycle beside the wall.
+  {
+    LocalMap wall = make_map(160, 160, 0.1, -4.0, -4.0, 0);
+    fill_box(wall, -4.0, 0.70, 4.0, 0.80);
+    EstimatedState est;
+    est.valid = true;
+    est.stamp_ns = 1'000'000'000;
+    est.x_m = 0.0;
+    est.y_m = 0.0;
+    est.yaw_rad = 0.0;
+    est.forward_mps = 0.80;
+    PerceptionResult perc;
+    perc.scan_ok = true;
+    StraightLinePlanner global;
+    Route route = global.plan(est, {3.0, 0.0, 0.0}, iface::MapSnapshot{});
+    platform::ChassisLimits ack = limits;
+    ack.motion_model = platform::ChassisMotionModel::kAckermann;
+    ack.max_curvature_inv_m = 1.0;
+    DwaPlanner planner;
+    const LocalPlan constrained = planner.plan(est, perc, wall, route, ack);
+    assert(constrained.has_plan && constrained.best.feasible);
+    assert(constrained.best.forward_mps < est.forward_mps);
+
+    LocalMap open = make_map(160, 160, 0.1, -4.0, -4.0, 0);
+    est.stamp_ns += 100'000'000;
+    est.forward_mps = constrained.best.forward_mps;
+    const LocalPlan reopened = planner.plan(est, perc, open, route, ack);
+    assert(reopened.has_plan && reopened.best.feasible);
+    assert(reopened.best.forward_mps <=
+           constrained.best.forward_mps + 2.0 * 0.1 + 1e-9);
+  }
+
  // Static generation uses footprint-plus-margin inflation. The center line
  // is free, but a wall inside the 0.5 m body envelope rejects commands whose
  // rollout and braking tail would enter it before the validator intervenes.

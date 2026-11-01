@@ -347,6 +347,8 @@ void DwaPlanner::reset_tracking() {
  cusp_segment_ = 0;
   previous_est_stamp_ns_ = core::kInvalidTime;
  terminal_mismatch_settle_count_ = 0;
+  clearance_speed_cap_mps_ = 0.0;
+  clearance_speed_cap_valid_ = false;
 }
 
 LocalPlan DwaPlanner::plan(const EstimatedState& est,
@@ -890,12 +892,6 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  }
  }
 
- const auto velocity_samples = command_samples(
- velocity_window, std::max(1e-3, config_.velocity_sample_step_mps),
-      {est.forward_mps, 0.0, v_max, -v_max, terminal_creep_speed,
-       -terminal_creep_speed, terminal_confidence_correction_speed_mps,
-       -terminal_confidence_correction_speed_mps});
-
   const double ego_radius =
       limits.footprint_radius_m + config_.safety_margin_m;
  // Two-stage local costmap: occupied observations first receive the full
@@ -917,6 +913,39 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
      std::isfinite(initial_source_clearance) &&
      initial_source_clearance + 1e-9 >= ego_radius;
  if (initial_boundary_egress) out.route_replan_requested = true;
+
+ // Couple longitudinal speed to the measured static clearance at the
+ // current footprint. The same response delay and braking policy used by the
+ // Validator are used here, so this is a reachable speed envelope rather
+ // than a map-specific wall threshold. Keep the envelope stateful for a
+ // car-like base: a one-cell clearance flicker may tighten speed immediately,
+ // but it cannot reopen cruise speed faster than the declared acceleration.
+ if (car_like && !initial_boundary_egress && decel > 0.0 &&
+     std::isfinite(initial_source_clearance)) {
+   const double available_clearance_m =
+       initial_source_clearance - ego_radius;
+   const double clearance_speed_limit_mps = available_clearance_m <= 0.0
+       ? 0.0
+       : -decel * response_s + std::sqrt(
+             decel * decel * response_s * response_s +
+             2.0 * decel * available_clearance_m);
+   if (!clearance_speed_cap_valid_) {
+     clearance_speed_cap_mps_ = v_max;
+     clearance_speed_cap_valid_ = true;
+   }
+   const double reopen_limit_mps = std::min(
+       v_max, clearance_speed_cap_mps_ + accel * decision_dt_s);
+   clearance_speed_cap_mps_ = std::clamp(
+       std::min(clearance_speed_limit_mps, reopen_limit_mps), 0.0, v_max);
+   tracking_speed_limit_mps = std::min(
+       tracking_speed_limit_mps, clearance_speed_cap_mps_);
+ }
+
+ const auto velocity_samples = command_samples(
+     velocity_window, std::max(1e-3, config_.velocity_sample_step_mps),
+     {est.forward_mps, 0.0, v_max, -v_max, terminal_creep_speed,
+      -terminal_creep_speed, terminal_confidence_correction_speed_mps,
+      -terminal_confidence_correction_speed_mps});
 
  // Only the current route neighborhood can affect a finite rollout. Find
  // progress once on the complete route, then score every candidate against

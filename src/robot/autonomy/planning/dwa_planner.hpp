@@ -152,6 +152,12 @@ class DwaPlanner : public ILocalPlanner {
  bool terminal_heading_settled_ = false;
  bool terminal_identity_valid_ = false;
  RoutePoint terminal_identity_;
+ // Static clearance can move by one raster cell as the rolling LiDAR map is
+ // refreshed along a wall. A tighter envelope applies immediately, while a
+ // newly wider envelope can only reopen at the declared acceleration. This
+ // keeps wall-edge tracking from producing a decelerate/accelerate cycle.
+ double clearance_speed_cap_mps_ = 0.0;
+ bool clearance_speed_cap_valid_ = false;
 };
 
 }  // namespace lost_signal::robot::autonomy
