@@ -174,6 +174,11 @@ class SafetyMonitor : public ISafetyMonitor {
  std::size_t static_release_count_ = 0;
  bool dynamic_escape_required_ = false;
  EstimatedState dynamic_estimate_{};
+ // The final static sweep starts from the measured ROBOT twist, just like
+ // ClearanceValidator.  Keeping this snapshot avoids underestimating the
+ // reaction distance when a lower or opposite command arrives while the
+ // chassis is still moving.
+ EstimatedState static_estimate_{};
  std::vector<DynamicTrack> dynamic_tracks_;
  // Raw scan endpoints in the current base frame after mount transform and
  // rolling-shutter deskew. No map pose, costmap, or simulator label enters

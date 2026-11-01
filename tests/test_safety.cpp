@@ -155,6 +155,40 @@ int main() {
  assert(std::abs(swept.static_command_sweep.back().y) < 1e-12);
  }
 
+ // The final sweep starts from measured motion, not only the newly requested
+ // target. A low command while the chassis is still moving must retain the
+ // current reaction/braking distance or the independent gate can under-check
+ // a raw obstacle that the validator already rejects.
+ {
+ SafetyConfig config;
+ config.footprint_radius_m = 0.1;
+ config.static_margin_m = 0.1;
+ config.brake_decel_mps2 = 4.0;
+ config.command_reaction_time_s = 0.2;
+ SafetyMonitor mon(config);
+ mon.reset();
+ iface::ObservationFrame o = fresh_obs(1, 1'000'000, 0.65f);
+ o.ranges_m = {0.65f};
+ o.scan_angle_min_rad = 0.0;
+ o.scan_angle_increment_rad = 1.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ iface::ChannelHealth ch{};
+ EstimatedState moving;
+ moving.valid = true;
+ moving.stamp_ns = 1'000'000;
+ moving.forward_mps = 1.5;
+ const SafetyVerdict v = mon.evaluate(moving, perc, o, ch, 1'000'000);
+ assert(v.state == SafetyState::kNominal);
+ iface::MotionCommand brake;
+ brake.space = iface::CommandSpace::kYawRate;
+ brake.stamp_ns = 1'000'000;
+ brake.expiry_ns = 201'000'000;
+ brake.forward_mps = 0.1;
+ assert(mon.gate(brake, v, 1'000'000).is_safe_stop());
+ assert(mon.last_verdict().reason == "static-swept-proximity");
+ }
+
  // Proximity is transient: a bounded command that increases raw footprint
  // clearance is admitted without consulting a map pose or simulator truth.
  {

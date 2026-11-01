@@ -182,6 +182,7 @@ void SafetyMonitor::reset() {
  static_release_count_ = 0;
  dynamic_escape_required_ = false;
  dynamic_estimate_ = EstimatedState{};
+ static_estimate_ = EstimatedState{};
  dynamic_tracks_.clear();
  raw_scan_points_.clear();
   latch_reason_.clear();
@@ -208,6 +209,7 @@ SafetyVerdict SafetyMonitor::evaluate(
  last_ = diagnostic_verdict(false, SafetyState::kStopped, latch_reason_);
     return last_;
   }
+ static_estimate_ = est;
  dynamic_escape_required_ = false;
  dynamic_estimate_ = est;
  dynamic_tracks_.clear();
@@ -403,8 +405,29 @@ iface::MotionCommand SafetyMonitor::gate(const iface::MotionCommand& cmd,
  const double envelope =
  std::max(0.0, config_.footprint_radius_m) +
  std::max(0.0, config_.static_margin_m);
+ // Validator rollouts begin at the measured twist. Preserve that same
+ // conservative starting envelope for the independent final gate: a command
+ // may request braking or a gear change while the chassis still carries more
+ // speed than the requested target. The projection remains raw-scan-only and
+ // still uses the declared command reaction and braking tail.
+ iface::MotionCommand projected_command = cmd;
+ if (static_estimate_.valid) {
+   const auto retain_measured_component = [](double requested,
+                                             double measured) {
+     return std::isfinite(measured) && std::abs(measured) >
+                std::abs(requested)
+            ? measured
+            : requested;
+   };
+   projected_command.forward_mps = retain_measured_component(
+       cmd.forward_mps, static_estimate_.forward_mps);
+   projected_command.lateral_mps = retain_measured_component(
+       cmd.lateral_mps, static_estimate_.lateral_mps);
+   projected_command.yaw_rate_radps = retain_measured_component(
+       cmd.yaw_rate_radps, static_estimate_.yaw_rate_radps);
+ }
  const StaticClearance projected = static_clearance_for_command(
- raw_scan_points_, cmd, config_.command_reaction_time_s,
+ raw_scan_points_, projected_command, config_.command_reaction_time_s,
  config_.brake_decel_mps2, envelope, config_.static_check_dt_s);
  const double hold_clearance = point_set_clearance(
  raw_scan_points_, 0.0, 0.0, envelope);
@@ -502,6 +525,7 @@ void SafetyMonitor::clear_safety() {
  static_release_count_ = 0;
  dynamic_escape_required_ = false;
  dynamic_tracks_.clear();
+ static_estimate_ = EstimatedState{};
  raw_scan_points_.clear();
   latch_reason_.clear();
 }
