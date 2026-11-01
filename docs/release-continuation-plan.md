@@ -46,6 +46,11 @@
   不再把它们列为待办。工业五目标 Release/Debug 长测现在也有重复证据。当前仍需做的是
   Safety/Validator 运动模型一致性复核、Coordinator 的 Observation/Navigation/Motion/Safety
   runtime 收敛，以及完整软件发布矩阵；它们不能用放宽 GoalArrival 或 footprint 代替。
+- **本轮已关闭的两个软件问题**：SIM 默认 LiDAR 量程从 10 m 统一到发布 profile 的 50 m；
+  局部匹配按当前有限回波和 surveyed-map 几何范围取界，避免开阔区在真正可观测前漂移，
+  对应 `240c6d7`。低抓地差速终端姿态阶段现在会在真实动态速度窗口内采样并优先选择可达
+  crawl，且只在底盘声明 traction-limited、原始终端捕获包络内启用；普通平地差速仍保持
+  纯 yaw，`test_dwa` 与地形任务回归通过，对应 `7cabd19`。
 - **外部硬件待验**：MCU/Native HIL 契约、急停、驱动负载、通信延迟和真实 calibration
   artifact/profile 仍需实板数据；现有 SIM、VirtualMcu 和 host test 只能证明软件契约。
 
@@ -187,6 +192,37 @@
    boundary、性能与 Viewer/headless 门禁，完成 Debug 全量 CTest 和 Release 全量 CTest。
 5. **硬件门禁**：完成 MCU/Native HIL、急停、驱动负载、通信延迟和 calibration/profile
    实板记录后才宣称 1.0；3D LIO 另立项目，不把现有 2D surveyed-map 链路宣称为紧耦合 LIO。
+
+### 2026-11-01 地形低抓地与 LiDAR 量程收尾
+
+- SIM 的 `SimConfig` 隐式 LiDAR 默认值过去是 10 m，而发布配置已经是 50 m；二者不一致会
+  让开阔地图在最近 surveyed 几何超过 10 m 时只有最大量程值，定位无法得到有效绝对修正。
+  `240c6d7` 将默认 profile 对齐到 50 m，并让局部 scan matcher 使用当前帧最长有限回波，
+  再以传感器到 survey map 四角的几何距离裁剪匹配范围。未知空间和安全包络均未放宽；真实
+  硬件若只有 10 m，仍必须通过 profile/地图可观测性门禁。
+- 低抓地终端的纯原地 yaw 在 SIM 中可能克服不了静态轮胎摩擦，执行监控会把持续无平移锁存
+  为 `execution_fault/no-response`。`7cabd19` 增加 `ChassisLimits::traction_limited`，
+  让 DWA 的终端 crawl 投影到加速度受限的下一周期窗口；置信半径暂时吃掉到达容差时，
+  只在声明的原始终端捕获包络内保持控制锁存，不改变 GoalArrival 的置信度、碰撞、Validator
+  或 Safety 合同。Release/Debug 普通 DWA 语义保持不变。
+- Debug 定向门禁通过：`autonomy`、`localization`、`dwa`、`motion_pipeline`、`sim_config`、
+  `terrain_mission` 全部通过；terrain 结果为冰面 2/2、山脊 1/1、0 碰撞。工作区临时
+  fault trace 已删除。Blender 5.2.2 路径保持 `/disk/blender-5.2.2-linux-x64/blender`。
+
+### 大目标当前状态（2026-11-01）
+
+- **算法与底盘**：差速、Ackermann、Mecanum、Swerve 的运动学隔离、DWA/TEB 公共安全契约、
+  终端姿态和墙边限速基线已完成；低抓地终端 crawl 已补齐。剩余是重复 `signal_town`、
+  四底盘、动态横穿和工业 4→5 的 Debug/Release 发布矩阵。
+- **定位与建图**：2D LiDAR surveyed-map 定位、全局恢复、Place Recognition、完整 Hessian、
+  回环约束保留和 freshness 已完成。当前仍需把长测证据、性能和确定性门禁统一纳入发布报告；
+  产品能力边界仍是 wheel/IMU + 2D LiDAR，不宣称紧耦合 3D LIO。
+- **PNC**：Hold/Manual authority 语义已有修复，Safety/Validator 起始 twist 已对齐；剩余是
+  制动尾一致性矩阵和 Observation/Navigation/Motion/Safety runtime、CommandArbiter 的接口
+  收敛，Coordinator 继续只做调度。
+- **发布与硬件**：Debug 全量 CTest、Release 全量 CTest、Viewer/headless、truth-isolation、
+  性能/确定性、VirtualMcu/native HIL 软件门禁仍需收口；真实 MCU 急停、负载、通信延迟和
+  calibration/profile 是 1.0 的实板阻塞，不能用 SIM 结果替代。
 
 ### 2026-11-01 Localization freshness
 
