@@ -1683,3 +1683,13 @@ ROBOT。
   `industrial_200k_direct_mission` 均通过：CTest 分别耗时 807.77 s 与 160.24 s，5/5
   目标、0 碰撞。该结果覆盖工业 4→5 段、定位恢复、终端档位和 Safety/执行监控路径；
   单次通过仍需与确定性、全量 CTest 和其他底盘矩阵一起作为 1.0 证据。
+
+### Debug/Release 全量软件门禁（2026-11-01）
+
+- Release `ctest -LE long`：94/94 通过（202.91 s）；Debug `ctest -LE long`：94/94 通过
+  （564.09 s）。覆盖四底盘、signal_town、动态横穿、SLAM/回环、定位、Safety/Validator、
+  terrain、Viewer、truth-isolation、Native HIL、calibration 和 robot boundary。
+- Release long 标签的工业两个任务已在本轮单独通过；signal_town long 已在同一构建的发布
+  场景矩阵中通过。软件侧当前不再有已复现的阻塞故障；剩余 1.0 门禁是 PNC runtime 的
+  状态所有权收敛、确定性/性能报告归档，以及具体板卡的急停、负载、通信延迟和 calibration
+  artifact 实测。
