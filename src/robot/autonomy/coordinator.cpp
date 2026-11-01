@@ -288,6 +288,14 @@ void AutonomyCoordinator::clear_operator_command() {
  operator_forward_mps_ = 0.0;
  operator_yaw_rate_radps_ = 0.0;
  operator_command_last_update_ns_ = core::kInvalidTime;
+ // Clearing a manual source is an authority transition. Invalidate the
+ // retained command immediately instead of waiting for the next planner
+ // cadence; otherwise a long decision period can replay the last manual
+ // velocity after the watchdog has expired.
+ last_cmd_ = iface::MotionCommand::SafeStop(0);
+ last_constraint_ = "manual-cleared";
+ last_reason_ = "manual-cleared";
+ replan_requested_ = true;
 }
 
 void AutonomyCoordinator::clear_goal() {

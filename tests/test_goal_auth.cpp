@@ -125,7 +125,10 @@ int main() {
  assert(moving);
 
  // Manual authority cancels the autonomous task once and takes over the
- // command source.  A watchdog expiry must stop, never resume that route.
+ // command source. Use a planner period longer than the command watchdog so
+ // expiry is tested between decision cycles, where a retained last command
+ // would otherwise be replayed.
+ app.set_decision_period(1'000'000'000);
  app.set_operator_command(0.1, 0.0);
  assert(app.goal_status(h2).state == iface::GoalState::kCanceled);
  assert(app.goal_status(h2).detail == "canceled");
