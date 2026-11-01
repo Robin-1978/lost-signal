@@ -1725,3 +1725,16 @@ ROBOT。
 - 继续推进顺序保持：先收敛 PNC 的 Goal/Manual/Safety authority 和任务/运动状态机，再补充
   observation freshness、Ackermann/DWA/TEB 底盘能力隔离、完整 scan-match Hessian、历史
   回环约束和 place recognition；每一项都要有独立回归和独立提交。
+
+### PNC manual watchdog authority hardening（2026-11-01）
+
+- `AutonomyCoordinator::clear_operator_command()` 现在把手动源视为一次明确的 authority
+  transition：立即作废缓存 `MotionCommand`、写入清除原因并请求下一周期重规划。watchdog
+  到期因此在当前 tick 就输出安全停车，即使 decision period 大于 200 ms，也不会复放上一条
+  手动速度或恢复已撤销的 autonomous route。
+- `test_goal_auth` 将决策周期设为 1 s 后再验证手动 watchdog，覆盖了默认 100 ms 周期不会
+  暴露的“过期发生在两次规划之间”窗口；旧 Goal 仍保持 `Canceled`，重新接管必须提交新
+  Goal。Debug/Release `goal_auth` 均通过，提交为 `19d2da3`。
+- Release 非 long 全量 CTest 为 94/94（288.83 s），Debug 非 long 全量 CTest 为 94/94
+  （642.55 s）；包含工业规划、signal_town Ackermann、动态安全、terrain、四底盘、
+  Viewer、Native HIL、truth-isolation 和 boundary。PNC 软件回归没有新增失败。
