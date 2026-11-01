@@ -1503,3 +1503,7 @@ ROBOT。
   代替 4→5 验收。下一次长测继续保留 `localization_action`、scan returns、路线段、
   `requested_gear`、Safety/Validator 拒绝和 execution-monitor 状态，直到第三、第四和
   第五目标完成或得到明确安全停车原因。
+- 同一构建继续到 40,000 步时完成 `north_depot` 并进入 `central_gate`，结果为 2/5、
+  0 碰撞；中央目标附近仍有 67 个有效回波，估计与 SIM 真值的离线位置差约 0.08 m，
+  `safety=nominal`，没有错误锁存。当前仍需完成 `central_gate`、`east_terminal`、
+  `south_yard`，因此发布门禁保持未完成。
