@@ -61,7 +61,7 @@
 - Ackermann Hybrid-A* 现在把中间导引点作为经过碰撞验证的 bounded anchor，保留实际到达
   航向和曲率交给下一段继续收敛；只有语义目标仍执行严格的 heading/connector 检查。终端
   前的锚点会沿已验证导引回退，至少保留由走廊半径和最小转弯半径决定的接近窗口。
-- 生产导引启用有界加权启发式（`guide_heuristic_weight=3.0`），不改变碰撞、曲率、换挡或
+- 生产导引保持一致代价的导引启发式（`guide_heuristic_weight=1.0`），不改变碰撞、曲率、换挡或
   Safety/Validator 门。Release 工业首段已生成完整路线并行驶超过 20 m，单目标 5000 步
   记录为 86.94 m、0 碰撞；`test_ackermann_planner`、`test_dwa`、`test_motion_pipeline`
   和 `test_multichassis_mission` 均通过。
