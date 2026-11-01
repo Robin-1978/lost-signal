@@ -424,7 +424,8 @@ if (due || replan_requested_ || local_plan_reset_requested_ || map_changed) {
  safety_reason == "forward-proximity" ||
  safety_reason == "forward-recovery" ||
  safety_reason == "static-proximity" ||
- safety_reason == "static-swept-proximity";
+ safety_reason == "static-swept-proximity" ||
+ safety_reason == "dynamic-proximity";
  const bool observation_motion_requested =
  loc.observation_motion_requested ||
  goal_arrival_decision_.observation_motion_required;
@@ -519,8 +520,17 @@ has_goal_, map, force_route_refresh, reset_local_plan,
     last_constraint_ = "execution_fault";
     last_reason_ = execution_monitor_report_.diagnostic;
   }
+  // A dynamic escape is a validator-approved command that must be allowed to
+  // leave the predicted crossing while the previous safety stop is still
+  // bleeding speed.  The final Safety gate remains authoritative and can
+  // reject it from raw scan/track evidence; keeping the latch in front of it
+  // would publish only another stop until the actor has already crossed the
+  // contact envelope.
+  const bool dynamic_escape_candidate =
+      last_constraint_ == "dynamic_escape" && !last_cmd_.is_safe_stop();
   if (latch_.update(last_published_stop_, tread_mps,
-                    ControlledStopLatch::Config{})) {
+                    ControlledStopLatch::Config{}) &&
+      !dynamic_escape_candidate) {
     gated = iface::MotionCommand::SafeStop(now_ns);
   }
   // Final independent gate, every tick: safety re-checks RAW evidence

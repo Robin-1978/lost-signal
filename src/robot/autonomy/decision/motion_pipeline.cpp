@@ -187,11 +187,6 @@ MotionDecisionResult MotionDecisionPipeline::run(
  };
  std::stable_sort(planner_valid.begin(), planner_valid.end(), planner_better);
 
- // Stopping in place is itself a predicted contact: the shared prediction
- // meets the held pose, or the behavior policy reports the same conflict.
- const bool stop_is_unsafe = hold_dynamically_unsafe ||
- out.behavior.reason == "route-conflict-no-safe-hold";
- const bool dynamic_escape_required = escape_active_ || stop_is_unsafe;
  const bool planner_requested = route.valid && !route.points.empty();
  const auto commands_resolvable_motion = [&](const LocalCandidate& candidate) {
  const double horizon_s = std::max(
@@ -298,6 +293,21 @@ MotionDecisionResult MotionDecisionPipeline::run(
  maximum_planar_speed_mps * maximum_planar_speed_mps /
  (2.0 * brake_deceleration_mps2)
  : std::numeric_limits<double>::infinity();
+ // Stopping in place is itself a predicted contact: the shared prediction
+ // meets the held pose, or the behavior policy reports the same conflict.
+ // A forward dynamic-proximity veto is also an escape trigger when the
+ // predicted hold lies inside the declared reaction-and-braking envelope.
+ // This keeps the trigger derived from live ROBOT evidence rather than a
+ // scenario-specific distance threshold.
+ const bool stop_is_unsafe = hold_dynamically_unsafe ||
+     out.behavior.reason == "route-conflict-no-safe-hold";
+ const bool dynamic_clearance_blocked = forward_blocked &&
+     !prediction.hypotheses.empty() &&
+     std::isfinite(hold_verdict.min_dynamic_clearance_m) &&
+     hold_verdict.min_dynamic_clearance_m <=
+         std::max(0.0, limits.footprint_radius_m) + stopping_distance_m;
+ const bool dynamic_escape_required = escape_active_ || stop_is_unsafe ||
+     dynamic_clearance_blocked;
  // When a predicted object leaves only hold in the local planner, a fresh
  // global route over the unchanged survey cannot resolve the encounter.
  // Keep the recovery direction that increases dynamic separation until the
@@ -591,14 +601,14 @@ MotionDecisionResult MotionDecisionPipeline::run(
  };
  const auto better_quality = [&](const RecoveryQuality& a,
  const RecoveryQuality& b) {
+ if (dynamic_escape_required &&
+     a.dynamic_reverse != b.dynamic_reverse) {
+ return a.dynamic_reverse;
+ }
  if (a.nominally_safe != b.nominally_safe)
  return a.nominally_safe;
  if (a.clears_forward_block != b.clears_forward_block)
  return a.clears_forward_block;
- if (dynamic_escape_required && car_like &&
-     a.dynamic_reverse != b.dynamic_reverse) {
- return a.dynamic_reverse;
- }
  if (prefer_dynamic_clearance &&
  (greater(a.dynamic_clearance_m, b.dynamic_clearance_m) ||
  greater(b.dynamic_clearance_m, a.dynamic_clearance_m))) {
@@ -695,7 +705,14 @@ MotionDecisionResult MotionDecisionPipeline::run(
  consider_recovery(reachable[i], recovery_count + i, true);
  }
  };
- if (reach_committed || observation_recovery_required) consider_reachable();
+ // A dynamic escape must try the full reachable envelope before a
+ // low-speed recovery candidate.  The latter is still useful when every
+ // reachable command is rejected, but selecting it first can spend the
+ // braking tail inside a crossing actor's path.
+ if (reach_committed || observation_recovery_required ||
+     (dynamic_escape_required && forward_blocked)) {
+   consider_reachable();
+ }
  if (!have_recovery) {
  for (std::size_t i = 0; i < recovery_count; ++i) {
  consider_recovery(recovery[i], i, false);

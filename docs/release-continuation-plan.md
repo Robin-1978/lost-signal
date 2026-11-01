@@ -62,16 +62,20 @@
 ### Ackermann 动态横穿恢复排序（2026-11-01）
 
 - 动态横穿时，停止位姿本身被当前 ROBOT track 预测为不安全，恢复候选仍必须逐条经过
-  Validator、完整制动尾和独立 raw-scan Safety。对 Ackermann 的动态逃逸，在候选同属安全
-  等级时优先选择已验证的直线反向候选，避免前进弧把车辆带入横穿目标的运动走廊；这只
-  改变动态逃逸候选的排序，不放宽任何安全门，也不影响普通路线或定位观察恢复。
+  Validator、完整制动尾和独立 raw-scan Safety。`dynamic-proximity` 现在会进入同一动态
+  恢复触发；完整可达候选集优先于慢速候选，避免在制动尾内继续沿前进走廊。对 Ackermann
+  和差速底盘，在候选同属动态逃逸等级时优先已验证的反向候选；最终 Safety 仍可拒绝它。
+- 动态逃逸候选可以在上一周期的受控停车锁存仍在消退时进入最终 Safety 复核，只有当该
+  候选通过 raw-scan 和动态预测门才会发布；这避免锁存本身把车辆留在横穿目标的运动走廊。
+  普通路线、静态前向停车、定位观察恢复和其他底盘能力约束不被放宽。
 - 动态恢复仍保留既有 dynamic-clearance、曲率/速度耦合、加速度、换挡和执行监控约束。
   差速、全向和正常 Ackermann 路线不共享这个反向偏好，避免把动态逃逸语义泄漏到其他
   底盘。
 - `dynamic_crossing_mission` 三个相位、`dynamic_escape`、`motion_pipeline`、`dwa`、
   `ackermann_planner`、`localization`、`slam`、`loop_closure` 和
   `multichassis_mission` 定向回归通过。该阶段提交前还要完成工业 Release 长测和工作树
-  清理。
+  清理。`signal_town` 差速五目标在 6006 步完成、零碰撞；动态目标恢复不再触发
+  `execution_fault:uncommanded-motion` 锁死。
 
 ### Dynamic Safety Lab 可观测性修复（2026-11-01）
 
