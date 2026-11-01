@@ -1676,3 +1676,10 @@ ROBOT。
   过期、硬制动尾、watchdog 和 Native HIL 的既有回归继续作为矩阵的其他行。软件安全基线
   提交为 `208caa8`，下一步是 PNC runtime 收敛和跨底盘/实板扩展，而不是放宽 Safety 或
   footprint。
+
+### Industrial Release full mission rerun（2026-11-01）
+
+- 当前 `240c6d7`、`7cabd19` 和 `208caa8` 之后，Release `industrial_200k_mission` 与
+  `industrial_200k_direct_mission` 均通过：CTest 分别耗时 807.77 s 与 160.24 s，5/5
+  目标、0 碰撞。该结果覆盖工业 4→5 段、定位恢复、终端档位和 Safety/执行监控路径；
+  单次通过仍需与确定性、全量 CTest 和其他底盘矩阵一起作为 1.0 证据。
