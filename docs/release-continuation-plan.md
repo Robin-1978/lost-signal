@@ -67,11 +67,14 @@ Robot Simu 是一个用真实机器人软件传播机器人知识的产品：同
 
 因此，当前适合发布为软件仿真 Release Candidate、课程试用版和受控工程验证版；完成真实板卡门禁后，才适合称为完整实机 1.0。
 
+产品 MVP 应优先服务“想理解机器人如何做决定的人”：一条 10 分钟 First Contact 课程、一个可复现的变量实验、一次带证据链的复盘和一张知识卡，先把因果讲清楚，再扩展工业、SLAM、底盘和硬件课程。Player、Learning、Engineering 可以共存，但对外传播时应以 Learning 为主入口；工程 benchmark 是可信度支撑，不应成为第一次体验的界面。
+
 ## 仍然有效的待办
 
 1. 在目标硬件上完成 MCU/Native HIL、急停、制动、负载、通信延迟、LiDAR profile 和 calibration artifact 验收，并保存可追溯记录。
 2. 将 Player/Learning/Engineering 的首个教学章节、回放报告和 benchmark 命令整理成可交付安装包。
-3. 实板证据完成后重新运行同一套 97 项软件门禁和现场回放，不修改 Safety、footprint 或 GoalArrival 来换取通过。
+3. 为首个章节增加可衡量的学习结果（预测前后答题、关键概念掌握和复盘完成率）；知识卡和星级只能记录进度，不能单独证明学会。
+4. 实板证据完成后重新运行同一套 97 项软件门禁和现场回放，不修改 Safety、footprint 或 GoalArrival 来换取通过。
 
 ## 常用验证命令
 
