@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -100,6 +101,11 @@ struct GlobalSearchConfig {
   // the final stage recounts with evidence, so it may spend more beams
   // than the coarse ranking pass.
   std::size_t final_max_returns = 96;
+ // A localized recovery is already bounded to the covariance-supported
+ // neighbourhood. It may spend a larger deterministic slice while the
+ // robot is held, so a large map does not leave the safety hold pending for
+ // an unbounded number of control ticks.
+ std::size_t recovery_work_per_cycle = 32768;
 };
 
 struct GlobalSearchResult {
@@ -198,6 +204,9 @@ class GlobalSearcher {
  double body_pitch_rad = 0.0, double body_z_m = 0.0);
  std::optional<GlobalSearchResult> advance(
  std::size_t work_budget = 8192);
+ std::size_t recovery_work_budget() const {
+   return std::max<std::size_t>(8192, config_.recovery_work_per_cycle);
+ }
  bool active() const;
  // Cooperative work keeps a non-owning view of one immutable map revision.
  // A caller must cancel/restart when the provider publishes another map.

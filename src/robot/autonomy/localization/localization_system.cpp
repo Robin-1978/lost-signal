@@ -496,7 +496,8 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
     // rejection is evidence only and never moves the estimate. An
     // AMBIGUOUS rejection with runner-ups seeds deferred tracking (the
     // next scans disambiguate) instead of guessing now.
- if (!global_search_.active()) {
+ const bool search_was_active = global_search_.active();
+ if (!search_was_active) {
  const EstimatedState& odom_origin = estimator.odometry_estimate();
  global_origin_valid_ = odom_origin.valid;
  global_origin_odom_x_m_ = odom_origin.x_m;
@@ -530,7 +531,10 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  map, now_ns, est.roll_rad, est.pitch_rad, est.z_m);
  }
  }
- const std::optional<GlobalSearchResult> update = global_search_.advance();
+ const std::size_t recovery_budget = search_was_active && supervisor_.localized()
+     ? global_search_.recovery_work_budget() : 8192;
+ const std::optional<GlobalSearchResult> update = global_search_.advance(
+     recovery_budget);
  if (!update.has_value()) {
  action = "global_relocalization:search pending";
  return false;
