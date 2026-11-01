@@ -23,10 +23,10 @@
   权限语义（`e45a2da`，`test_goal_auth`）均已有代码和回归证据。历史段落中出现的
   “工作区、待提交”“下一阶段是 D2–D4/E1/E2”是当时的检查点，保留为审计记录，不是当前
   入口。
-- **当前产品阻塞**：阿克曼在 `industrial_200k.json` 的重复结构恢复阶段仍可能进入
-  `recovery-tracking`、动态逃逸或安全停车；`be10d96` 已封住未确认 map-route 的弧线回退，
-  但完整 100,000/200,000 步五目标尚未在该修复后重新验收。直接 `central_gate` 单目标
-  Release 回归通过，不能替代 4→5 验收。
+- **主要工业产品阻塞已关闭**：阿克曼在 `industrial_200k.json` 的重复结构恢复阶段曾可能
+  进入 `recovery-tracking`、动态逃逸或安全停车；经过量程、Hybrid-A* cusp、路线刷新和
+  恢复隔离修复后，Release 100,000 步预算在第 74,560 步完成五目标、0 碰撞，4→5 已实测
+  通过。仍需重复长测和其他软件发布门禁，不能把单次通过当作全部 1.0 证据。
 - **已关闭一类阿克曼终端抖动**：路线管线此前把 Ackermann 中心线偏差严格按
   `footprint_radius_m` 判定。`signal_town` 的实际跟踪在栅格量化和转向响应下会短暂达到
   0.40–0.51 m，导致仍在执行的 Hybrid-A* 尖点被重复重规划，表现为前进、停车、倒车循环。
@@ -104,9 +104,10 @@
 ### 当前执行顺序
 
 1. 先修并回归阿克曼制动尾段锁存、墙边速度抖动和终端 pose 对齐；每个修复单独提交。
-2. 在清理残留 `sim_viewer` 进程后，运行 Release `industrial_200k_mission` 五目标，保留
+2. 工业阿克曼 4→5 已在 74,560 步、5/5、0 碰撞的 Release 长测中通过；保留
    `localization_action`、候选束、Safety/Validator 拒绝、`requested_gear`、路线段、
-   `route_replan_requested` 和 execution-monitor 证据，直到 4→5 通过或明确安全停车原因。
+   `route_replan_requested` 和 execution-monitor 证据，做重复长测并转入 freshness、
+   Hessian、回环和 Place Recognition 门禁。
 3. 再完成 freshness、完整 Hessian、历史回环和 Place Recognition 的证据优先实现。
 4. 最后推进 Coordinator runtime 拆分和实板 HIL/profile 验收；3D LIO 单独立项，不把现有
    2D surveyed-map 链路宣称为紧耦合 LIO。
@@ -1507,3 +1508,8 @@ ROBOT。
   0 碰撞；中央目标附近仍有 67 个有效回波，估计与 SIM 真值的离线位置差约 0.08 m，
   `safety=nominal`，没有错误锁存。当前仍需完成 `central_gate`、`east_terminal`、
   `south_yard`，因此发布门禁保持未完成。
+- 继续至 `--steps=100000` 后在第 74,560 步提前完成全部五目标，结果为 5/5、0 碰撞、
+  464.79 m；`east_terminal` 完成后进入 `south_yard` 的 4→5 段没有恢复弧线死循环、
+  execution fault 或 Safety 锁存。五个目标的 SIM truth miss 为 0.135/0.049/0.049/
+  0.208/0.257 m，最终状态为 `goal_hold/arrived/stop`。这条长测关闭了当前工业阿克曼
+  发布阻塞；后续仍需重复运行与其他定位/回环门禁，不能把单次长测当成全部 1.0 证据。
