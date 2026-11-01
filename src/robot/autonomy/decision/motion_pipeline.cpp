@@ -43,6 +43,7 @@ void MotionDecisionPipeline::reset() {
  observation_curve_active_ = false;
  observation_curve_elapsed_s_ = 0.0;
  observation_curve_sign_ = 0.0;
+ observation_motion_elapsed_s_ = 0.0;
 }
 
 MotionDecisionResult MotionDecisionPipeline::run(
@@ -229,6 +230,15 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const bool observation_recovery_required =
      observation_motion_requested &&
      (car_like || !planner_motion_available);
+ if (!observation_recovery_required) {
+   observation_motion_elapsed_s_ = 0.0;
+ }
+ const double observation_motion_budget_s = std::max(
+     0.0, config_.observation_motion_budget_s);
+ const bool observation_motion_budget_available =
+     observation_motion_elapsed_s_ + 1e-9 < observation_motion_budget_s;
+ const bool observation_motion_budget_exhausted =
+     observation_recovery_required && !observation_motion_budget_available;
  if (!observation_recovery_required || !forward_blocked) {
    observation_reverse_active_ = false;
    observation_reverse_elapsed_s_ = 0.0;
@@ -609,7 +619,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  // geometry for relocalization. Keep the valid-pose and local-evidence gates;
  // every crawl candidate still passes the independent static, dynamic,
  // braking and terrain validator before it can reach the controller.
- if (recovery_required && est.valid &&
+ if (recovery_required && !observation_motion_budget_exhausted && est.valid &&
  (local_evidence || forward_blocked)) {
  const auto consider_recovery = [&](const LocalCandidate& candidate,
  std::size_t order, bool reachable_speed) {
@@ -721,6 +731,10 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
 
  if (have_recovery) {
+ if (observation_recovery_required) {
+   observation_motion_elapsed_s_ += std::max(
+       0.0, config_.decision_period_s);
+ }
  if (observation_recovery_required && observation_reverse_trigger &&
      best_recovery.candidate.forward_mps < -1e-6) {
    observation_reverse_active_ = true;

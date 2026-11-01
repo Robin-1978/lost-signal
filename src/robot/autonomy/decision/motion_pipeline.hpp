@@ -60,6 +60,10 @@ class MotionDecisionPipeline {
  // car-like base cannot safely expose new geometry by straight motion.  It is
  // committed to one steering sign and expires quickly to prevent circling.
  double observation_curve_budget_s = 1.0;
+ // Straight observation motion is bounded as well. Once this elapsed budget
+ // is consumed without an independent localization correction, hold instead
+ // of driving indefinitely on a stale map-frame hypothesis.
+ double observation_motion_budget_s = 2.0;
  platform::MotionDynamicsPolicy motion;
  double decision_period_s = 0.1;
  // Dynamic escape is released only after a stationary rollout retains this
@@ -111,6 +115,7 @@ class MotionDecisionPipeline {
  bool observation_curve_active_ = false;
  double observation_curve_elapsed_s_ = 0.0;
  double observation_curve_sign_ = 0.0;
+ double observation_motion_elapsed_s_ = 0.0;
 };
 
 } // namespace lost_signal::robot::autonomy
