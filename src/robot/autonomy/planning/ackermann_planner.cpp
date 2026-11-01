@@ -152,6 +152,9 @@ struct AckermannPlanner::SearchState {
  std::unordered_map<std::uint64_t, double> best;
  std::vector<Node> nodes;
  std::priority_queue<Entry, std::vector<Entry>, EntryGreater> open;
+ int relaxed_goal_node = -1;
+ double relaxed_goal_heading_error =
+     std::numeric_limits<double>::infinity();
 };
 
 AckermannPlanner::AckermannPlanner() : AckermannPlanner(Config{}) {}
@@ -301,6 +304,19 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  guide_distance_m += std::hypot(to.x_m - from.x_m, to.y_m - from.y_m);
  ++endpoint;
  }
+ // Keep a real approach window before the semantic terminal pose. A raster
+ // guide can leave only a few cells after its last look-ahead anchor, which
+ // gives a car no room to trade position for heading and causes repeated
+ // terminal reverse searches. Move that anchor back along the already
+ // validated guide while preserving at least one primitive for the segment.
+ const double minimum_terminal_approach_m = std::max(
+     config_.corridor_radius_m, 2.0 * minimum_turning_radius_m);
+ while (endpoint + 1 < state.guide.points.size() &&
+        state.guide_remaining_m[endpoint] <
+            minimum_terminal_approach_m &&
+        endpoint > state.segment_start_index + 1) {
+   --endpoint;
+ }
  state.segment_goal_index = endpoint;
  if (endpoint + 1 == state.guide.points.size()) {
  state.segment_goal = state.goal;
@@ -337,6 +353,9 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  state.segment_start_gear, state.segment_start_curvature,
  state.segment_start_index});
  state.best.emplace(start_key, 0.0);
+ state.relaxed_goal_node = -1;
+ state.relaxed_goal_heading_error =
+     std::numeric_limits<double>::infinity();
  const double remaining_to_segment_m = std::max(
  0.0, state.guide_remaining_m[state.segment_start_index] -
  state.guide_remaining_m[state.segment_goal_index]);
@@ -489,24 +508,50 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  const double distance = std::hypot(
  state.segment_goal.x_m - current.x,
  state.segment_goal.y_m - current.y);
+ const bool intermediate_segment =
+     state.segment_goal_index + 1 < state.guide.points.size();
  const double connector_heading_limit = std::min(
- config_.goal_heading_tolerance_rad,
- maximum_curvature * std::max(distance, 1e-6));
+     config_.goal_heading_tolerance_rad,
+     maximum_curvature * std::max(distance, 1e-6));
+ const bool heading_reached =
+     std::abs(core::wrap_angle(state.segment_goal.yaw_rad - current.yaw)) <=
+     connector_heading_limit + 1e-9;
+ const double intermediate_heading_limit = std::min(
+     core::kPi,
+     config_.goal_heading_tolerance_rad + 0.5);
+ const bool intermediate_heading_reached =
+     std::abs(core::wrap_angle(state.segment_goal.yaw_rad - current.yaw)) <=
+     intermediate_heading_limit + 1e-9;
+ // A guide waypoint is a bounded look-ahead anchor, not a terminal pose.
+ // Requiring its tangent to be reached before advancing can deadlock at a
+ // grid corner: a car may arrive at the anchor safely while completing the
+ // steering transition over the next guide segment. Only the final
+ // semantic goal keeps the strict pose connector contract.
  if (entry.node != 0 && distance <= config_.goal_position_tolerance_m &&
- std::abs(core::wrap_angle(state.segment_goal.yaw_rad - current.yaw)) <=
- connector_heading_limit + 1e-9) {
+     (intermediate_heading_reached || heading_reached)) {
  // The exact-goal connector is part of the route and must respect the same
  // bicycle curvature and steering-rate envelope as every search primitive.
  // A near-goal lattice state is not sufficient by itself: an arbitrary
  // straight snap can introduce an impossible final steering reversal.
  if (segment_is_free(current.x, current.y,
  state.segment_goal.x_m, state.segment_goal.y_m) &&
- feasible_terminal_connector(
- current.x, current.y, current.yaw, current.curvature,
- current.gear, state.segment_goal, config_)) {
+     (intermediate_segment || feasible_terminal_connector(
+         current.x, current.y, current.yaw, current.curvature,
+         current.gear, state.segment_goal, config_))) {
  goal_node = entry.node;
  break;
  }
+ }
+ if (entry.node != 0 && intermediate_segment &&
+     distance <= config_.goal_position_tolerance_m &&
+     segment_is_free(current.x, current.y,
+                     state.segment_goal.x_m, state.segment_goal.y_m)) {
+   const double heading_error = std::abs(core::wrap_angle(
+       state.segment_goal.yaw_rad - current.yaw));
+   if (heading_error < state.relaxed_goal_heading_error) {
+     state.relaxed_goal_heading_error = heading_error;
+     state.relaxed_goal_node = entry.node;
+   }
  }
 
  for (int gear_slot = 0; gear_slot < state.dirs; ++gear_slot) {
@@ -620,13 +665,19 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  }
  if (goal_node < 0) {
  if (state.open.empty()) {
- return fail("Hybrid-A* segment exhausted its reachable sparse states");
+   if (state.relaxed_goal_node >= 0) {
+     goal_node = state.relaxed_goal_node;
+   } else {
+     return fail("Hybrid-A* segment exhausted its reachable sparse states");
+   }
  }
- if (config_.max_expansions >= 0 &&
- state.segment_expanded >= config_.max_expansions) {
- return fail("Hybrid-A* segment reached its diagnostic expansion limit");
+ if (goal_node < 0) {
+   if (config_.max_expansions >= 0 &&
+       state.segment_expanded >= config_.max_expansions) {
+     return fail("Hybrid-A* segment reached its diagnostic expansion limit");
+   }
+   return fail("Hybrid-A* segment reached its diagnostic expansion limit");
  }
- return fail("Hybrid-A* segment reached its diagnostic expansion limit");
  }
 
  std::vector<SearchState::Node> path;
@@ -655,18 +706,34 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  }
  const double heading_delta = core::wrap_angle(
  state.segment_goal.yaw_rad - last.yaw_rad);
- const double signed_distance = last.gear < 0
- ? -connector_distance : connector_distance;
- terminal_curvature =
- 2.0 * std::sin(0.5 * heading_delta) / signed_distance;
- state.assembled.points.push_back({
- state.segment_goal.x_m, state.segment_goal.y_m,
- core::wrap_angle(state.segment_goal.yaw_rad), last.gear});
+ const bool intermediate_segment =
+     state.segment_goal_index + 1 < state.guide.points.size();
+ if (intermediate_segment &&
+     connector_distance <= config_.goal_position_tolerance_m) {
+   // The connector is only a positional snap to the bounded guide anchor;
+   // retain the physically reached tangent and curvature for the next
+   // segment's kinematic search.
+   state.assembled.points.push_back({
+       state.segment_goal.x_m, state.segment_goal.y_m, last.yaw_rad,
+       last.gear});
  } else {
+   const double signed_distance = last.gear < 0
+       ? -connector_distance : connector_distance;
+   terminal_curvature =
+       2.0 * std::sin(0.5 * heading_delta) / signed_distance;
+   state.assembled.points.push_back({
+       state.segment_goal.x_m, state.segment_goal.y_m,
+       core::wrap_angle(state.segment_goal.yaw_rad), last.gear});
+ }
+ } else {
+ const bool intermediate_segment =
+     state.segment_goal_index + 1 < state.guide.points.size();
  state.assembled.points.back().x_m = state.segment_goal.x_m;
  state.assembled.points.back().y_m = state.segment_goal.y_m;
- state.assembled.points.back().yaw_rad =
- core::wrap_angle(state.segment_goal.yaw_rad);
+ if (!intermediate_segment) {
+   state.assembled.points.back().yaw_rad =
+       core::wrap_angle(state.segment_goal.yaw_rad);
+ }
  }
  // Search nodes already carry the physical bicycle yaw and a steering
  // curvature state. Replacing those headings with chord averages would
