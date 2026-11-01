@@ -5,6 +5,7 @@
 
 #include "robot/autonomy/coordinator.hpp"
 #include "robot/autonomy/safety/safety.hpp"
+#include "robot/autonomy/validation/validator.hpp"
 
 namespace {
 lost_signal::robot::iface::ObservationFrame fresh_obs(
@@ -287,6 +288,83 @@ int main() {
  iface::ChannelHealth ch{};
  (void)coord.update(iface::MapSnapshot{}, ch, 40'000'000);
  assert(coord.last_safety().state == SafetyState::kNominal);
+ }
+
+ // Safety and Validator must reject the same braking-tail hazards even
+ // though Safety only sees raw scan evidence. Both start from the measured
+ // twist: a low requested speed cannot hide a chassis still moving at 1.5
+ // m/s, and a crossing track cannot be accepted by one gate while rejected
+ // by the other.
+ {
+   SafetyConfig safety_config;
+   safety_config.footprint_radius_m = 0.1;
+   safety_config.static_margin_m = 0.1;
+   safety_config.brake_decel_mps2 = 4.0;
+   safety_config.command_reaction_time_s = 0.2;
+   SafetyMonitor safety(safety_config);
+   ClearanceValidatorConfig validator_config;
+   validator_config.footprint_radius_m = 0.1;
+   validator_config.extra_margin_m = 0.1;
+   validator_config.brake_decel_mps2 = 4.0;
+   validator_config.actuator_response_delay_s = 0.2;
+   ClearanceValidator validator(validator_config);
+   EstimatedState moving;
+   moving.valid = true;
+   moving.stamp_ns = 1'000'000;
+   moving.forward_mps = 1.5;
+   PerceptionResult open;
+   open.scan_ok = true;
+   iface::ChannelHealth ch{};
+   iface::ObservationFrame obstacle = fresh_obs(10, 1'000'000, 5.0f);
+   obstacle.ranges_m = {0.65f};
+   obstacle.scan_angle_min_rad = 0.0;
+   obstacle.scan_angle_increment_rad = 1.0;
+   iface::MotionCommand braking;
+   braking.space = iface::CommandSpace::kYawRate;
+   braking.stamp_ns = 1'000'000;
+   braking.expiry_ns = 201'000'000;
+   braking.forward_mps = 0.1;
+   const SafetyVerdict clear = safety.evaluate(
+       moving, open, obstacle, ch, 1'000'000);
+   assert(clear.state == SafetyState::kNominal);
+   assert(safety.gate(braking, clear, 1'000'000).is_safe_stop());
+   LocalCandidate braking_candidate;
+   braking_candidate.feasible = true;
+   braking_candidate.forward_mps = braking.forward_mps;
+   const ValidationResult braking_result = validator.validate(
+       braking_candidate, moving, open, obstacle);
+   assert(!braking_result.accepted);
+
+   iface::ObservationFrame crossing = fresh_obs(11, 2'000'000, 5.0f);
+   crossing.ranges_m = {5.0f};
+   crossing.scan_angle_min_rad = 0.0;
+   crossing.scan_angle_increment_rad = 1.0;
+   PerceptionResult traffic = open;
+   DynamicTrack track;
+   track.id = 77;
+   track.prediction_ready = true;
+   track.x_m = 1.0;
+   track.vx_mps = -1.5;
+   traffic.tracks.push_back(track);
+   EstimatedState stopped = moving;
+   stopped.stamp_ns = 2'000'000;
+   stopped.forward_mps = 0.0;
+   const SafetyVerdict dynamic = safety.evaluate(
+       stopped, traffic, crossing, ch, 2'000'000);
+   assert(dynamic.state == SafetyState::kDegraded);
+   assert(dynamic.reason == "dynamic-proximity");
+   iface::MotionCommand forward = braking;
+   forward.stamp_ns = 2'000'000;
+   forward.expiry_ns = 202'000'000;
+   forward.forward_mps = 0.5;
+   assert(safety.gate(forward, dynamic, 2'000'000).is_safe_stop());
+   LocalCandidate forward_candidate;
+   forward_candidate.feasible = true;
+   forward_candidate.forward_mps = forward.forward_mps;
+   const ValidationResult dynamic_result = validator.validate(
+       forward_candidate, stopped, traffic, crossing);
+   assert(!dynamic_result.accepted);
+   assert(dynamic_result.verdict == TrajectoryVerdict::kDynamicCollision);
  }
 
  std::printf("safety ok\n");
