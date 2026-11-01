@@ -12,9 +12,41 @@
 - 安全优先，其次是连续和平滑。模块测试负责算法能力，场景测试负责系统验收。
 - 每个完整阶段独立提交；提交前运行该阶段相关测试，最终再跑全量测试。
 
-## 当前执行队列（2026-10-30）
+## 当前执行队列（2026-11-01，唯一有效）
 
 本节是恢复时唯一有效的执行顺序；下面的阶段记录保留历史证据，不再作为待办清单。
+
+### 本次审查结论
+
+- **已完成且不应重复推进**：阶段 1–7 的软件与 SIM/Viewer 基线、SLAM 回环、Release
+  性能/确定性、四底盘算法回归、3D 跟随平滑、资产与场景验收，以及 PNC 的 Hold/Manual
+  权限语义（`e45a2da`，`test_goal_auth`）均已有代码和回归证据。历史段落中出现的
+  “工作区、待提交”“下一阶段是 D2–D4/E1/E2”是当时的检查点，保留为审计记录，不是当前
+  入口。
+- **当前产品阻塞**：阿克曼在 `industrial_200k.json` 的重复结构恢复阶段仍可能进入
+  `recovery-tracking`、动态逃逸或安全停车；`be10d96` 已封住未确认 map-route 的弧线回退，
+  但完整 100,000/200,000 步五目标尚未在该修复后重新验收。直接 `central_gate` 单目标
+  Release 回归通过，不能替代 4→5 验收。
+- **阿克曼近期验收门**：墙边速度必须在同一安全包络内单调限速，不能出现“减速→加速”抖动；
+  终端 pose 必须先沿可行曲率一次性收敛，只有在独立定位/安全证据不足时才允许有预算倒车，
+  且不得因重复重规划反复换档。验收使用小地图最小场景、`test_dwa`/`test_motion_pipeline`、
+  四底盘任务和工业 4→5 长测。
+- **仍需继续的系统能力**：工业五目标 Release 长测与第 4→5 结构化证据；观测 freshness；
+  完整 3×3 scan-matcher Hessian；历史回环约束/边缘化；Place Recognition；Safety 与
+  Validator 运动模型一致性；Coordinator 的 Observation/Navigation/Motion/Safety runtime
+  收敛。它们不能用放宽 GoalArrival 或 footprint 代替。
+- **外部硬件待验**：MCU/Native HIL 契约、急停、驱动负载、通信延迟和真实 calibration
+  artifact/profile 仍需实板数据；现有 SIM、VirtualMcu 和 host test 只能证明软件契约。
+
+### 当前执行顺序
+
+1. 先修并回归阿克曼墙边速度抖动和终端 pose 对齐；每个修复单独提交。
+2. 在清理残留 `sim_viewer` 进程后，运行 Release `industrial_200k_mission` 五目标，保留
+   `localization_action`、候选束、Safety/Validator 拒绝、`requested_gear`、路线段、
+   `route_replan_requested` 和 execution-monitor 证据，直到 4→5 通过或明确安全停车原因。
+3. 再完成 freshness、完整 Hessian、历史回环和 Place Recognition 的证据优先实现。
+4. 最后推进 Coordinator runtime 拆分和实板 HIL/profile 验收；3D LIO 单独立项，不把现有
+   2D surveyed-map 链路宣称为紧耦合 LIO。
 
 ### 已完成基线
 
@@ -550,7 +582,7 @@
  `industrial_200k_mission central_gate --steps=40000` 现在 14337 步完成、0 碰撞，
  truth miss 0.142 m。完整长测已在定位修复后重新验收，见下节。
 
-### surveyed-map recovery promotion 修复（工作区，待提交）
+### surveyed-map recovery promotion 修复（已完成，`9ed53b6`/`558413c`）
 
 - 原完整工业长测曾出现 `71223 steps, 4/5`：`south_yard` 走廊的 LiDAR 只观测到
   墙面法向和航向，匹配信息矩阵沿走廊方向秩亏；recovery tracker 却把连续的
@@ -1323,6 +1355,24 @@ ROBOT。
  诊断完成 `west_hub`、0 碰撞，在 `north_depot` 的重复结构恢复时保持 `cmd=(0,0)` 安全
  停车，未出现前后倒退逃逸；较长的 100,000/200,000 步进程仍需独立运行并保留第 4 个
  目标附近的定位、gear、route 和 terminal evidence。
+
+### Ackermann bounded curved observation fallback（2026-11-01）
+
+- 恢复阶段的阿克曼候选现在严格分两层：先验证保持当前行驶方向的直行/倒车和可达速度
+  候选；只有这些候选全部被 Validator 拒绝，且车已经降到一周期启动速度以内时，才生成
+  一次前向曲率观察候选。这样可以用侧向激光证据打破重复结构的定位歧义，同时不会让仍有
+  安全直行候选的车辆主动绕弧线。
+- 曲率观察一旦被接受就锁定转向符号，并受 `observation_curve_budget_s` 的短预算限制；
+  预算耗尽或定位恢复后清除状态。曲率、加速度、制动尾和动态障碍仍由同一个 Validator
+  与独立 raw-scan Safety 门复核，未引入目标特化阈值，也不把观察弧当作目标路线。
+- `test_motion_pipeline` 新增“直行可用时不选弧线”和“直行全拒时单向弧线到期停车”回归；
+  Release `motion_pipeline`、`dwa`、`ackermann_planner`、`local_planner_compare`、
+  `actuation` 与 `multichassis_mission` 均通过。提交为 `be10d96`。
+- 这一步解决的是恢复阶段的可观测运动选择，不能替代工业五目标完整长测。此前 22,000 步
+ 复测在 `north_depot` 的重复结构中进入 recovery-tracking，保持零碰撞并安全停车；本次
+ 变更后的短长测已观察到同一阶段优先进入动态逃逸，尚未完成完整预算。下一步继续抓取
+  第 4→5 段的恢复候选、Safety 拒绝和 terminal evidence，再决定是否需要调整恢复的观测
+  节奏或全局候选确认门。
 - 当前下一步保持证据优先级：先完成工业大图长测并筛选 `east_terminal` 的
   `localization_action`、`requested_gear`、`route_segment`、`route_replan_requested` 和
   execution monitor 事件；若长测稳定，再继续 PNC 的 Goal/Manual authority 状态机收敛，
