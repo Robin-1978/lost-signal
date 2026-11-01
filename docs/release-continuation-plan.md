@@ -28,7 +28,7 @@ Robot Simu 是一个用真实机器人软件传播机器人知识的产品：同
 
 | 范围 | 结果 | 证据 |
 |---|---:|---|
-| Release 非 long | 94/94 | `ctest --test-dir build-release -LE long`，288.83 s |
+| Release 非 long | 94/94 | `ctest --test-dir build-release -LE long`，最新重跑 285.59 s |
 | Debug 非 long | 94/94 | `ctest --test-dir build -LE long`，642.55 s |
 | Release long | 3/3 | 工业五目标 849.01 s；direct 208.41 s；`signal_town` 27.15 s |
 | Debug long | 3/3 | 工业五目标 1148.11 s；direct 273.92 s；`signal_town` 47.18 s |
@@ -36,7 +36,7 @@ Robot Simu 是一个用真实机器人软件传播机器人知识的产品：同
 | Ackermann 路线净空 | A* 0.177 m；Hybrid-A* 0.235 m | `clearance_cost_per_m=6.0`，硬包络不变 |
 | Manual authority | 过期立即安全停车 | `goal_auth` 使用 1 s decision period 回归 |
 
-最终 HEAD：`95dd8e3`。主要功能提交：`b57b3d0`（Ackermann 净空）、`19d2da3`（Manual watchdog）；完整历史见归档文件。
+最终 HEAD：`2827e76`。主要功能提交：`b57b3d0`（Ackermann 净空）、`19d2da3`（Manual watchdog）；完整历史见归档文件。
 
 ## 软件架构和安全契约
 
