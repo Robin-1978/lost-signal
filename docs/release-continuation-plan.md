@@ -182,10 +182,10 @@
 
 1. **已完成**：动态横穿恢复排序与 raw-scan 恢复门修复已提交（`e747ddd`、`c4042e4`），
    工业五目标 Release 重复长测和 Debug 对照通过；继续保留结构化 trace 作为发布证据。
-2. **当前软件阻塞**：继续完成 Safety、Validator 与底盘执行器的制动尾运动模型一致性矩阵，
-   覆盖静态障碍、动态横穿、低抓地、反馈过期和命令 watchdog；起始实测 twist 对齐已提交
-   （`3cf62ce`），剩余矩阵完成后独立提交并跑 Debug/Release 定向回归。
-3. **PNC 收敛**：把 ObservationRuntime、NavigationRuntime、MotionRuntime、SafetyRuntime
+2. **已完成的软件安全矩阵基线**：Safety 与 Validator 对高实测速度低制动命令、动态横穿的
+   共同拒绝已加入 `test_safety`（`208caa8`）；低抓地地形、反馈过期、watchdog、硬制动尾和
+   执行器 HIL 已有独立回归。后续只保留跨底盘/实板数据的扩展矩阵，不再把这项作为纯软件阻塞。
+3. **PNC 收敛（当前入口）**：把 ObservationRuntime、NavigationRuntime、MotionRuntime、SafetyRuntime
    和 CommandArbiter 的独立状态/接口收敛到 Coordinator 调度边界，保持 Goal 生命周期与
    Hold/Manual authority 一致；不在 Coordinator 重新实现规划和安全算法。
 4. **发布矩阵**：重复 `signal_town`、四底盘、动态场景、工业 4→5、确定性、truth-isolation/
@@ -218,8 +218,8 @@
   回环约束保留和 freshness 已完成。当前仍需把长测证据、性能和确定性门禁统一纳入发布报告；
   产品能力边界仍是 wheel/IMU + 2D LiDAR，不宣称紧耦合 3D LIO。
 - **PNC**：Hold/Manual authority 语义已有修复，Safety/Validator 起始 twist 已对齐；剩余是
-  制动尾一致性矩阵和 Observation/Navigation/Motion/Safety runtime、CommandArbiter 的接口
-  收敛，Coordinator 继续只做调度。
+  制动尾跨底盘/实板数据扩展和 Observation/Navigation/Motion/Safety runtime、CommandArbiter
+  的接口收敛，Coordinator 继续只做调度。软件基线矩阵已由 `208caa8` 固化。
 - **发布与硬件**：Debug 全量 CTest、Release 全量 CTest、Viewer/headless、truth-isolation、
   性能/确定性、VirtualMcu/native HIL 软件门禁仍需收口；真实 MCU 急停、负载、通信延迟和
   calibration/profile 是 1.0 的实板阻塞，不能用 SIM 结果替代。
@@ -1665,3 +1665,14 @@ ROBOT。
   execution fault 或 Safety 锁存。五个目标的 SIM truth miss 为 0.135/0.049/0.049/
   0.208/0.257 m，最终状态为 `goal_hold/arrived/stop`。这条长测关闭了当前工业阿克曼
   发布阻塞；后续仍需重复运行与其他定位/回环门禁，不能把单次长测当成全部 1.0 证据。
+
+### Safety/Validator 制动尾一致性基线（2026-11-01）
+
+- `test_safety` 新增同一输入的双门回归：底盘实测仍以 1.5 m/s 前进而新命令只有 0.1 m/s
+  时，Safety 的 raw-scan reaction + braking sweep 与 Validator 的 measured-twist rollout
+  都拒绝；动态横穿 track 也同时被 Validator 判为 `kDynamicCollision`、被 Safety 判为
+  `dynamic-proximity` 并拒绝最终命令。该测试不共享规划器状态，也不引入 SIM 真值。
+- Debug/Release `safety`、`execution_monitor`、`actuation` 均通过；低抓地 terrain、反馈
+  过期、硬制动尾、watchdog 和 Native HIL 的既有回归继续作为矩阵的其他行。软件安全基线
+  提交为 `208caa8`，下一步是 PNC runtime 收敛和跨底盘/实板扩展，而不是放宽 Safety 或
+  footprint。
