@@ -93,6 +93,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/mapping/mapper.cpp
   src/robot/autonomy/mapping/pose_graph.cpp
   src/robot/autonomy/mapping/loop_closure.cpp
+  src/robot/autonomy/mapping/place_recognition.cpp
   src/robot/autonomy/mapping/slam.cpp
   src/robot/autonomy/perception/lidar_perception.cpp
   src/robot/autonomy/planning/astar_planner.cpp

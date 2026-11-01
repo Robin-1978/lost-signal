@@ -275,6 +275,7 @@ struct SlamSession::LoopSearchWork {
  struct Candidate {
  std::uint64_t id = 0;
  double distance = 0.0;
+ double place_similarity = -1.0;
  Pose2 pose;
  };
  struct VerifiedCandidate {
@@ -300,7 +301,8 @@ struct SlamSession::LoopSearchWork {
  std::string last_rejection = "no candidate reached the matcher";
 };
 
-SlamSession::SlamSession(SlamConfig config) : config_(config) {}
+SlamSession::SlamSession(SlamConfig config)
+    : config_(config), place_recognizer_(config.place_recognition) {}
 
 SlamSession::~SlamSession() = default;
 
@@ -313,6 +315,7 @@ void SlamSession::reset() {
   loop_constraints_.clear();
   archived_loop_priors_.clear();
   next_archived_id_ = 1;
+  place_recognizer_.reset();
  closed_historical_keyframes_.clear();
   last_attempt_s_ = -1.0e9;
   keyframes_at_last_attempt_ = 0;
@@ -389,11 +392,14 @@ void SlamSession::ingest(const EstimatedState& est,
                                            // optimizer skips disconnected parts
   }
   keyframes_.push_back(std::move(kf));
+  place_recognizer_.add(keyframes_.back().id, keyframes_.back().ranges_m,
+                        keyframes_.back().static_ranges_m);
   // Ring: drop the oldest node with its constraints once over budget. The
   // backend has no removal, so archive any loop factors touching that node
   // and rebuild the retained tail (bounded, rare).
   if (keyframes_.size() > config_.max_keyframes && config_.max_keyframes > 1) {
     archive_dropped_loop_constraints(keyframes_.front().id);
+    place_recognizer_.remove(keyframes_.front().id);
     keyframes_.erase(keyframes_.begin());
     rebuild_graph();
   }
@@ -1297,7 +1303,7 @@ SlamLoopResult SlamSession::try_close_loops(
  config_.gate.maximum_candidate_distance_m,
  config_.match_search_translation_m);
  if (distance <= candidate_radius_m) {
- loop_search_->candidates.push_back({kf.id, distance, kf.pose});
+     loop_search_->candidates.push_back({kf.id, distance, -1.0, kf.pose});
  }
  }
  std::sort(loop_search_->candidates.begin(),
@@ -1313,8 +1319,34 @@ SlamLoopResult SlamSession::try_close_loops(
  // at which hypotheses are the same mode, so candidate suppression adds no
  // second place-recognition threshold. Preserve a pending anchor first so
  // temporal confirmation can verify the exact same causal submap.
- const std::vector<LoopSearchWork::Candidate> retrieved =
- std::move(loop_search_->candidates);
+ std::vector<LoopSearchWork::Candidate> retrieved =
+     std::move(loop_search_->candidates);
+ // Place recognition is a retrieval hint only. It reorders geometrically
+ // eligible historical anchors so distinctive revisits receive matcher
+ // budget first; the scan-to-submap, reverse and loop gates still decide
+ // whether any candidate is accepted.
+ const auto place_candidates = place_recognizer_.query(
+     obs.ranges_m, obs.static_ranges_m, config_.max_candidates_per_attempt);
+ for (auto& candidate : retrieved) {
+   const auto match = std::find_if(
+       place_candidates.begin(), place_candidates.end(),
+       [&](const PlaceRecognitionCandidate& place) {
+         return place.keyframe_id == candidate.id;
+       });
+   if (match != place_candidates.end()) {
+     candidate.place_similarity = match->similarity;
+   }
+ }
+ std::stable_sort(
+     retrieved.begin(), retrieved.end(),
+     [](const LoopSearchWork::Candidate& lhs,
+        const LoopSearchWork::Candidate& rhs) {
+       if (lhs.place_similarity != rhs.place_similarity) {
+         return lhs.place_similarity > rhs.place_similarity;
+       }
+       if (lhs.distance != rhs.distance) return lhs.distance < rhs.distance;
+       return lhs.id < rhs.id;
+     });
  const auto same_historical_mode = [&](
  const LoopSearchWork::Candidate& a,
  const LoopSearchWork::Candidate& b) {

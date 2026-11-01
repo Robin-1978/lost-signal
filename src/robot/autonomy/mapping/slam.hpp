@@ -9,6 +9,7 @@
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/localization/scan_matcher.hpp"
 #include "robot/autonomy/mapping/loop_closure.hpp"
+#include "robot/autonomy/mapping/place_recognition.hpp"
 #include "robot/autonomy/mapping/pose_graph.hpp"
 #include "robot/core/time.hpp"
 #include "robot/iface/map.hpp"
@@ -94,6 +95,9 @@ struct SlamConfig {
   // poses whose displacement leaves the matcher's position covariance along
   // an unmodelled direction are aliases, not evidence of lateral skid.
   double motion_evidence_sigma = 3.0;
+  // Place recognition retrieves historical scan candidates; geometric
+  // bidirectional matching remains the only source of an accepted loop.
+  PlaceRecognitionConfig place_recognition;
 };
 
 struct SlamKeyframe {
@@ -278,6 +282,7 @@ class SlamSession {
   };
   std::vector<ArchivedLoopPrior> archived_loop_priors_;
   std::uint64_t next_archived_id_ = 1;
+  PlaceRecognizer place_recognizer_;
  // One historical submap contributes at most one loop edge. Reusing the
  // same stored scans for several nearby recent keyframes would count
  // correlated evidence as independent constraints.

@@ -111,7 +111,7 @@
 3. freshness 已完成并提交：定位健康度现在同时检查协方差和估计年龄；默认 0.5 s
    没有新鲜来源观测即触发受全局重试节流保护的重定位。`test_localization` 覆盖过期估计，
    退化走廊拒绝回放保持原位，且不会把 freshness 与 scan-match 失败计数混用。下一项是
-   Place Recognition 的证据优先实现；完整 Hessian 与历史回环保留已完成并提交。
+   完整 Hessian、历史回环保留与 Place Recognition 的证据优先实现已完成并提交。
 4. 最后推进 Coordinator runtime 拆分和实板 HIL/profile 验收；3D LIO 单独立项，不把现有
    2D surveyed-map 链路宣称为紧耦合 LIO。
 
@@ -144,6 +144,16 @@
   后续窗口继续裁剪时，已吸收到新边界的先验不会引入未知节点或断开图。
 - `slam`、`localization`、`loop_closure` 回归通过。该实现是有界边界先验，不宣称完整
   Schur 补边缘化；若产品需要跨任意长度的稠密历史地图，仍需单独的稀疏边缘化设计和性能门禁。
+
+### 2026-11-01 Place Recognition 检索层
+
+- 新增 `PlaceRecognizer`：把每个 LiDAR 关键帧压缩成循环扇区距离描述子，按最佳圆周移位
+  返回历史地点候选和相似度。可用 `static_ranges` 时先排除动态回波，候选数量和最低相似度
+  都有明确上限，查询顺序对相似度和 keyframe id 稳定排序。
+- `SlamSession` 在建立/淘汰关键帧时同步维护描述子；回环检索只把相似历史地点排在几何
+  候选前面以优先获得 matcher 预算，不把描述子相似度当成位姿或回环准入。候选仍必须经过
+  双向 scan-to-submap、独立窗口 overlap/margin、Survey map 一致性和 temporal confirmation。
+- `test_slam` 覆盖循环航向移位检索和动态回波过滤；`slam`、`localization` 回归通过。
 
 ### 已完成基线
 

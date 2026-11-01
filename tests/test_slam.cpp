@@ -1,9 +1,11 @@
 #include <cassert>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
 #include "robot/autonomy/mapping/loop_closure.hpp"
+#include "robot/autonomy/mapping/place_recognition.hpp"
 #include "robot/autonomy/mapping/pose_graph.hpp"
 #include "robot/autonomy/mapping/slam.hpp"
 
@@ -72,6 +74,43 @@ int main() {
     Pose2 ident = compose_pose(a, inv);
     assert(std::hypot(ident.position.x, ident.position.y) < 1e-9);
     assert(std::abs(core::wrap_angle(ident.heading_rad)) < 1e-9);
+  }
+
+  // 1a. Place recognition retrieves a cyclically shifted scan, while static
+  // ranges keep a transient actor out of the stored signature. Retrieval is
+  // only a candidate ordering aid; no pose is produced here.
+  {
+    PlaceRecognitionConfig config;
+    config.sector_count = 8;
+    config.minimum_returns = 4;
+    config.maximum_candidates = 4;
+    config.minimum_similarity = 0.5;
+    PlaceRecognizer recognizer(config);
+    std::vector<float> scan(16, 1.0f);
+    for (std::size_t i = 0; i < scan.size(); ++i) {
+      scan[i] = static_cast<float>(1.0 + (i % 8) * 0.25);
+    }
+    assert(recognizer.add(11, scan));
+    std::vector<float> rotated(scan.size());
+    for (std::size_t i = 0; i < scan.size(); ++i) {
+      rotated[i] = scan[(i + 4) % scan.size()];
+    }
+    const auto matches = recognizer.query(rotated);
+    assert(!matches.empty());
+    assert(matches.front().keyframe_id == 11);
+    assert(matches.front().similarity > 0.99);
+
+    std::vector<float> static_scan = scan;
+    static_scan[3] = 0.0f;  // actor rejected by the static pipeline
+    assert(recognizer.add(12, scan, static_scan));
+    const auto static_matches = recognizer.query(scan);
+    const auto static_match = std::find_if(
+        static_matches.begin(), static_matches.end(),
+        [](const PlaceRecognitionCandidate& candidate) {
+          return candidate.keyframe_id == 12;
+        });
+    assert(static_match != static_matches.end());
+    assert(static_match->similarity > 0.95);
   }
 
   // 2. Backend: drifted chain + loop constraint pulls the tail back.
