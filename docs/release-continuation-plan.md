@@ -24,9 +24,13 @@
   “工作区、待提交”“下一阶段是 D2–D4/E1/E2”是当时的检查点，保留为审计记录，不是当前
   入口。
 - **主要工业产品阻塞已关闭**：阿克曼在 `industrial_200k.json` 的重复结构恢复阶段曾可能
-  进入 `recovery-tracking`、动态逃逸或安全停车；经过量程、Hybrid-A* cusp、路线刷新和
-  恢复隔离修复后，Release 100,000 步预算在第 74,560 步完成五目标、0 碰撞，4→5 已实测
-  通过。仍需重复长测和其他软件发布门禁，不能把单次通过当作全部 1.0 证据。
+  进入 `recovery-tracking`、动态逃逸或安全停车。此前 Release 连续任务在
+  `central_gate` 停在 `recovery rejected/stop`，但同一目标直接运行可通过；根因是局部栅格
+  重建窗口短暂没有 provenance 时，恢复分支没有使用仍然有效的 raw scan。`c4042e4` 让
+  有效 raw scan 进入有界恢复准入，候选仍逐条经过 Validator、完整制动尾和最终 Safety，
+  不改变 footprint、GoalArrival 或未知栅格可通行语义。修复后 Release 连续任务重复两次均
+  在 71,636 步完成五目标、0 碰撞，Debug 在 83,218 步完成五目标、0 碰撞；4→5 已包含在
+  两次连续证据中。工业恢复阻塞已关闭，后续只保留其他 1.0 发布门禁。
 - **已关闭一类阿克曼终端抖动**：路线管线此前把 Ackermann 中心线偏差严格按
   `footprint_radius_m` 判定。`signal_town` 的实际跟踪在栅格量化和转向响应下会短暂达到
   0.40–0.51 m，导致仍在执行的 Hybrid-A* 尖点被重复重规划，表现为前进、停车、倒车循环。
@@ -39,12 +43,26 @@
   四底盘任务和工业 4→5 长测。
 - **已完成的算法能力**：完整 3×3 scan-matcher Hessian（含平移–航向交叉项）、有界
   Pose Graph 回环约束保留、Place Recognition 检索层均已有独立代码、单测和提交记录；
-  不再把它们列为待办。当前仍需做的是工业五目标 Release 重复长测与第 4→5 结构化
-  证据、Safety/Validator 运动模型一致性复核，以及 Coordinator 的
-  Observation/Navigation/Motion/Safety runtime 收敛。它们不能用放宽 GoalArrival 或
-  footprint 代替。
+  不再把它们列为待办。工业五目标 Release/Debug 长测现在也有重复证据。当前仍需做的是
+  Safety/Validator 运动模型一致性复核、Coordinator 的 Observation/Navigation/Motion/Safety
+  runtime 收敛，以及完整软件发布矩阵；它们不能用放宽 GoalArrival 或 footprint 代替。
 - **外部硬件待验**：MCU/Native HIL 契约、急停、驱动负载、通信延迟和真实 calibration
   artifact/profile 仍需实板数据；现有 SIM、VirtualMcu 和 host test 只能证明软件契约。
+
+### 2026-11-01 工业 Release 恢复门修复验收
+
+- 回归触发条件是连续五目标前两目标完成后进入 `central_gate`：局部规划器仍有候选，
+  但 Validator/制动尾拒绝全部路线候选；局部栅格刚重建且没有 provenance 时，旧恢复门
+  错误地跳过 raw-scan 恢复，发布 `no-plan; recovery rejected/stop` 并永久停车。
+- `MotionDecisionPipeline` 现在把 `perception.scan_ok + observation.scan_valid + 非空 ranges`
+  作为短恢复的等价证据源。它只允许有界恢复候选进入同一 Validator；动态预测、制动尾、
+  曲率/换挡、最终 raw-scan Safety 和执行监控契约均未放宽。未知栅格仍不会成为普通规划的
+  可通行空间。
+- `test_motion_pipeline` 新增局部地图重建但 raw scan 有效的回归。Release 定向
+  `motion_pipeline`、`dwa`、`ackermann_planner` 通过；工业 Release 两次均为
+  `71636 steps, 5/5, 0 collisions, 464.85 m`，Debug 为 `83218 steps, 5/5, 0 collisions`。
+  两次 Release 的五个目标 truth miss 分别为 `0.145/0.104/0.109/0.160/0.238 m`，最终均为
+  `goal_hold/arrived/stop`。
 
 ### 当前 1.0 发布门禁
 
@@ -145,16 +163,18 @@
 
 ### 当前执行顺序
 
-1. 动态横穿恢复排序修复完成后，提交代码与本检查点；继续重复工业 Release 长测。
-2. 工业阿克曼 4→5 已在 74,560 步、5/5、0 碰撞的 Release 长测中通过；保留
-   `localization_action`、候选束、Safety/Validator 拒绝、`requested_gear`、路线段、
-   `route_replan_requested` 和 execution-monitor 证据，重复运行 100,000/200,000 步并补
-   `signal_town`、四底盘、直接 3→4/4→5 的 Release 记录。
-3. freshness、完整 Hessian、历史回环保留和 Place Recognition 已完成并提交；后续只做
-   回归证据，不重新实现。下一项软件能力是 Safety 与 Validator 运动模型一致性复核，以及
-   Coordinator 的 Observation/Navigation/Motion/Safety runtime 收敛。
-4. 最后推进 Coordinator runtime 拆分和实板 HIL/profile 验收；3D LIO 单独立项，不把现有
-   2D surveyed-map 链路宣称为紧耦合 LIO。
+1. **已完成**：动态横穿恢复排序与 raw-scan 恢复门修复已提交（`e747ddd`、`c4042e4`），
+   工业五目标 Release 重复长测和 Debug 对照通过；继续保留结构化 trace 作为发布证据。
+2. **当前软件阻塞**：完成 Safety、Validator 与底盘执行器的制动尾运动模型一致性复核，
+   覆盖静态障碍、动态横穿、低抓地、反馈过期和命令 watchdog；然后独立提交并跑 Debug/
+   Release 定向回归。
+3. **PNC 收敛**：把 ObservationRuntime、NavigationRuntime、MotionRuntime、SafetyRuntime
+   和 CommandArbiter 的独立状态/接口收敛到 Coordinator 调度边界，保持 Goal 生命周期与
+   Hold/Manual authority 一致；不在 Coordinator 重新实现规划和安全算法。
+4. **发布矩阵**：重复 `signal_town`、四底盘、动态场景、工业 4→5、确定性、truth-isolation/
+   boundary、性能与 Viewer/headless 门禁，完成 Debug 全量 CTest 和 Release 全量 CTest。
+5. **硬件门禁**：完成 MCU/Native HIL、急停、驱动负载、通信延迟和 calibration/profile
+   实板记录后才宣称 1.0；3D LIO 另立项目，不把现有 2D surveyed-map 链路宣称为紧耦合 LIO。
 
 ### 2026-11-01 Localization freshness
 
