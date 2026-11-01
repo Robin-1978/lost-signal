@@ -37,8 +37,8 @@
   终端 pose 必须先沿可行曲率一次性收敛，只有在独立定位/安全证据不足时才允许有预算倒车，
   且不得因重复重规划反复换档。验收使用小地图最小场景、`test_dwa`/`test_motion_pipeline`、
   四底盘任务和工业 4→5 长测。
-- **仍需继续的系统能力**：工业五目标 Release 长测与第 4→5 结构化证据；观测 freshness；
-  完整 3×3 scan-matcher Hessian；历史回环约束/边缘化；Place Recognition；Safety 与
+- **仍需继续的系统能力**：工业五目标 Release 长测与第 4→5 结构化证据；完整 3×3
+  scan-matcher Hessian；历史回环约束/边缘化；Place Recognition；Safety 与
   Validator 运动模型一致性；Coordinator 的 Observation/Navigation/Motion/Safety runtime
   收敛。它们不能用放宽 GoalArrival 或 footprint 代替。
 - **外部硬件待验**：MCU/Native HIL 契约、急停、驱动负载、通信延迟和真实 calibration
@@ -108,9 +108,21 @@
    `localization_action`、候选束、Safety/Validator 拒绝、`requested_gear`、路线段、
    `route_replan_requested` 和 execution-monitor 证据，做重复长测并转入 freshness、
    Hessian、回环和 Place Recognition 门禁。
-3. 再完成 freshness、完整 Hessian、历史回环和 Place Recognition 的证据优先实现。
+3. freshness 已完成并提交：定位健康度现在同时检查协方差和估计年龄；默认 0.5 s
+   没有新鲜来源观测即触发受全局重试节流保护的重定位。`test_localization` 覆盖过期估计，
+   退化走廊拒绝回放保持原位，且不会把 freshness 与 scan-match 失败计数混用。下一项是
+   完整 Hessian、历史回环和 Place Recognition 的证据优先实现。
 4. 最后推进 Coordinator runtime 拆分和实板 HIL/profile 验收；3D LIO 单独立项，不把现有
    2D surveyed-map 链路宣称为紧耦合 LIO。
+
+### 2026-11-01 Localization freshness
+
+- `LocalizationSupervisor` 新增 `maximum_estimate_age_s`（默认 0.5 s）。估计年龄由
+  `LocalizationSystem` 根据当前 tick 与估计时间戳计算；时间戳无效、倒退或超过阈值时，
+  即使位置/航向协方差仍然很小，也只能进入受 `global_retry_interval_s` 限制的全局恢复。
+- freshness 是观测新鲜度契约，不是局部匹配失败计数。正常新鲜估计仍按原有局部修正节奏运行；
+  退化走廊的拒绝回放测试保持位姿与协方差不变，并显式把回放时间限制在 freshness 窗口内。
+- 定向回归：`localization`、`dwa`、`motion_pipeline`、`ackermann_planner` 全部通过。
 
 ### 已完成基线
 

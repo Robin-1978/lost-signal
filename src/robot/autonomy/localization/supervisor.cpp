@@ -82,10 +82,17 @@ LocalizationAction LocalizationSupervisor::next(
   const bool finite_uncertainty =
       std::isfinite(health.position_sigma_m) &&
       std::isfinite(health.heading_sigma_rad);
+  const bool finite_age = std::isfinite(health.age_s) && health.age_s >= 0.0;
+  const bool estimate_stale =
+      !finite_age ||
+      (std::isfinite(config_.maximum_estimate_age_s) &&
+       config_.maximum_estimate_age_s >= 0.0 &&
+       health.age_s > config_.maximum_estimate_age_s);
   const bool pose_uncertain =
       !finite_uncertainty ||
       health.position_sigma_m >= config_.lost_position_sigma_m ||
-      health.heading_sigma_rad >= config_.lost_heading_sigma_rad;
+      health.heading_sigma_rad >= config_.lost_heading_sigma_rad ||
+      estimate_stale;
  // A rejected scan match is weak negative evidence: wheel/IMU odometry can
  // remain well constrained in feature-poor space. Global recovery begins
  // only when the fused state is invalid or its covariance says the local
@@ -102,6 +109,8 @@ LocalizationAction LocalizationSupervisor::next(
       if (reason) {
         *reason = !finite_uncertainty
                       ? "pose covariance is invalid"
+                      : estimate_stale
+                            ? "estimate is stale"
                       : pose_uncertain
                             ? "pose covariance exceeded recovery threshold"
  : !health.valid

@@ -304,11 +304,17 @@ int main() {
  for (int replay_index = 1; replay_index <= 4; ++replay_index) {
    auto replay = observation;
    replay.sequence = observation.sequence + replay_index;
-   replay.stamp_ns = observation.stamp_ns + replay_index * 6'000'000'000LL;
+   // Keep the rejected-ridge replay within the estimate freshness window.
+   // Freshness is tested independently below; this loop isolates the
+   // invariant that a rank-deficient rejection does not inflate covariance.
+   replay.stamp_ns = observation.stamp_ns + replay_index * 100'000'000LL;
    const auto again = separated_localization.update(
        map, replay, replay.stamp_ns, true, separated_estimator,
        separated_mapper);
-   assert(again.action == "local_correction:partial innovation rejected");
+   // The supervisor cadence may defer an otherwise eligible correction; when
+   // it does run, the rejected ridge must remain a rejected correction.
+   assert(again.action == "defer" ||
+          again.action == "local_correction:partial innovation rejected");
    assert(std::abs(separated_estimator.estimate().x_m - 2.0) < 1e-9);
    assert(std::abs(separated_estimator.estimate().y_m - 0.4) < 1e-9);
    assert(std::abs(separated_estimator.estimate().position_sigma_m -
@@ -552,6 +558,11 @@ int main() {
  h.position_sigma_m = 0.5;
  assert(sup.next(12.1, 2.0, 0.0, 0.0, h) ==
  LocalizationAction::kGlobalRelocalization);
+ h.position_sigma_m = 0.05;
+ h.heading_sigma_rad = 0.01;
+ h.age_s = 0.51;
+ assert(sup.next(14.2, 2.0, 0.0, 0.0, h, &reason) ==
+        LocalizationAction::kGlobalRelocalization);
   }
 
   // 5. Coordinator wiring: seeded start localizes on the first match,

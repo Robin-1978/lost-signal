@@ -43,6 +43,10 @@ struct LocalizationSupervisorConfig {
   double minimum_translation_m = 0.05;
   double minimum_heading_rad = 0.02;
   double maximum_idle_interval_s = 5.0;  // stationary robots still re-check
+  // An estimate whose source observations have stopped being refreshed is
+  // no longer a valid map-frame prior, even when its covariance is small.
+  // This is a freshness contract, not a scan-match failure counter.
+  double maximum_estimate_age_s = 0.5;
   double local_window_half_extent_m = 30.0;
   double lost_position_sigma_m = 0.45;
   double lost_heading_sigma_rad = 0.25;
