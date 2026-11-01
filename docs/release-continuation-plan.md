@@ -209,14 +209,14 @@
   `terrain_mission` 全部通过；terrain 结果为冰面 2/2、山脊 1/1、0 碰撞。工作区临时
   fault trace 已删除。Blender 5.2.2 路径保持 `/disk/blender-5.2.2-linux-x64/blender`。
 
-### 大目标当前状态（2026-11-01）
+### 大目标当前状态（2026-11-02）
 
 - **算法与底盘**：差速、Ackermann、Mecanum、Swerve 的运动学隔离、DWA/TEB 公共安全契约、
-  终端姿态和墙边限速基线已完成；低抓地终端 crawl 已补齐。剩余是重复 `signal_town`、
-  四底盘、动态横穿和工业 4→5 的 Debug/Release 发布矩阵。
+  终端姿态和墙边限速基线已完成；低抓地终端 crawl 已补齐。重复 `signal_town`、四底盘、
+  动态横穿和工业 4→5 的 Debug/Release 发布矩阵已在最终 HEAD 全部通过。
 - **定位与建图**：2D LiDAR surveyed-map 定位、全局恢复、Place Recognition、完整 Hessian、
-  回环约束保留和 freshness 已完成。当前仍需把长测证据、性能和确定性门禁统一纳入发布报告；
-  产品能力边界仍是 wheel/IMU + 2D LiDAR，不宣称紧耦合 3D LIO。
+  回环约束保留和 freshness 已完成；长测、性能和确定性证据已统一归档。产品能力边界仍是
+  wheel/IMU + 2D LiDAR，不宣称紧耦合 3D LIO。
 - **PNC**：Hold/Manual authority 语义、Safety/Validator 起始 twist 和 watchdog 过期停车均
   已修复。`ObservationPipeline`、`DecisionCyclePipeline`/`MotionDecisionPipeline`、
   `SafetyMonitor`/`ControlledStopLatch`/`ExecutionMonitor`、`RobotExecutive` 和底盘 factory
