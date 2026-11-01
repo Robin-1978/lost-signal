@@ -79,6 +79,16 @@ std::size_t soft_band_reentries(
  return reentries;
 }
 
+double route_min_clearance(
+    const lost_signal::robot::autonomy::Route& route,
+    const lost_signal::robot::autonomy::LocalMap& map) {
+  double minimum = std::numeric_limits<double>::infinity();
+  for (const auto& point : route.points) {
+    minimum = std::min(minimum, map.clearance(point.x_m, point.y_m));
+  }
+  return minimum;
+}
+
 std::vector<float> scan_from_survey(
  const lost_signal::robot::iface::MapSnapshot& map,
  double x_m, double y_m, double yaw_rad) {
@@ -220,11 +230,14 @@ int main() {
  "east_terminal", "south_yard"};
  auto current = at(0.0, 0.0);
  std::size_t route_points = 0;
+ double astar_min_clearance = std::numeric_limits<double>::infinity();
  for (const auto& place_id : mission) {
  const auto& goal = place(map, place_id);
  const auto route = planner.plan(
  current, {goal.x_m, goal.y_m, goal.yaw_rad}, map);
  assert_route_clear(route, costmap.lethal);
+ astar_min_clearance = std::min(astar_min_clearance,
+                               route_min_clearance(route, costmap.lethal));
  route_points += route.points.size();
  current = at(goal.x_m, goal.y_m);
  current.yaw_rad = goal.yaw_rad;
@@ -233,18 +246,28 @@ int main() {
  // Car-like planning first finds the same map-derived 2D guide and then
  // refines it with sparse, corridor-bounded Hybrid-A* states. The raster is
  // deliberately too large for cells x headings x gears dense allocation.
- robot::autonomy::AckermannPlanner ackermann;
+ robot::autonomy::AckermannPlanner::Config ackermann_config;
+ ackermann_config.clearance_cost_per_m = 6.0;
+ ackermann_config.wheel_base_m = 0.62;
+ robot::autonomy::AckermannPlanner ackermann(ackermann_config);
  auto ackermann_current = at(0.0, 0.0);
  std::size_t ackermann_route_points = 0;
+ double ackermann_min_clearance = std::numeric_limits<double>::infinity();
  for (const auto& place_id : mission) {
  const auto& goal = place(map, place_id);
  const auto route = ackermann.plan(
  ackermann_current, {goal.x_m, goal.y_m, goal.yaw_rad}, map);
  assert_route_clear(route, costmap.lethal);
+ ackermann_min_clearance = std::min(
+     ackermann_min_clearance, route_min_clearance(route, costmap.lethal));
  ackermann_route_points += route.points.size();
  ackermann_current = at(goal.x_m, goal.y_m);
  ackermann_current.yaw_rad = goal.yaw_rad;
  }
+ // Hybrid-A* refinement must retain a usable-speed corridor instead of
+ // shaving the 2-D guide back to the inflated wall boundary. This is a soft
+ // preference metric; the lethal footprint contract remains unchanged.
+ assert(ackermann_min_clearance >= 0.15);
 
  // Replanning must work from actual mid-mission poses, not only authored
  // endpoints. These two poses previously exhausted a whole-route Hybrid-A*
@@ -252,6 +275,7 @@ int main() {
  const auto& north_depot = place(map, "north_depot");
  robot::autonomy::AckermannPlanner::Config recovery_config;
  recovery_config.wheel_base_m = 0.62;
+ recovery_config.clearance_cost_per_m = 6.0;
  for (const auto& start_pose : std::vector<robot::autonomy::EstimatedState>{
  [] { auto p = at(46.59, -118.57); p.yaw_rad = 3.13; return p; }(),
  [] { auto p = at(42.045, -119.736); p.yaw_rad = -1.762; return p; }(),
@@ -367,10 +391,12 @@ int main() {
  std::printf(
  "industrial_200k ok: extent=%.0fx%.0f cells=%ux%u actors=%zu "
  "route_points=%zu ackermann_route_points=%zu "
+ "min_clearance=%.3f ackermann_min_clearance=%.3f "
  "startup=(%.3f,%.3f,%.3f) global_cold_ms=%.1f global_warm_ms=%.1f\n",
  max_x - min_x, max_y - min_y, map.width, map.height,
  session.setup_world().actors().size(), route_points,
  ackermann_route_points,
+ astar_min_clearance, ackermann_min_clearance,
  startup.x_m, startup.y_m, startup.yaw_rad,
  cold_search_ms, warm_search_ms);
  return 0;

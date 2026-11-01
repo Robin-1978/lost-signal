@@ -50,6 +50,11 @@ std::unique_ptr<IGlobalPlanner> make_global_planner(
  : config.max_steer_rad;
  config.hard_clearance_margin_m = navigation.clearance_margin_m;
  config.soft_inflation_radius_m = navigation.soft_inflation_radius_m;
+ // Hybrid-A* may otherwise trade a short chord for a near-wall lattice
+ // primitive even when the 2-D guide has a wider corridor. Keep the hard
+ // footprint unchanged, but make the existing soft clearance cost strong
+ // enough to preserve the guide's usable-speed corridor.
+ config.clearance_cost_per_m = 6.0;
  if (std::isfinite(limits.footprint_radius_m) &&
  limits.footprint_radius_m > 0.0) {
  config.footprint_radius_m = limits.footprint_radius_m;
