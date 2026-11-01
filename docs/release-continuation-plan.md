@@ -44,8 +44,8 @@
 - **已完成的算法能力**：完整 3×3 scan-matcher Hessian（含平移–航向交叉项）、有界
   Pose Graph 回环约束保留、Place Recognition 检索层均已有独立代码、单测和提交记录；
   不再把它们列为待办。工业五目标 Release/Debug 长测现在也有重复证据。当前仍需做的是
-  Safety/Validator 运动模型一致性复核、Coordinator 的 Observation/Navigation/Motion/Safety
-  runtime 收敛，以及完整软件发布矩阵；它们不能用放宽 GoalArrival 或 footprint 代替。
+  现场硬件门禁和发布报告归档；Safety/Validator 运动模型一致性与 PNC 软件边界已经由
+  `208caa8`、`19d2da3` 及最终 97/97 矩阵关闭，不能用放宽 GoalArrival 或 footprint 代替。
 - **本轮已关闭的两个软件问题**：SIM 默认 LiDAR 量程从 10 m 统一到发布 profile 的 50 m；
   局部匹配按当前有限回波和 surveyed-map 几何范围取界，避免开阔区在真正可观测前漂移，
   对应 `240c6d7`。低抓地差速终端姿态阶段现在会在真实动态速度窗口内采样并优先选择可达
@@ -217,12 +217,15 @@
 - **定位与建图**：2D LiDAR surveyed-map 定位、全局恢复、Place Recognition、完整 Hessian、
   回环约束保留和 freshness 已完成。当前仍需把长测证据、性能和确定性门禁统一纳入发布报告；
   产品能力边界仍是 wheel/IMU + 2D LiDAR，不宣称紧耦合 3D LIO。
-- **PNC**：Hold/Manual authority 语义已有修复，Safety/Validator 起始 twist 已对齐；剩余是
-  制动尾跨底盘/实板数据扩展和 Observation/Navigation/Motion/Safety runtime、CommandArbiter
-  的接口收敛，Coordinator 继续只做调度。软件基线矩阵已由 `208caa8` 固化。
-- **发布与硬件**：Debug 全量 CTest、Release 全量 CTest、Viewer/headless、truth-isolation、
-  性能/确定性、VirtualMcu/native HIL 软件门禁仍需收口；真实 MCU 急停、负载、通信延迟和
-  calibration/profile 是 1.0 的实板阻塞，不能用 SIM 结果替代。
+- **PNC**：Hold/Manual authority 语义、Safety/Validator 起始 twist 和 watchdog 过期停车均
+  已修复。`ObservationPipeline`、`DecisionCyclePipeline`/`MotionDecisionPipeline`、
+  `SafetyMonitor`/`ControlledStopLatch`/`ExecutionMonitor`、`RobotExecutive` 和底盘 factory
+  分别拥有传感器、导航/运动、安全执行、任务生命周期和运动学能力状态；Coordinator 只把
+  它们编排为一次事务并收集证据。当前没有剩余的软件 runtime 收敛门，跨底盘制动尾和实板
+  数据仍属于后续硬件扩展。
+- **发布与硬件**：Debug/Release 各 97/97 CTest、Viewer/headless、truth-isolation、
+  性能/确定性、VirtualMcu/native HIL 软件门禁均已收口；真实 MCU 急停、负载、通信延迟和
+  calibration/profile 仍是待验实板门禁，不能用 SIM 结果替代。
 
 ### 2026-11-01 Localization freshness
 
@@ -1774,3 +1777,24 @@ ROBOT。
 - 结合本轮 Release/Debug 非 long 各 94/94、工业 Ackermann 净空回归和 manual watchdog
   长决策周期回归，当前软件分支没有已复现的仿真发布阻塞。发布状态仍按上一节定义为
   “软件仿真 Release Candidate”；实机 1.0 门禁不因仿真长测自动关闭。
+
+### Final HEAD software gate closure and PNC boundary audit（2026-11-02）
+
+- 最终 HEAD `aee0562` 的 Debug/Release 全部 97 个 CTest 均已分层通过：94 个非 long 加
+  3 个 long。Release 总 long 用时 1084.57 s；Debug 总 long 用时 1469.21 s。Debug long
+  工业五目标 1148.11 s、direct mission 273.92 s、`signal_town` 47.18 s，均通过；这补齐
+  了此前只记录 Release long、Debug 非 long 的证据缺口。
+- PNC 边界审计结果：`RobotExecutive` 只拥有 Goal 状态；`ObservationPipeline` 只拥有传感器、
+  估计、感知、地图和定位更新；`DecisionCyclePipeline`/`MotionDecisionPipeline` 只拥有
+  route/local candidate/behavior/validation/controller 编排；`SafetyMonitor`、
+  `ControlledStopLatch` 和 `ExecutionMonitor` 只拥有最终安全、停锁和执行反馈；
+  `make_local_planner()`/`ChassisLimits` 只拥有底盘能力投影。Coordinator 组合这些模块并
+  发布证据，不复制 DWA/TEB/Ackermann 的算法或 Safety 规则。
+- 证据映射为：Goal/Manual authority 使用 `goal_auth`；观察/定位使用 `measurement_synchronizer`、
+  `perception`、`localization`；规划与底盘使用 `astar`、`dwa`、`teb`、`ackermann_planner`、
+  `multichassis_mission`；安全与执行使用 `safety`、`dynamic_escape`、`execution_monitor`、
+  `native_hil`；端到端使用四底盘、terrain、dynamic crossing、工业和 `signal_town` long。
+  因此没有为了满足类名而新增重复 runtime wrapper；软件 PNC 门已关闭。
+- 当前剩余项只属于真实硬件发布证据：具体板卡 HIL、急停/制动距离、负载和低抓地、通信延迟、
+  LiDAR 实际量程与 calibration artifact。它们保持“待验”，不计入仿真软件通过，也不被宣称
+  已完成。
