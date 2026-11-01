@@ -1566,7 +1566,7 @@
       "version": 1,
       "kind": "chassis",
       "path": "robots/ro1/chassis.glb",
-      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "source": "RO-1 hero asset authored by tools/modeling/redesign_hero_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Z",
       "forward_axis": "+X",
@@ -1593,9 +1593,9 @@
           0.2075
         ]
       },
-      "content_hash": "fnv1a64:2bc23196e0aa983c",
+      "content_hash": "fnv1a64:686e069728a2d641",
       "license": "Apache-2.0",
-      "source_artifact": "legacy-main:robots/ro1/chassis.glb;tools/modeling/refine_assets.py",
+      "source_artifact": "legacy-main:robots/ro1/chassis.glb;tools/modeling/redesign_hero_assets.py",
       "pivot_semantic": "base_link",
       "asset_to_link_translation_m": [
         0,
@@ -1871,7 +1871,7 @@
       "version": 1,
       "kind": "sensor",
       "path": "robots/ro1/lidar_standard.glb",
-      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "source": "RO-1 hero asset authored by tools/modeling/redesign_hero_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Z",
       "forward_axis": "+X",
@@ -1898,9 +1898,9 @@
           0.105
         ]
       },
-      "content_hash": "fnv1a64:e97ed1d08ee29a6b",
+      "content_hash": "fnv1a64:dad38e374f018bbf",
       "license": "Apache-2.0",
-      "source_artifact": "legacy-main:robots/ro1/lidar_standard.glb;tools/modeling/refine_assets.py",
+      "source_artifact": "legacy-main:robots/ro1/lidar_standard.glb;tools/modeling/redesign_hero_assets.py",
       "pivot_semantic": "sensor_frame",
       "asset_to_link_translation_m": [
         0,

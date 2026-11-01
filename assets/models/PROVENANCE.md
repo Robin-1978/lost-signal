@@ -22,3 +22,17 @@ source-based: it does not infer a license from mesh dimensions, file names, or
 the fact that a model renders correctly. If a contributor later identifies an
 external source, its exact license and attribution must replace the current
 entry before redistribution.
+
+## 2026-11-02 RO-1 hero asset redesign
+
+`robots/ro1/chassis.glb` and `robots/ro1/lidar_standard.glb` were visually
+redesigned in Blender by `tools/modeling/redesign_hero_assets.py` for the
+product's 3D teaching and follow-camera presentation. The redesign adds a
+clear forward face, safety/status lighting, service details, and a layered
+LiDAR housing while preserving the existing metre-scale frame contract
+(`+X` forward, `+Y` left, `+Z` up).
+
+These are presentation assets only. MuJoCo remains authoritative for links,
+joints, collision, contact, footprint, and pose. The manifest bounds,
+link bindings, triangle budgets, and material budgets were checked after
+export; no simulation or navigation parameter is changed by this redesign.
