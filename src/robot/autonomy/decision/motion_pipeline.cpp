@@ -580,7 +580,17 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
 
  const bool local_evidence =
- local_map.valid && local_map.provenance != LocalMapProvenance::kUnknown;
+     local_map.valid && local_map.provenance != LocalMapProvenance::kUnknown;
+ // A rolling map may be temporarily unavailable while the current scan is
+ // still valid (for example immediately after a localization-frame shift or
+ // a fresh window allocation). Recovery candidates are bounded and are
+ // independently checked against the raw scan, dynamic prediction and the
+ // final Safety gate, so refusing them solely because the cached raster has
+ // no provenance can deadlock a vehicle beside a live obstacle. The raw
+ // sensor contract is sufficient evidence for this short manoeuvre; it does
+ // not make unknown map cells traversable or relax any collision gate.
+ const bool raw_motion_evidence = perception.scan_ok && observation.scan_valid &&
+     !observation.ranges_m.empty();
  ValidatedCandidate best_recovery;
  bool have_recovery = false;
  struct RecoveryQuality {
@@ -635,7 +645,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  // every crawl candidate still passes the independent static, dynamic,
  // braking and terrain validator before it can reach the controller.
  if (recovery_required && !observation_motion_budget_exhausted && est.valid &&
- (local_evidence || forward_blocked)) {
+     (local_evidence || raw_motion_evidence || forward_blocked)) {
  const auto consider_recovery = [&](const LocalCandidate& candidate,
  std::size_t order, bool reachable_speed) {
  const ValidationResult verdict = validator.validate(

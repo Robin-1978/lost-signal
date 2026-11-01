@@ -482,6 +482,19 @@ int main() {
  assert(!recovered.command.is_safe_stop());
  assert(recovered.reason.find("recovery:") == 0);
 
+ // A valid raw scan remains sufficient for a bounded recovery while the
+ // rolling local raster is being rebuilt. Unknown map cells must still stay
+ // non-traversable for normal planning; this only exercises the raw-scan
+ // validator path for the short recovery candidate.
+ LocalMap rebuilding_map;
+ pipeline.reset();
+ const MotionDecisionResult raw_scan_recovery = pipeline.run(
+     estimate, perception, rebuilding_map, route, limits, limits,
+     observation, survey, estimate.stamp_ns, behavior, empty, validator,
+     controller);
+ assert(!raw_scan_recovery.command.is_safe_stop());
+ assert(raw_scan_recovery.reason.find("recovery:") == 0);
+
  // A planner hold is also a stalled proposal when a translational goal is
  // still farther away than the declared footprint. Treating an accepted
  // zero command as progress created a permanent local minimum in front of
