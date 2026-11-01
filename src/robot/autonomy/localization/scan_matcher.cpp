@@ -342,6 +342,27 @@ ScanMatchResult ScanMatcher::localize(
     double odom_heading_rad, const iface::MapSnapshot& map,
     core::MonotonicNs stamp_ns, double body_roll_rad, double body_pitch_rad,
     double body_z_m) const {
+  // A transport frame may come from a sensor profile whose maximum range is
+  // wider than the historical 10 m default. Misses are represented by the
+  // largest finite range in the frame, so infer that contract before
+  // preparing beams. Legacy hand-built observations (miss value 10 m) remain
+  // unchanged while large surveyed maps can use the actual sensor range.
+  double observed_max_range_m = config_.max_range_m;
+  for (const float range : ranges) {
+    if (std::isfinite(range) && range > observed_max_range_m) {
+      observed_max_range_m = range;
+    }
+  }
+  if (observed_max_range_m > config_.max_range_m + 1e-9) {
+    ScanMatcherConfig widened = config_;
+    widened.max_range_m = observed_max_range_m;
+    ScanMatcher matcher(widened);
+    matcher.set_lidar_mount(base_from_lidar_);
+    return matcher.localize(ranges, angle_min_rad, angle_increment_rad,
+                            odom_x_m, odom_y_m, odom_heading_rad, map,
+                            stamp_ns, body_roll_rad, body_pitch_rad,
+                            body_z_m);
+  }
   ScanMatchResult result;
   (void)stamp_ns;
   if (!std::isfinite(odom_x_m) || !std::isfinite(odom_y_m) ||

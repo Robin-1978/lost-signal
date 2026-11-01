@@ -12,5 +12,5 @@
  "terminal_observation_s": 0.5
  },
   "sensor_realism": {"version": 1, "profile": "nominal", "seed": 20261030},
-  "lidar": {"beams": 72, "max_range_m": 10.0}
+  "lidar": {"beams": 72, "max_range_m": 30.0}
 }

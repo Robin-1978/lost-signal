@@ -14,6 +14,17 @@ namespace lost_signal::robot::autonomy {
 
 namespace {
 
+double inferred_scan_max_range(const std::vector<float>& ranges,
+                               double configured_max_range_m) {
+  double max_range_m = configured_max_range_m;
+  for (const float range : ranges) {
+    if (std::isfinite(range) && range > max_range_m) {
+      max_range_m = range;
+    }
+  }
+  return max_range_m;
+}
+
 // Runner-ups for deferred startup disambiguation: refined[0] is the
 // published pose; up to 3 following distinct hypotheses ride along
 // (best-first, already sorted). Bounded and deterministic.
@@ -804,8 +815,11 @@ void GlobalSearcher::begin(const std::vector<float>& ranges,
  prepared_map_.reset();
  }
  }
+ GlobalSearchConfig effective = config_;
+ effective.max_range_m = inferred_scan_max_range(
+     ranges, effective.max_range_m);
  work_ = std::make_unique<WorkState>(
- config_, base_from_lidar_, prepared_map_, ranges, angle_min_rad,
+ effective, base_from_lidar_, prepared_map_, ranges, angle_min_rad,
  angle_increment_rad, map,
  stamp_ns, body_roll_rad, body_pitch_rad, body_z_m,
  false, 0.0, 0.0, 0.0, false, 0.0, 0.0);
@@ -825,8 +839,11 @@ void GlobalSearcher::begin_near(
  prepared_map_.reset();
  }
  }
+ GlobalSearchConfig effective = config_;
+ effective.max_range_m = inferred_scan_max_range(
+     ranges, effective.max_range_m);
  work_ = std::make_unique<WorkState>(
- config_, base_from_lidar_, prepared_map_, ranges, angle_min_rad,
+ effective, base_from_lidar_, prepared_map_, ranges, angle_min_rad,
  angle_increment_rad, map,
  stamp_ns, body_roll_rad, body_pitch_rad, body_z_m,
  true, center_x_m, center_y_m, radius_m,

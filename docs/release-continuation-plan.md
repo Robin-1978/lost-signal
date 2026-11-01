@@ -1455,3 +1455,20 @@ ROBOT。
   若 Validator/Safety 没有接受任何 bounded observation manoeuvre，结果保持安全停车，直到
   新的观测动作或定位修正被确认。新增 `FastOnlyValidator` 回归锁定该隔离，保留正常路线和
   已验证恢复候选的既有行为。
+
+### Industrial LiDAR range profile and scan-range propagation（2026-11-01）
+
+- 诊断确认工业图的首次停车不是 Ackermann 曲率本身造成的：默认 10 m LiDAR 在约
+  `(14.9,-28.5)` 的开阔段没有有效回波，最近的 surveyed 几何约 11.7 m；扫描虽有效，
+  但全为最大量程，定位因此无法启动全局搜索。继续让车走会把协方差无界放大，原先的
+  2 s 观测预算正确地选择了安全停车。
+- `configs/sim/default.json` 的发布仿真传感器 profile 改为 30 m。Scan Matcher、Global
+  Search 和恢复入口会从当前 ROBOT scan 的有限最大值推导实际量程；旧的手工 10 m miss
+  帧保持原语义，不把超量程值误当作返回。该信息仍来自 observation，不读取地图真值或
+  SIM pose。
+- Release Ackermann `industrial_200k_mission --steps=5,000` 重新回归为持续行驶 87.07 m、
+  0 碰撞、估计误差 0.383 m；20,000 步完成 `west_hub`（1/5）、0 碰撞，进入
+  `north_depot`。同一场景在 10 m profile 于约 35.4 m 停车，说明量程是可复现的首要阻塞。
+- 这不是把恢复预算无限放大：没有足够回波时仍保持有界观测动作并安全停车；部署到真实
+  机器人时必须在 calibration/profile 中声明与实际 LiDAR 一致的量程，若硬件确实只有 10 m，
+  则需要在地图/路线设计中提供 10 m 内的可观测结构，不能用 SIM profile 掩盖硬件能力边界。

@@ -479,11 +479,17 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  // gate applies only to surveyed-map recovery; mapless startup above must
  // still seed its odometry frame from an arbitrary scan.
  if (requested_global && !global_search_.active()) {
+   double scan_max_range_m = ScanMatcherConfig{}.max_range_m;
+   for (const float range : obs.ranges_m) {
+     if (std::isfinite(range) && range > scan_max_range_m) {
+       scan_max_range_m = range;
+     }
+   }
    const std::size_t geometric_returns = static_cast<std::size_t>(
        std::count_if(obs.ranges_m.begin(), obs.ranges_m.end(),
-                     [](float range) {
+                     [scan_max_range_m](float range) {
                        return std::isfinite(range) && range > 0.0F &&
-                              range < ScanMatcherConfig{}.max_range_m;
+                              range < scan_max_range_m;
                      }));
    if (geometric_returns < ScanMatcherConfig{}.minimum_returns) {
      action = "global_relocalization:insufficient geometric returns";

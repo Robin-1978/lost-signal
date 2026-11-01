@@ -1,4 +1,6 @@
 #include <cstdio>
+#include <cmath>
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -133,6 +135,19 @@ int main(int argc, char** argv) {
  evidence.gear_change_endpoint_distance_m,
  evidence.constraint_code.c_str(), evidence.reason_code.c_str(),
  evidence.action_code.c_str());
+        std::size_t returns = 0;
+        float scan_max = 10.0F;
+        for (const float range : sample->obs.ranges_m) {
+          if (std::isfinite(range)) scan_max = std::max(scan_max, range);
+        }
+        for (const float range : sample->obs.ranges_m) {
+          if (std::isfinite(range) && range > 0.0F && range < scan_max) {
+            ++returns;
+          }
+        }
+        std::fprintf(stderr, "  scan beams=%zu returns=%zu valid=%s\n",
+                     sample->obs.ranges_m.size(), returns,
+                     sample->obs.scan_valid ? "yes" : "no");
  for (const auto& track : sample->diag.dynamic_tracks) {
  std::fprintf(stderr,
  "  track id=%u p=(%.3f,%.3f) v=(%.3f,%.3f) "
