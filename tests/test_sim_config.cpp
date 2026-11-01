@@ -29,7 +29,7 @@ int main() {
  assert(cfg.objective_acceptance.maximum_yaw_rate_radps == 0.08);
  assert(cfg.objective_acceptance.stable_steps == 2);
  assert(cfg.objective_acceptance.terminal_observation_s == 0.5);
-    assert(cfg.lidar_beams == 72 && cfg.lidar_max_range_m == 30.0f);
+    assert(cfg.lidar_beams == 72 && cfg.lidar_max_range_m == 50.0f);
     assert(cfg.lidar_rings == 16);
     assert(!cfg.lidar_composite);  // opt-in front end, default off
     assert(cfg.sensor_realism.version == 1);
