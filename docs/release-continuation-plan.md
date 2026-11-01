@@ -36,7 +36,7 @@ Robot Simu 是一个用真实机器人软件传播机器人知识的产品：同
 | Ackermann 路线净空 | A* 0.177 m；Hybrid-A* 0.235 m | `clearance_cost_per_m=6.0`，硬包络不变 |
 | Manual authority | 过期立即安全停车 | `goal_auth` 使用 1 s decision period 回归 |
 
-最终 HEAD：`a2efd76`。主要功能提交：`b57b3d0`（Ackermann 净空）、`19d2da3`（Manual watchdog）；完整历史见归档文件。
+最终 HEAD：`95dd8e3`。主要功能提交：`b57b3d0`（Ackermann 净空）、`19d2da3`（Manual watchdog）；完整历史见归档文件。
 
 ## 软件架构和安全契约
 
