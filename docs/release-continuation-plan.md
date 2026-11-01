@@ -1492,3 +1492,14 @@ ROBOT。
 - 这不是把恢复预算无限放大：没有足够回波时仍保持有界观测动作并安全停车；部署到真实
   机器人时必须在 calibration/profile 中声明与实际 LiDAR 一致的量程，若硬件确实只有 10 m，
   则需要在地图/路线设计中提供 10 m 内的可观测结构，不能用 SIM profile 掩盖硬件能力边界。
+
+### Industrial Ackermann 20k continuation checkpoint（2026-11-01）
+
+- 在 `2cbb338` 的 Ackermann 路线刷新修复和 50 m SIM LiDAR profile 上，Release
+  `test_industrial_200k_mission --steps=20000` 完成 `west_hub`，进入 `north_depot`，
+  结果为 1/5、0 碰撞；20,000 步时仍为正常 `speed_cap/clear/drive`，没有
+  `execution_fault` 或恢复弧线回退。
+- 这证明首段全局定位、Hybrid-A* 路线、cusp 保持和稀疏地图量程修复可以连续工作，不能
+  代替 4→5 验收。下一次长测继续保留 `localization_action`、scan returns、路线段、
+  `requested_gear`、Safety/Validator 拒绝和 execution-monitor 状态，直到第三、第四和
+  第五目标完成或得到明确安全停车原因。
