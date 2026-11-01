@@ -581,13 +581,16 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  std::isfinite(terminal_position_confidence_radius_m) &&
  terminal_position_confidence_radius_m >= terminal_position_reset_tolerance_m &&
  terminal_distance_m <= terminal_heading_capture_m;
+ const bool traction_terminal_capture =
+     !car_like && limits.traction_limited &&
+     terminal_distance_m <= terminal_position_reset_tolerance_m;
  if (terminal_position_latched_) {
  if (terminal_distance_m > terminal_position_reset_tolerance_m) {
  terminal_position_latched_ = false;
  terminal_heading_settled_ = false;
  }
  } else if (terminal_distance_m <= terminal_position_tolerance_m ||
-            high_uncertainty_terminal_capture) {
+            high_uncertainty_terminal_capture || traction_terminal_capture) {
  terminal_position_latched_ = true;
  terminal_heading_settled_ = false;
  }
@@ -781,17 +784,23 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // envelope. Permit a crawl derived from the remaining measured position
  // error while heading settles. The crawl vanishes at the pose and uses the
  // existing prediction horizon, so it is not a second terminal threshold.
- // A crawl is useful when the robot is actually carrying a measured
- // attitude/grade state: on a low-grip slope, a pure in-place turn can
- // spend the available contact friction on lateral slip and drift out of
- // the captured position.  Keep the default flat/unknown case rotation
- // only; it is both the safer terminal command and the behaviour expected
- // when no attitude evidence is available.  This uses only ROBOT-owned
- // state and introduces no scenario-specific threshold.
+ // A crawl is useful when the robot carries measured grade state or the grip
+ // governor has declared a traction-limited envelope: a pure pivot can spend
+ // contact friction on lateral slip or fail to overcome static tire friction.
+ // Keep nominal flat operation rotation-only, preserving the existing
+ // terminal contract.
  const bool terminal_heading_creep =
- !car_like && terminal_heading_mode && terminal_position_reached &&
- terminal_distance_m > 0.0 && est.attitude_valid &&
- std::isfinite(est.pitch_rad) && std::abs(est.pitch_rad) > 0.0;
+      !car_like && terminal_heading_mode &&
+      // This remains a controller manoeuvre inside the raw terminal capture
+      // envelope. Confidence can temporarily consume the arrival tolerance
+      // after a slip event; withholding the crawl in that band leaves a
+      // traction-limited base pivoting in place while its estimate recovers.
+      terminal_distance_m > 0.0 &&
+      terminal_distance_m <= terminal_position_reset_tolerance_m &&
+      (limits.traction_limited ||
+       (terminal_position_reached && est.attitude_valid &&
+        std::isfinite(est.pitch_rad) &&
+        std::abs(est.pitch_rad) > 0.0));
  const double terminal_creep_speed = terminal_heading_creep
  ? std::min(v_max, terminal_distance_m / std::max(dt, predict_T))
  : 0.0;
@@ -943,8 +952,20 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
 
  const auto velocity_samples = command_samples(
      velocity_window, std::max(1e-3, config_.velocity_sample_step_mps),
-     {est.forward_mps, 0.0, v_max, -v_max, terminal_creep_speed,
-      -terminal_creep_speed, terminal_confidence_correction_speed_mps,
+      {est.forward_mps, 0.0, v_max, -v_max,
+       // A terminal crawl is a target, not an instantaneous command. Project
+       // it into the same acceleration-limited window as every other sample;
+       // otherwise a low-grip base at rest never sees the crawl candidate
+       // until the requested speed is reachable in one cycle.
+       terminal_heading_creep
+           ? std::max(0.0, std::min(terminal_creep_speed,
+                                    velocity_window.maximum))
+           : 0.0,
+       terminal_heading_creep
+           ? std::min(0.0, std::max(-terminal_creep_speed,
+                                    velocity_window.minimum))
+           : 0.0,
+       terminal_confidence_correction_speed_mps,
       -terminal_confidence_correction_speed_mps});
 
  // Only the current route neighborhood can affect a finite rollout. Find
@@ -1416,7 +1437,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  out.route_replan_requested = true;
  }
  std::stable_sort(proposals.begin(), proposals.end(),
- [prioritize_route_motion, terminal_bearing_capture, car_like,
+ [prioritize_route_motion, terminal_bearing_capture, terminal_heading_creep,
+ car_like,
  &commands_resolvable_motion,
  route_error_m = route_projection.distance_m,
  route_resolution_m = std::max(1e-6, map.resolution_m),
@@ -1433,6 +1455,15 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  b.route_heading_error_rad) > 1e-9) {
  return a.route_heading_error_rad < b.route_heading_error_rad;
  }
+ }
+ if (terminal_heading_creep) {
+ // When traction is limited, a pure pivot can be accepted forever while
+ // static tire friction prevents the measured base from moving. Prefer a
+ // reachable longitudinal crawl during terminal heading capture; all
+ // candidates have already passed the same rollout and validation gates.
+ const bool a_creeps = std::abs(a.forward_mps) > 1e-9;
+ const bool b_creeps = std::abs(b.forward_mps) > 1e-9;
+ if (a_creeps != b_creeps) return a_creeps;
  }
  if (prioritize_route_motion) {
  const bool a_moves = commands_resolvable_motion(

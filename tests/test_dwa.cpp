@@ -1105,6 +1105,45 @@ int main() {
  assert(released.best.forward_mps > 0.0);
  }
 
+ // A traction-limited differential base must expose a reachable terminal
+ // crawl while it settles heading. The crawl target can be larger than one
+ // decision's acceleration window; sampling the raw target would drop it
+ // and leave only an ineffective in-place yaw. Nominal flat operation keeps
+ // the existing pure-yaw terminal contract.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 1.80;
+ est.y_m = 0.0;
+ est.yaw_rad = 0.0;
+ est.position_sigma_m = 0.01;
+ est.heading_sigma_rad = 0.01;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {2.0, 0.0, 1.0, 1}};
+ DwaPlannerConfig terminal_config;
+ terminal_config.dt_s = 0.05;
+ terminal_config.predict_time_s = 0.20;
+ DwaPlanner traction_planner(terminal_config);
+ platform::ChassisLimits traction_limits = limits;
+ traction_limits.traction_limited = true;
+ const LocalPlan traction = traction_planner.plan(
+     est, perc, m, route, traction_limits);
+ assert(traction.has_plan && traction.moving_candidate_count > 0);
+ assert(traction.best.forward_mps > 0.0);
+ assert(traction.best.forward_mps <=
+        terminal_config.accel_mps2 * terminal_config.dt_s + 1e-9);
+
+ DwaPlanner nominal_planner(terminal_config);
+ const LocalPlan nominal = nominal_planner.plan(est, perc, m, route, limits);
+ assert(nominal.has_plan && nominal.moving_candidate_count > 0);
+ assert(std::abs(nominal.best.forward_mps) < 1e-9);
+ }
+
  // A goal-bearing correction can be arbitrarily small while XY still lies
  // outside the confidence-bounded arrival region. That yaw-only candidate
  // is not route progress and must not strand a differential base beside the

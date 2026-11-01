@@ -51,6 +51,10 @@ struct ChassisLimits {
  // Zero leaves body-twist sampling for compatibility with direct tests.
  double differential_track_m = 0.0;
  double max_wheel_speed_mps = 0.0;
+ // Online ROBOT traction belief tightened the envelope. Local planners may
+ // prefer a small coupled terminal manoeuvre over a pure pivot while safety
+ // geometry remains unchanged.
+ bool traction_limited = false;
   ChassisMotionModel motion_model = ChassisMotionModel::kUnknown;
 };
 

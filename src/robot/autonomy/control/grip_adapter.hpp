@@ -120,13 +120,16 @@ class GripAdapter {
     if (obs.odometry_valid && obs.imu_valid && has_prev_wheel_v_ &&
         std::isfinite(obs.forward_mps) &&
         std::isfinite(obs.imu_ax_mps2)) {
- // The IMU gravity estimate is the primary compensation. The surveyed
- // grade is only a prior for startup/attitude dropout; using it as the
- // dominant term turns a legitimate ramp transition into wheel-slip
- // evidence when localization is imperfect.
- const double grade = est.attitude_valid && std::isfinite(est.pitch_rad)
- ? est.pitch_rad
- : (std::isfinite(survey_pitch_rad) ? survey_pitch_rad : 0.0);
+ // Prefer the surveyed grade whenever the deployment map provides it. The
+ // map is an independent prior and avoids treating the finite-rate pitch
+ // filter's lag at a ramp boundary as longitudinal wheel slip. When no grade
+ // prior exists, REP-103 body pitch is negative for the simulated uphill
+ // nose, so the fallback grade is -pitch.
+ const double grade = std::isfinite(survey_pitch_rad)
+ ? survey_pitch_rad
+ : (est.attitude_valid && std::isfinite(est.pitch_rad)
+ ? -est.pitch_rad
+ : 0.0);
       const double wheel_accel =
           (obs.forward_mps - prev_wheel_v_mps_) / dt_s;
       const double body_accel =
@@ -214,6 +217,7 @@ class GripAdapter {
                                       base.max_yaw_rate_radps * factor_);
     out.max_lateral_mps = std::min(base.max_lateral_mps,
                                    base.max_lateral_mps * factor_);
+    out.traction_limited = base.traction_limited || factor_ < 1.0 - 1e-9;
     if (behavior_max_forward_mps < out.max_forward_mps) {
       out.max_forward_mps = behavior_max_forward_mps;
     }
