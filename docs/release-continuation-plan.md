@@ -1693,3 +1693,35 @@ ROBOT。
   场景矩阵中通过。软件侧当前不再有已复现的阻塞故障；剩余 1.0 门禁是 PNC runtime 的
   状态所有权收敛、确定性/性能报告归档，以及具体板卡的急停、负载、通信延迟和 calibration
   artifact 实测。
+
+### Ackermann industrial corridor clearance（2026-11-01）
+
+- `AckermannPlanner` 的 Hybrid-A* refinement 现在使用 `clearance_cost_per_m=6.0`，让
+  规划器在同样满足硬 footprint、lethal clearance 和 Safety 条件的候选中偏向可用净空更大的
+  走廊。该参数只改变软代价，不改变绝对膨胀半径、碰撞判定、制动尾或 GoalArrival 条件。
+- `test_industrial_200k` 新增路线净空回归：A* 参考路线最小净空约 `0.177 m`，Ackermann
+  Hybrid-A* 路线最小净空约 `0.235 m`，并要求 Ackermann 路线不低于 `0.15 m`。这针对工业
+  大图中“贴墙导致限速”的实际症状，避免用降低速度阈值掩盖路线几何问题。
+- Debug 工业规划测试通过；Release 的 `industrial_200k`、五目标
+  `industrial_200k_mission` 和直接目标 `industrial_200k_direct_mission` 均通过（3/3，0
+  失败）。五目标任务 849.27 s，直接目标 207.86 s；长任务保持 5/5、0 碰撞。提交为
+  `b57b3d0`。
+- 该结果关闭了当前可复现的工业贴墙路线阻塞，但仍需把净空、速度、定位新鲜度和 Safety
+  拒绝原因纳入发布报告；真实底盘还必须用实测 wheelbase、footprint、制动性能和 LiDAR
+  量程重新验收，不能直接复用仿真参数。
+
+### 产品发布审查基线（2026-11-01）
+
+- 当前产品可以作为“2D LiDAR + 轮速/IMU + surveyed-map 定位与导航”的软件仿真候选版本：
+  Debug/Release 非 long CTest 均为 94/94，工业五目标和 direct mission 通过，四底盘、
+  `signal_town`、动态横穿、terrain、SLAM/回环、Safety/Validator、Viewer、Native HIL 和
+  truth-isolation 回归均有覆盖。
+- 不能把它宣传为完整 3D LiDAR-Inertial SLAM：当前主链仍是平面 SE(2)、2D 栅格 scan-to-map、
+  轮速与 IMU yaw 融合；没有完整 IMU bias/preintegration、3D 点云紧耦合状态估计或逐点时间
+  去畸变。产品说明、验收范围和硬件选型必须明确这个边界。
+- 软件仿真门禁接近可发布，但 1.0 还需要真实硬件证据：急停与制动距离、满载/低抓地、传感器
+  断链和时间戳跳变、MCU/Host 控制权与通信延迟、真实 LiDAR 最大量程、标定 artifact 可追溯性、
+  长时间确定性和日志回放。没有这些证据只能称为仿真候选或工程预览，不能称为完整量产发布。
+- 继续推进顺序保持：先收敛 PNC 的 Goal/Manual/Safety authority 和任务/运动状态机，再补充
+  observation freshness、Ackermann/DWA/TEB 底盘能力隔离、完整 scan-match Hessian、历史
+  回环约束和 place recognition；每一项都要有独立回归和独立提交。
