@@ -1764,3 +1764,13 @@ ROBOT。
   实板急停/制动距离、满载低抓地、传感器断链和时间同步、MCU/Host 延迟与控制权、真实 LiDAR
   量程、标定 artifact、长时间确定性和现场回放证据；3D LIO 的 IMU bias/preintegration、
   点云去畸变和紧耦合估计另立能力项。
+
+### Final HEAD Release long matrix（2026-11-01）
+
+- 在 `350479c` 文档审查和 `19d2da3` PNC watchdog 修复后的最终 HEAD 上，Release `ctest -L
+  long` 三项全部通过：`industrial_200k_mission` 849.01 s、
+  `industrial_200k_direct_mission` 208.41 s、`signal_town_mission` 27.15 s；总计 3/3、0
+  失败。工业五目标保持 5/5、0 碰撞，signal_town 长任务也通过。
+- 结合本轮 Release/Debug 非 long 各 94/94、工业 Ackermann 净空回归和 manual watchdog
+  长决策周期回归，当前软件分支没有已复现的仿真发布阻塞。发布状态仍按上一节定义为
+  “软件仿真 Release Candidate”；实机 1.0 门禁不因仿真长测自动关闭。
