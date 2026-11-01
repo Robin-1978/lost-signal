@@ -38,9 +38,24 @@
 - **外部硬件待验**：MCU/Native HIL 契约、急停、驱动负载、通信延迟和真实 calibration
   artifact/profile 仍需实板数据；现有 SIM、VirtualMcu 和 host test 只能证明软件契约。
 
+### 2026-11-01 阿克曼回归审查
+
+- 共享 DWA 的采样器已经按底盘能力约束曲率、横向速度和差速轮速窗口；DWA/DWB/TEB
+  不需要复制三套碰撞与安全算法。下一步保持公共候选/Validator/Safety 契约，把
+  Ackermann 的曲率速度耦合、换挡、终端姿态和制动尾段状态明确隔离，避免差速的原地转向
+  语义泄漏到车辆底盘。
+- `signal_town` 使用阿克曼配置时，单目标 `town_gate`、`market_gate`、`housing_door`
+  可分别通过；连续目标在 `market_gate` 的动态冲突恢复中出现 `hold -> dynamic_escape ->
+  safety:contact`，车辆仍在声明的制动尾段运动时执行监控锁存
+  `uncommanded-motion`，随后任务永久停车并累计碰撞。该证据说明当前阻塞点是阿克曼
+  制动/恢复状态交界，不得通过放宽到达条件或 footprint 掩盖。
+- 阿克曼验收新增两条硬门：墙边限速在同一安全包络内只能单调收紧并受命令加速度约束，不能
+  出现减速后又恢复巡航的抖动；终端 pose 必须优先沿可行曲率一次收敛，换挡只能在测得停稳
+  且由新路线授权，禁止安全停车后的自动倒车循环。
+
 ### 当前执行顺序
 
-1. 先修并回归阿克曼墙边速度抖动和终端 pose 对齐；每个修复单独提交。
+1. 先修并回归阿克曼制动尾段锁存、墙边速度抖动和终端 pose 对齐；每个修复单独提交。
 2. 在清理残留 `sim_viewer` 进程后，运行 Release `industrial_200k_mission` 五目标，保留
    `localization_action`、候选束、Safety/Validator 拒绝、`requested_gear`、路线段、
    `route_replan_requested` 和 execution-monitor 证据，直到 4→5 通过或明确安全停车原因。
