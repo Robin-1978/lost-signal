@@ -578,6 +578,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  bool clears_forward_block = false;
  double dynamic_clearance_m = -std::numeric_limits<double>::infinity();
  double escape_gain_m = 0.0;
+ bool dynamic_reverse = false;
  int continuity_axes = 0;
  double route_distance_m = std::numeric_limits<double>::infinity();
  double static_clearance_m = -std::numeric_limits<double>::infinity();
@@ -594,6 +595,10 @@ MotionDecisionResult MotionDecisionPipeline::run(
  return a.nominally_safe;
  if (a.clears_forward_block != b.clears_forward_block)
  return a.clears_forward_block;
+ if (dynamic_escape_required && car_like &&
+     a.dynamic_reverse != b.dynamic_reverse) {
+ return a.dynamic_reverse;
+ }
  if (prefer_dynamic_clearance &&
  (greater(a.dynamic_clearance_m, b.dynamic_clearance_m) ||
  greater(b.dynamic_clearance_m, a.dynamic_clearance_m))) {
@@ -649,6 +654,8 @@ MotionDecisionResult MotionDecisionPipeline::run(
  !forward_blocked || candidate.forward_mps <= 1e-6;
  quality.dynamic_clearance_m = verdict.min_dynamic_clearance_m;
  quality.escape_gain_m = verdict.escape_clearance_gain_m;
+ quality.dynamic_reverse = dynamic_escape_required &&
+     candidate.forward_mps < -1e-6;
  quality.static_clearance_m = verdict.min_clearance_m;
  if (recovery_active_) {
  const auto same_direction = [](double current, double committed) {

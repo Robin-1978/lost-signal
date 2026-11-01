@@ -37,12 +37,41 @@
   终端 pose 必须先沿可行曲率一次性收敛，只有在独立定位/安全证据不足时才允许有预算倒车，
   且不得因重复重规划反复换档。验收使用小地图最小场景、`test_dwa`/`test_motion_pipeline`、
   四底盘任务和工业 4→5 长测。
-- **仍需继续的系统能力**：工业五目标 Release 长测与第 4→5 结构化证据；完整 3×3
-  scan-matcher Hessian；历史回环约束/边缘化；Place Recognition；Safety 与
-  Validator 运动模型一致性；Coordinator 的 Observation/Navigation/Motion/Safety runtime
-  收敛。它们不能用放宽 GoalArrival 或 footprint 代替。
+- **已完成的算法能力**：完整 3×3 scan-matcher Hessian（含平移–航向交叉项）、有界
+  Pose Graph 回环约束保留、Place Recognition 检索层均已有独立代码、单测和提交记录；
+  不再把它们列为待办。当前仍需做的是工业五目标 Release 重复长测与第 4→5 结构化
+  证据、Safety/Validator 运动模型一致性复核，以及 Coordinator 的
+  Observation/Navigation/Motion/Safety runtime 收敛。它们不能用放宽 GoalArrival 或
+  footprint 代替。
 - **外部硬件待验**：MCU/Native HIL 契约、急停、驱动负载、通信延迟和真实 calibration
   artifact/profile 仍需实板数据；现有 SIM、VirtualMcu 和 host test 只能证明软件契约。
+
+### 当前 1.0 发布门禁
+
+1. **算法与场景**：动态横穿、四底盘、`signal_town`、工业 `4→5` 和五目标任务必须在
+   Debug/Release 中重复通过；每次保留 localization、candidate、`requested_gear`、
+   route replan、Validator/Safety 拒绝和 execution-monitor 证据。
+2. **软件回归**：Debug 全量 CTest、Release 定向/全量 CTest、truth-isolation/boundary、
+   确定性和性能门禁全部通过。单次长测通过不能替代重复证据。
+3. **PNC 收敛**：Goal 生命周期与 Hold/Manual authority 语义保持一致；Safety、Validator
+   和底盘执行器的制动尾模型必须有一致性回归。Coordinator 只调度运行时，不重新吸收算法
+   细节。
+4. **硬件发布**：真实板卡、急停、负载、通信时延和 calibration/profile 记录完成后，才
+   能关闭实机门禁；模拟和 VirtualMcu 结果不能冒充现场验收。
+
+### Ackermann 动态横穿恢复排序（2026-11-01）
+
+- 动态横穿时，停止位姿本身被当前 ROBOT track 预测为不安全，恢复候选仍必须逐条经过
+  Validator、完整制动尾和独立 raw-scan Safety。对 Ackermann 的动态逃逸，在候选同属安全
+  等级时优先选择已验证的直线反向候选，避免前进弧把车辆带入横穿目标的运动走廊；这只
+  改变动态逃逸候选的排序，不放宽任何安全门，也不影响普通路线或定位观察恢复。
+- 动态恢复仍保留既有 dynamic-clearance、曲率/速度耦合、加速度、换挡和执行监控约束。
+  差速、全向和正常 Ackermann 路线不共享这个反向偏好，避免把动态逃逸语义泄漏到其他
+  底盘。
+- `dynamic_crossing_mission` 三个相位、`dynamic_escape`、`motion_pipeline`、`dwa`、
+  `ackermann_planner`、`localization`、`slam`、`loop_closure` 和
+  `multichassis_mission` 定向回归通过。该阶段提交前还要完成工业 Release 长测和工作树
+  清理。
 
 ### 2026-11-01 阿克曼回归审查
 
@@ -103,15 +132,14 @@
 
 ### 当前执行顺序
 
-1. 先修并回归阿克曼制动尾段锁存、墙边速度抖动和终端 pose 对齐；每个修复单独提交。
+1. 动态横穿恢复排序修复完成后，提交代码与本检查点；继续重复工业 Release 长测。
 2. 工业阿克曼 4→5 已在 74,560 步、5/5、0 碰撞的 Release 长测中通过；保留
    `localization_action`、候选束、Safety/Validator 拒绝、`requested_gear`、路线段、
-   `route_replan_requested` 和 execution-monitor 证据，做重复长测并转入 freshness、
-   Hessian、回环和 Place Recognition 门禁。
-3. freshness 已完成并提交：定位健康度现在同时检查协方差和估计年龄；默认 0.5 s
-   没有新鲜来源观测即触发受全局重试节流保护的重定位。`test_localization` 覆盖过期估计，
-   退化走廊拒绝回放保持原位，且不会把 freshness 与 scan-match 失败计数混用。下一项是
-   完整 Hessian、历史回环保留与 Place Recognition 的证据优先实现已完成并提交。
+   `route_replan_requested` 和 execution-monitor 证据，重复运行 100,000/200,000 步并补
+   `signal_town`、四底盘、直接 3→4/4→5 的 Release 记录。
+3. freshness、完整 Hessian、历史回环保留和 Place Recognition 已完成并提交；后续只做
+   回归证据，不重新实现。下一项软件能力是 Safety 与 Validator 运动模型一致性复核，以及
+   Coordinator 的 Observation/Navigation/Motion/Safety runtime 收敛。
 4. 最后推进 Coordinator runtime 拆分和实板 HIL/profile 验收；3D LIO 单独立项，不把现有
    2D surveyed-map 链路宣称为紧耦合 LIO。
 
