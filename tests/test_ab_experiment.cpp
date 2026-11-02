@@ -2,6 +2,8 @@
 #include <string>
 
 #include "sim/experiment/ab_experiment.hpp"
+#include "sim/viewer/experience_flow.hpp"
+#include "sim/viewer/experience_manifest.hpp"
 
 int main() {
  lost_signal::sim::experiment::ScanPeriodComparison comparison;
@@ -33,6 +35,33 @@ int main() {
  comparison.baseline.first_brake.step);
  assert(comparison.baseline.first_brake.step <=
  comparison.baseline.stable_stop.step);
+ lost_signal::sim::viewer::ExperienceManifest experience;
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ std::string(TEST_SOURCE_DIR) +
+ "/configs/experiences/first_contact.json", experience, &error));
+ lost_signal::sim::viewer::ExperienceEvidence evidence;
+ evidence.comparison_complete = true;
+ evidence.comparison_valid = true;
+ evidence.baseline_safe = comparison.baseline.objectives_passed &&
+ comparison.baseline.score.collision_steps == 0;
+ evidence.variant_safe = comparison.variant.objectives_passed &&
+ comparison.variant.score.collision_steps == 0;
+ evidence.elapsed_delta_s = comparison.variant.score.elapsed_s -
+ comparison.baseline.score.elapsed_s;
+ evidence.clearance_delta_m = comparison.variant.score.min_clearance_m -
+ comparison.baseline.score.min_clearance_m;
+ const auto& spec = experience.experiments.front();
+ evidence.minimum_elapsed_increase_s = spec.minimum_elapsed_increase_s;
+ evidence.minimum_clearance_loss_m = spec.minimum_clearance_loss_m;
+ evidence.equivalent_elapsed_tolerance_s =
+ spec.equivalent_elapsed_tolerance_s;
+ evidence.equivalent_clearance_tolerance_m =
+ spec.equivalent_clearance_tolerance_m;
+ std::size_t supported = 0;
+ for (const auto& choice : experience.choices) {
+ supported += lost_signal::sim::viewer::choice_supported(choice, evidence);
+ }
+ assert(supported == 1);
  assert(!lost_signal::sim::experiment::run_scan_period_comparison(
  std::string(TEST_SOURCE_DIR) + "/configs/experiences/first_contact.json",
  0.0, 1200, comparison, &error));

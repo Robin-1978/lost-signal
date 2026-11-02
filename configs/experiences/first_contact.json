@@ -47,7 +47,7 @@
  "prediction": {
  "question": "What will change when LiDAR updates every 100 ms instead of every 20 ms?",
  "choices": [
- {"choice_id":"safe_tradeoff","label":"Both runs stay safe, but slower scans take longer and leave less clearance","explanation":"The two visible runs hold the world, robot, initial state, and random seeds fixed. Their recorded time and physical clearance decide whether this tradeoff occurred.","evidence_rule":"comparison_tradeoff"},
+ {"choice_id":"safe_tradeoff","label":"Both runs stay safe, but measured timing or clearance still changes beyond tolerance","explanation":"The two visible runs hold the world, robot, initial state, and random seeds fixed. Either time or physical clearance may change in either direction; both measured differences decide the outcome.","evidence_rule":"comparison_tradeoff"},
  {"choice_id":"equivalent","label":"The two runs finish with effectively the same time and clearance","explanation":"Equivalent means both measured differences remain inside the experiment's declared tolerances.","evidence_rule":"comparison_equivalent"},
  {"choice_id":"unsafe_variant","label":"The slower scan run collides or fails the safety gate","explanation":"Collision, timeout, incomplete objectives, or rejected physical arrival makes the slower run unsafe.","evidence_rule":"comparison_unsafe"}
  ]

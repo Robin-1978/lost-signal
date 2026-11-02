@@ -34,6 +34,42 @@ float draw_overlay_wrapped(const std::string& value, float x, float y,
                            float width, float size, float gap, Color color) {
   const float font_size = size * g_overlay_scale;
   const float line_gap = gap * g_overlay_scale;
+  // CJK text has no whitespace at which the word-based path below can break.
+  // Split at UTF-8 codepoint boundaries instead, matching the Hero overlay's
+  // renderer. This keeps prediction cards, lessons, and debrief evidence
+  // readable at narrow windows without changing authored copy.
+  if (std::any_of(value.begin(), value.end(), [](unsigned char byte) {
+        return byte >= 0x80;
+      })) {
+    const float spacing = 1.0f;
+    std::string line;
+    for (std::size_t offset = 0; offset < value.size();) {
+      int bytes = 0;
+      (void)GetCodepoint(value.c_str() + offset, &bytes);
+      if (bytes <= 0) bytes = 1;
+      const std::size_t glyph_bytes = std::min<std::size_t>(
+          static_cast<std::size_t>(bytes), value.size() - offset);
+      const std::string glyph = value.substr(offset, glyph_bytes);
+      offset += glyph_bytes;
+      const std::string candidate = line + glyph;
+      if (!line.empty() &&
+          MeasureTextEx(g_overlay_font, candidate.c_str(), font_size,
+                        spacing).x > width) {
+        DrawTextEx(g_overlay_font, line.c_str(), {x, y}, font_size, spacing,
+                   color);
+        y += font_size + line_gap;
+        line = glyph;
+      } else {
+        line = candidate;
+      }
+    }
+    if (!line.empty()) {
+      DrawTextEx(g_overlay_font, line.c_str(), {x, y}, font_size, spacing,
+                 color);
+      y += font_size + line_gap;
+    }
+    return y;
+  }
   std::istringstream input(value);
   std::string word;
   std::string line;

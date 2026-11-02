@@ -47,7 +47,7 @@
  "prediction": {
  "question": "激光雷达从每 20 ms 更新一次变为每 100 ms 更新一次后，会发生什么？",
  "choices": [
- {"choice_id":"safe_tradeoff","label":"两次都安全，但慢扫描耗时更长、最小净空更小","explanation":"两次可视运行保持世界、机器人、初始状态和随机种子一致，由记录的时间和物理净空判断这个取舍是否发生。","evidence_rule":"comparison_tradeoff"},
+ {"choice_id":"safe_tradeoff","label":"两次都安全，但实测耗时或最小净空仍超出等效容差","explanation":"两次可视运行保持世界、机器人、初始状态和随机种子一致。时间或物理净空都可能向任一方向变化；两个实测差值共同决定结果。","evidence_rule":"comparison_tradeoff"},
  {"choice_id":"equivalent","label":"两次的完成时间和最小净空基本相同","explanation":"只有两个实测差值都在实验声明的等效容差内，才算基本相同。","evidence_rule":"comparison_equivalent"},
  {"choice_id":"unsafe_variant","label":"慢扫描发生碰撞或未通过安全验收","explanation":"碰撞、超时、任务未完成或物理到达被拒绝，都会使慢扫描运行判为不安全。","evidence_rule":"comparison_unsafe"}
  ]

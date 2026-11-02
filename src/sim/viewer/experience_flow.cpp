@@ -108,8 +108,10 @@ bool choice_supported(const ExperienceChoice& choice,
  return evidence.comparison_complete && evidence.comparison_valid &&
  evidence.baseline_safe &&
  evidence.variant_safe &&
- evidence.elapsed_delta_s >= evidence.minimum_elapsed_increase_s &&
- evidence.clearance_delta_m <= -evidence.minimum_clearance_loss_m;
+ (std::abs(evidence.elapsed_delta_s) >
+      evidence.equivalent_elapsed_tolerance_s ||
+  std::abs(evidence.clearance_delta_m) >
+      evidence.equivalent_clearance_tolerance_m);
  case ExperienceEvidenceRule::kComparisonEquivalent:
  return evidence.comparison_complete && evidence.comparison_valid &&
  evidence.baseline_safe &&

@@ -48,6 +48,38 @@ float draw_wrapped(const Font& font, const std::string& value, float x, float y,
   const float font_size = size * scale;
   const float line_gap = gap * scale;
   const float spacing = 1.0f;
+  // Chinese lesson and progress copy has no whitespace at which the word
+  // based path can break.  Wrap at UTF-8 codepoint boundaries so narrow
+  // profile cards remain readable at the same widths as the English UI.
+  if (std::any_of(value.begin(), value.end(), [](unsigned char byte) {
+        return byte >= 0x80;
+      })) {
+    std::string line;
+    for (std::size_t offset = 0; offset < value.size();) {
+      int bytes = 0;
+      (void)GetCodepoint(value.c_str() + offset, &bytes);
+      if (bytes <= 0) bytes = 1;
+      const std::size_t glyph_bytes = std::min<std::size_t>(
+          static_cast<std::size_t>(bytes), value.size() - offset);
+      const std::string glyph = value.substr(offset, glyph_bytes);
+      offset += glyph_bytes;
+      const std::string candidate = line + glyph;
+      if (!line.empty() &&
+          MeasureTextEx(font, candidate.c_str(), font_size, spacing).x >
+              width) {
+        DrawTextEx(font, line.c_str(), {x, y}, font_size, spacing, color);
+        y += font_size + line_gap;
+        line = glyph;
+      } else {
+        line = candidate;
+      }
+    }
+    if (!line.empty()) {
+      DrawTextEx(font, line.c_str(), {x, y}, font_size, spacing, color);
+      y += font_size + line_gap;
+    }
+    return y;
+  }
   std::istringstream input(value);
   std::string word;
   std::string line;

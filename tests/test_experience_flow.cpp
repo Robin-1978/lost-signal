@@ -104,6 +104,13 @@ int main() {
  evidence.clearance_delta_m = -0.01;
  assert(!choice_supported(tradeoff, evidence));
  assert(choice_supported(equivalent, evidence));
+ // A safe variant can differ in either direction. First Contact's actual
+ // slower-scan run is faster but has less clearance; it must still support
+ // the non-equivalent outcome instead of leaving every prediction refuted.
+ evidence.elapsed_delta_s = -1.0;
+ evidence.clearance_delta_m = -0.03;
+ assert(choice_supported(tradeoff, evidence));
+ assert(!choice_supported(equivalent, evidence));
  evidence.variant_safe = false;
  assert(!choice_supported(equivalent, evidence));
  assert(choice_supported(unsafe, evidence));
