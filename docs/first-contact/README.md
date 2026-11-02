@@ -20,7 +20,7 @@ xvfb-run -a -s "-screen 0 1100x750x24" \
   --locale zh-CN --3d --mute
 ```
 
-英文体验只需将 `--locale zh-CN` 改为 `--locale en`。启动后按 Enter、Space 或点击跳过英雄镜头；完成简报中的可选 3D 检查后选择预测，再运行 baseline 和 variant。
+英文体验只需将 `--locale zh-CN` 改为 `--locale en`。启动后按 Enter、Space 或点击跳过英雄镜头；First Contact 的部件检查均为可选，跳过后会直接进入预测，也可以先完成 3D 检查再选择预测，随后运行 baseline 和 variant。
 
 ## 发布包
 

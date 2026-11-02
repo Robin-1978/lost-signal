@@ -1235,7 +1235,16 @@ bool show_estimate = initial_show_robot_evidence;
  if (hero_sequence.active()) {
  hero_skip_consumed = clicked || IsKeyPressed(KEY_ENTER) ||
  IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ESCAPE);
- if (hero_skip_consumed) hero_sequence.skip();
+ if (hero_skip_consumed) {
+   hero_sequence.skip();
+   // Chapters with optional walkaround cards can honor the first-screen
+   // promise in one action: an explicit skip goes straight to the authored
+   // question. Chapters with required physical checks still land in briefing
+   // and keep their inspection gate intact.
+   if (experience_flow->walkaround_complete()) {
+     experience_flow->continue_to_prediction();
+   }
+ }
  } else if (experience_flow->phase() == ExperiencePhase::kBriefing) {
  const bool hotspot_clicked = clicked && CheckCollisionPointRec(
  pointer, experience_hit_regions.world_hotspot);
