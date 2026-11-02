@@ -1,0 +1,44 @@
+{
+  "format": "lost-signal-hardware-release-gate/1",
+  "record_id": "board-REPLACE-YYYYMMDD",
+  "captured_at_utc": "1970-01-01T00:00:00Z",
+  "operator": "REPLACE",
+  "board": {
+    "board_id": "REPLACE",
+    "firmware_revision": "REPLACE",
+    "profile_id": "REPLACE",
+    "profile_revision": 0,
+    "robot_id": "REPLACE",
+    "robot_description_hash": "REPLACE"
+  },
+  "calibration": {
+    "artifact_path": "REPLACE",
+    "artifact_sha256": "REPLACE",
+    "provenance": "measured",
+    "sample_count": 0
+  },
+  "gates": {
+    "native_hil": {"status": "PENDING_EXTERNAL", "evidence_ref": ""},
+    "emergency_stop": {"status": "PENDING_EXTERNAL", "evidence_ref": ""},
+    "braking_distance": {"status": "PENDING_EXTERNAL", "evidence_ref": ""},
+    "payload_low_grip": {"status": "PENDING_EXTERNAL", "evidence_ref": ""},
+    "transport_latency": {"status": "PENDING_EXTERNAL", "evidence_ref": ""},
+    "lidar_range_profile": {"status": "PENDING_EXTERNAL", "evidence_ref": ""},
+    "calibration_artifact": {"status": "PENDING_EXTERNAL", "evidence_ref": ""},
+    "现场长时间回放": {"status": "PENDING_EXTERNAL", "evidence_ref": ""}
+  },
+  "measurements": {
+    "control_period_ns": 0,
+    "feedback_period_ns": 0,
+    "transport_latency_p95_ns": 0,
+    "transport_latency_max_ns": 0,
+    "emergency_stop_distance_m": 0.0,
+    "braking_distance_empty_m": 0.0,
+    "braking_distance_loaded_m": 0.0,
+    "lidar_max_range_m": 0.0,
+    "payload_kg": 0.0,
+    "low_grip_surface": "REPLACE"
+  },
+  "overall_status": "PENDING_EXTERNAL",
+  "notes": "Replace every REPLACE value with measured, traceable evidence before requesting 1.0 release."
+}

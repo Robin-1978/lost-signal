@@ -1,6 +1,6 @@
 # 发布版大目标（精简入口）
 
-最后更新：2026-11-02
+最后更新：2026-11-03
 分支：`refactor/clean-rebuild`
 历史恢复日志：[release-continuation-archive-2026-11-02.md](release-continuation-archive-2026-11-02.md)
 
@@ -22,7 +22,7 @@ Robot Simu 是一个用真实机器人软件传播机器人知识的产品：同
 
 软件侧已经达到 Release Candidate：Debug 和 Release 的 97 个 CTest 全部通过，工业五目标、Ackermann、signal_town、四底盘、动态场景、terrain、SLAM/回环、Safety、Viewer、truth-isolation、VirtualMcu/native HIL 软件契约均有最终 HEAD 证据。
 
-真实板卡仍是 1.0 实机门禁，不能用仿真结果替代：具体 MCU HIL、急停与制动距离、满载/低抓地、通信延迟、实际 LiDAR 量程、标定 artifact 和现场长时间回放均保持“待验”。
+First Contact 的软件交付切片、双语课件、截图、A/B 报告格式和可分发 Release 包已经完成；目标用户试用记录表见 `docs/first-contact/user-trial-form.md`。真实板卡仍是 1.0 实机门禁，不能用仿真结果替代：具体 MCU HIL、急停与制动距离、满载/低抓地、通信延迟、实际 LiDAR 量程、标定 artifact 和现场长时间回放均保持“待验”。
 
 ## 发布证据
 
@@ -84,7 +84,7 @@ Robot Simu 是一个用真实机器人软件传播机器人知识的产品：同
 | 复盘与学习 | 关键帧时间线、基线差异、预测判定、知识卡和简短学习结果 | 复盘引用真实 episode step；ROBOT 结论与 SIM 验收分开；安全非等效结果不限制差异方向；用户完成后能回答一个因果问题 |
 | 可交付安装包 | 首个章节课件、运行命令、截图、证据报告格式和中英文内容清单 | 新机器可复现启动；内容与代码版本可追溯；报告包含 invariant digest、代码版本、关键指标和 verdict |
 
-首个纵向切片的验收不只看“能运行”，还看用户是否完成理解闭环。课程试用先以 10–20 名目标用户记录完成时长、预测选择、变体完成率、复盘完成率和前后知识题；这些数据用于验证教学效果，不用星级或游玩时长代替。
+首个纵向切片的验收不只看“能运行”，还看用户是否完成理解闭环。课程试用先以 10–20 名目标用户记录完成时长、预测选择、变体完成率、复盘完成率和前后知识题；记录表见 [First Contact user-trial form](first-contact/user-trial-form.md)。这些数据用于验证教学效果，不用星级或游玩时长代替。
 
 ## 后续优先级
 
@@ -94,9 +94,9 @@ Robot Simu 是一个用真实机器人软件传播机器人知识的产品：同
 
 ## 仍然有效的待办
 
-1. 完成上述 P0 First Contact 可传播闭环，并做目标用户试用；未达标的项先修复，不新增 Campaign 场景。
-2. 在目标硬件上完成 MCU/Native HIL、急停、制动、负载、通信延迟、LiDAR profile 和 calibration artifact 验收，并保存可追溯记录。
-3. P0 通过后把首个章节、回放报告和 benchmark 命令整理成可交付安装包，并完成 P1 证据包。
+1. 执行上述 First Contact 目标用户试用，按记录表收集 10–20 名参与者的完成时长、预测选择、变体完成率、复盘完成率和前后知识题；未达标的项先修复，不新增 Campaign 场景。
+2. 在目标硬件上完成 MCU/Native HIL、急停、制动、负载、通信延迟、LiDAR profile 和 calibration artifact 验收，并保存可追溯记录；记录格式和 fail-closed 校验见 [hardware release gate](hardware-release-gate.md)。
+3. First Contact 可交付安装包已经生成；目标用户试用通过后，把首个章节、回放报告和 benchmark 命令归档为 P1 证据包。
 4. 实板证据完成后重新运行同一套 97 项软件门禁和现场回放，不修改 Safety、footprint 或 GoalArrival 来换取通过。
 
 ## 常用验证命令

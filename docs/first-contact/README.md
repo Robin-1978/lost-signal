@@ -86,4 +86,6 @@ Raylib 对截图参数只使用文件名，截图会写到当前目录，因此�
 4. `report.json` 及两个 observation JSONL 的 SHA-256。
 5. 目标用户试用记录：完成时长、预测选择、variant 完成率、复盘完成率和前后知识题；不要用星级或游玩时长替代理解结果。
 
+试用表见 [user-trial-form.md](user-trial-form.md)。
+
 真实 MCU/HIL、急停、制动距离、负载、通信延迟、LiDAR profile 和 calibration artifact 仍属于实机门禁，不能由本包的仿真证据代替。
