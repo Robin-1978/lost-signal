@@ -3,6 +3,7 @@
 First Contact 是 Robot Simu 的首个 10 分钟纵向体验：用户先观察真实的驱动轮、caster 和 LiDAR，再预测 LiDAR 扫描周期变慢后的结果，运行同一套 ROBOT runtime，最后用 ROBOT/SIM 分开的证据复盘结论。
 
 ![First Contact 中文简报](first_contact_zh.png)
+![First Contact 首屏钩子](first_contact_hero_hook_zh.png)
 
 截图为 1100×750、zh-CN、3D、空 profile；任务卡、可选部件入口和章节进度均可见。
 
