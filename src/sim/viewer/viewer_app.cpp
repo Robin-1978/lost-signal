@@ -385,8 +385,10 @@ void draw_hero_overlay(const ExperienceManifest& experience,
  constexpr Color kText{236, 244, 240, 255};
  constexpr Color kMuted{166, 186, 178, 255};
  constexpr Color kCyan{55, 218, 202, 255};
+ constexpr Color kAmber{246, 169, 61, 255};
  const float screen_width = static_cast<float>(GetScreenWidth());
  const float screen_height = static_cast<float>(GetScreenHeight());
+ const bool first_shot = sequence.shot_index() == 0;
  const float bar_height = std::clamp(screen_height * 0.075f, 42.0f, 72.0f);
  DrawRectangle(0, 0, GetScreenWidth(), static_cast<int>(bar_height),
  Color{3, 8, 9, 238});
@@ -403,6 +405,34 @@ void draw_hero_overlay(const ExperienceManifest& experience,
  draw_ui_text(tr("ENTER / SPACE / CLICK  SKIP",
  "回车 / 空格 / 点击  跳过"),
  static_cast<int>(screen_width - 220.0f), 20, 12, kMuted);
+
+ // The first frame must explain why the viewer is worth trying. Keep this
+ // hook in the presentation layer and derive the question from the same
+ // manifest that drives the prediction phase; it never changes the runtime
+ // input, episode timing, or authored evidence rules.
+ if (first_shot && !experience.prediction_question.empty()) {
+   const float hook_width = std::min(390.0f, screen_width - 56.0f);
+   const float hook_height = 174.0f;
+   const float hook_x = screen_width - hook_width - 28.0f;
+   const float hook_y = bar_height + 18.0f;
+   DrawRectangleRounded({hook_x, hook_y, hook_width, hook_height},
+                        0.035f, 10, Color{5, 13, 14, 232});
+   DrawRectangleRoundedLinesEx({hook_x, hook_y, hook_width, hook_height},
+                               0.035f, 10, 2.0f, kAmber);
+   draw_ui_text(tr("BEFORE YOU RUN", "运行前先预测"),
+                static_cast<int>(hook_x + 20.0f),
+                static_cast<int>(hook_y + 17.0f), 12, kAmber);
+   draw_ui_text(tr("ONE QUESTION", "只回答一个问题"),
+                static_cast<int>(hook_x + 20.0f),
+                static_cast<int>(hook_y + 40.0f), 20, kText);
+   draw_wrapped_text(experience.prediction_question, hook_x + 20.0f,
+                     hook_y + 78.0f, hook_width - 40.0f, 14.0f, 4.0f,
+                     kText);
+   draw_ui_text(tr("MEASURE  →  ESTIMATE  →  STOP",
+                   "测量  →  估计  →  停车"),
+                static_cast<int>(hook_x + 20.0f),
+                static_cast<int>(hook_y + hook_height - 27.0f), 11, kCyan);
+ }
 
  const float card_width = std::min(660.0f, screen_width - 56.0f);
  const float card_y = screen_height - bar_height - 155.0f;
@@ -431,9 +461,10 @@ void draw_hero_overlay(const ExperienceManifest& experience,
  }
 
  const double progress = sequence.total_progress();
- const double fade = progress < 0.08
- ? 1.0 - progress / 0.08
- : progress > 0.96 ? (progress - 0.96) / 0.04 : 0.0;
+ // A full-screen opening fade made the first captured frame an empty black
+ // image and delayed the product hook. Keep the closing fade for a clean hand
+ // off to the briefing, but show the real MuJoCo frame immediately.
+ const double fade = progress > 0.96 ? (progress - 0.96) / 0.04 : 0.0;
  if (fade > 0.0) {
  DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
  Color{0, 0, 0, static_cast<unsigned char>(

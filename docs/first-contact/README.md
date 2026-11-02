@@ -6,6 +6,8 @@ First Contact 是 Robot Simu 的首个 10 分钟纵向体验：用户先观察�
 
 截图为 1100×750、zh-CN、3D、空 profile；任务卡、可选部件入口和章节进度均可见。
 
+英雄镜头的第一帧现在直接显示真实 MuJoCo 画面和一个单问题钩子：先看“雷达更新变慢会怎样”，再进入运行。开场不再使用覆盖整帧的黑场；问题、`测量 → 估计 → 停车` 因果链和跳过提示都来自同一个 experience manifest。首屏只消费准备态姿势，不推进仿真时间或 ROBOT 观测。
+
 ## 启动
 
 在仓库根目录执行：
@@ -38,11 +40,14 @@ tools/package_first_contact.sh
 mkdir -p build/first-contact
 xvfb-run -a -s "-screen 0 1100x750x24" \
   ./build/sim_viewer --play --locale zh-CN --3d --mute \
+  --profile build/first-contact/profile.json --shot 1 first-contact-hero-hook.png
+xvfb-run -a -s "-screen 0 1100x750x24" \
+  ./build/sim_viewer --play --locale zh-CN --3d --mute \
   --profile build/first-contact/profile.json --shot 400 first-contact-briefing.png
 xvfb-run -a -s "-screen 0 1100x750x24" \
   ./build/sim_viewer --play --locale zh-CN --3d --mute \
   --profile build/first-contact/profile.json --shot 15 first-contact-intro.png
-mv first-contact-briefing.png first-contact-intro.png build/first-contact/
+mv first-contact-hero-hook.png first-contact-briefing.png first-contact-intro.png build/first-contact/
 ```
 
 Raylib 对截图参数只使用文件名，截图会写到当前目录，因此上面在生成后移入 `build/first-contact/`。`--shot N FILE` 只保存第 N 帧并退出；它适合视觉回归，不代替完整 A/B 证据。
