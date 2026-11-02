@@ -24,7 +24,8 @@ for required in \
   configs/experiences/zh-CN/first_contact.json \
   assets/fonts/NotoSansCJKsc-Regular.otf \
   assets/models/manifest.json \
-  docs/first-contact/README.md; do
+  docs/first-contact/README.md \
+  docs/first-contact/first_contact_hero_hook_zh.png; do
   if [[ ! -f "${repo_dir}/${required}" ]]; then
     printf 'missing delivery content: %s\n' "${required}" >&2
     exit 1
